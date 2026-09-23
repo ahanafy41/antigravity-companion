@@ -64,6 +64,9 @@ public class AntigravityAccessibilityService extends AccessibilityService {
 
         // Start Local WebSocket Server when Accessibility Service connects
         LocalAutomationServer.startServer();
+
+        // Attach Floating Voice Button overlay
+        FloatingVoiceController.init(this);
     }
 
     @Override
@@ -86,6 +89,7 @@ public class AntigravityAccessibilityService extends AccessibilityService {
     @Override
     public void onDestroy() {
         sInstance = null;
+        FloatingVoiceController.destroy();
         LocalAutomationServer.stopServer();
         super.onDestroy();
         LOGGER.info("AntigravityAccessibilityService destroyed.");
