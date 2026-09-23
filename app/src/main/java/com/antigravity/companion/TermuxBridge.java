@@ -78,14 +78,17 @@ public class TermuxBridge {
         intent.putExtra(EXTRA_PENDING_INTENT, pendingIntent);
 
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent);
-            } else {
-                context.startService(intent);
-            }
+            context.startService(intent);
             LOGGER.info("Dispatched Termux command: " + executablePath + " (RequestId: " + requestId + ")");
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to start Termux RunCommandService", e);
+            LOGGER.log(Level.WARNING, "startService failed, attempting fallback startForegroundService...", e);
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent);
+                }
+            } catch (Exception e2) {
+                LOGGER.log(Level.SEVERE, "Both startService and startForegroundService failed", e2);
+            }
             if (callback != null) {
                 sCallbacks.remove(requestId);
                 callback.onResult(-1, "", "Failed to dispatch intent: " + e.getMessage());
@@ -104,11 +107,11 @@ public class TermuxBridge {
                 boolean running = isPortOpen("127.0.0.1", 7681, 600);
                 if (!running) {
                     LOGGER.info("Local Python server on 7681 not detected. Launching silently via Termux RUN_COMMAND...");
-                    String pythonPath = "/data/data/com.termux/files/usr/bin/python3";
-                    String scriptPath = "/data/data/com.termux/files/home/antigravity-jieshuo/server.py";
-                    String[] args = new String[]{scriptPath};
+                    String bashPath = "/data/data/com.termux/files/usr/bin/bash";
+                    String cmd = "if [ -x /data/data/com.termux/files/home/launch_server.sh ]; then /data/data/com.termux/files/home/launch_server.sh; else pgrep -f 'server.py' >/dev/null || nohup python3 /sdcard/解说/Plugins/antigravity/server.py > /data/data/com.termux/files/home/server.log 2>&1 & fi";
+                    String[] args = new String[]{"-c", cmd};
 
-                    executeCommand(context, pythonPath, args, "/data/data/com.termux/files/home", new CommandCallback() {
+                    executeCommand(context, bashPath, args, "/data/data/com.termux/files/home", new CommandCallback() {
                         @Override
                         public void onResult(int exitCode, String stdout, String stderr) {
                             LOGGER.info("Silent server launch finished with exit code: " + exitCode);

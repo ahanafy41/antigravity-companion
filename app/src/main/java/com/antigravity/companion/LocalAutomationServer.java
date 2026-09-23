@@ -121,6 +121,20 @@ public class LocalAutomationServer extends WebSocketServer {
                 break;
             }
 
+            case "launch_app": {
+                if (service == null) {
+                    sendError(conn, id, "AccessibilityService is not enabled.");
+                    return;
+                }
+                String target = request.has("target") ? request.get("target").getAsString() : "";
+                boolean success = service.launchApp(target);
+                JsonObject res = new JsonObject();
+                res.addProperty("id", id);
+                res.addProperty("status", success ? "success" : "failed");
+                conn.send(res.toString());
+                break;
+            }
+
             case "click_coords": {
                 if (service == null) {
                     sendError(conn, id, "AccessibilityService is not enabled.");

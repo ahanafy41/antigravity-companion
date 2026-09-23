@@ -3,6 +3,8 @@ package com.antigravity.companion;
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Path;
 import android.graphics.Rect;
@@ -11,6 +13,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
+import android.util.DisplayMetrics;
 import android.view.Display;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -19,6 +22,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 
 import java.io.ByteArrayOutputStream;
+import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
@@ -67,6 +71,9 @@ public class AntigravityAccessibilityService extends AccessibilityService {
 
         // Attach Floating Voice Button overlay
         FloatingVoiceController.init(this);
+
+        // Ensure Termux background server is active
+        TermuxBridge.ensureServerRunningAsync(this);
     }
 
     @Override
@@ -168,7 +175,8 @@ public class AntigravityAccessibilityService extends AccessibilityService {
     }
 
     /**
-     * Clicks a node matched by text or resource ID.
+     * Clicks a node matched by text or resource ID with hierarchical parent fallback
+     * and physical coordinate gesture tap fallback.
      */
     public boolean clickNode(String query) {
         AccessibilityNodeInfo root = getRootInActiveWindow();
@@ -177,7 +185,35 @@ public class AntigravityAccessibilityService extends AccessibilityService {
         try {
             AccessibilityNodeInfo target = findMatchingNode(root, query);
             if (target != null) {
+                // 1. Try direct node click
                 boolean clicked = target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+
+                // 2. If node is not clickable, search parent chain
+                if (!clicked) {
+                    AccessibilityNodeInfo parent = target.getParent();
+                    int depth = 0;
+                    while (parent != null && depth < 4) {
+                        if (parent.isClickable()) {
+                            clicked = parent.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                            parent.recycle();
+                            break;
+                        }
+                        AccessibilityNodeInfo nextParent = parent.getParent();
+                        parent.recycle();
+                        parent = nextParent;
+                        depth++;
+                    }
+                }
+
+                // 3. Fallback: tactile gesture tap at center of bounds
+                if (!clicked) {
+                    Rect bounds = new Rect();
+                    target.getBoundsInScreen(bounds);
+                    if (!bounds.isEmpty()) {
+                        clicked = clickAtCoordinates(bounds.centerX(), bounds.centerY());
+                    }
+                }
+
                 target.recycle();
                 return clicked;
             }
@@ -194,9 +230,9 @@ public class AntigravityAccessibilityService extends AccessibilityService {
         CharSequence desc = node.getContentDescription();
         CharSequence id = node.getViewIdResourceName();
 
-        if (text != null && text.toString().contains(query)) return AccessibilityNodeInfo.obtain(node);
-        if (desc != null && desc.toString().contains(query)) return AccessibilityNodeInfo.obtain(node);
-        if (id != null && id.toString().contains(query)) return AccessibilityNodeInfo.obtain(node);
+        if (matchesQuery(text, query)) return AccessibilityNodeInfo.obtain(node);
+        if (matchesQuery(desc, query)) return AccessibilityNodeInfo.obtain(node);
+        if (matchesQuery(id, query)) return AccessibilityNodeInfo.obtain(node);
 
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
@@ -207,16 +243,37 @@ public class AntigravityAccessibilityService extends AccessibilityService {
         return null;
     }
 
+    private boolean matchesQuery(CharSequence target, String query) {
+        if (target == null || query == null) return false;
+        String t = normalizeArabic(target.toString().toLowerCase().trim());
+        String q = normalizeArabic(query.toLowerCase().trim());
+        return t.contains(q) || q.contains(t);
+    }
+
+    private String normalizeArabic(String str) {
+        if (str == null) return "";
+        return str.replace('أ', 'ا')
+                  .replace('إ', 'ا')
+                  .replace('آ', 'ا')
+                  .replace('ة', 'ه')
+                  .replace('ى', 'ي');
+    }
+
     /**
      * Performs a tactile tap at exact screen coordinates using GestureDescription (API 24+).
+     * Supports relative 0..1000 coordinate scaling.
      */
     public boolean clickAtCoordinates(float x, float y) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             return false;
         }
 
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        float realX = (x <= 1000f && x > 0f && dm.widthPixels > 1000) ? (x / 1000f) * dm.widthPixels : x;
+        float realY = (y <= 1000f && y > 0f && dm.heightPixels > 1000) ? (y / 1000f) * dm.heightPixels : y;
+
         Path clickPath = new Path();
-        clickPath.moveTo(x, y);
+        clickPath.moveTo(realX, realY);
 
         GestureDescription.StrokeDescription stroke =
                 new GestureDescription.StrokeDescription(clickPath, 0, 50);
@@ -225,6 +282,67 @@ public class AntigravityAccessibilityService extends AccessibilityService {
         builder.addStroke(stroke);
 
         return dispatchGesture(builder.build(), null, mMainHandler);
+    }
+
+    /**
+     * Launches an application by package name, common alias, or application label.
+     */
+    public boolean launchApp(String nameOrPackage) {
+        if (nameOrPackage == null || nameOrPackage.trim().isEmpty()) return false;
+        PackageManager pm = getPackageManager();
+
+        // 1. Direct package name
+        Intent intent = pm.getLaunchIntentForPackage(nameOrPackage.trim());
+        if (intent != null) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+            return true;
+        }
+
+        // 2. Common shortcuts
+        String q = nameOrPackage.toLowerCase().trim();
+        String targetPkg = null;
+        if (q.contains("واتس") || q.contains("whatsapp")) {
+            targetPkg = "com.whatsapp";
+        } else if (q.contains("يوتيوب") || q.contains("youtube")) {
+            targetPkg = "com.google.android.youtube";
+        } else if (q.contains("كروم") || q.contains("chrome")) {
+            targetPkg = "com.android.chrome";
+        } else if (q.contains("تليجرام") || q.contains("telegram")) {
+            targetPkg = "org.telegram.messenger";
+        } else if (q.contains("إعدادات") || q.contains("اعدادات") || q.contains("settings")) {
+            targetPkg = "com.android.settings";
+        } else if (q.contains("تيرمكس") || q.contains("termux")) {
+            targetPkg = "com.termux";
+        }
+
+        if (targetPkg != null) {
+            intent = pm.getLaunchIntentForPackage(targetPkg);
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+                return true;
+            }
+        }
+
+        // 3. Search installed applications by label
+        try {
+            List<ApplicationInfo> apps = pm.getInstalledApplications(PackageManager.GET_META_DATA);
+            for (ApplicationInfo app : apps) {
+                String label = pm.getApplicationLabel(app).toString();
+                if (matchesQuery(label, q)) {
+                    intent = pm.getLaunchIntentForPackage(app.packageName);
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(intent);
+                        return true;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.WARNING, "Error matching app label", e);
+        }
+        return false;
     }
 
     /**
