@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "project_name": "Antigravity Companion & Bridge",
+  "version": "1.0.0",
+  "track": "Track C: Systems & Backend",
+  "language": "Kotlin / Java",
+  "frameworks": [
+    "Android SDK (API Level 34 / Android 14)",
+    "AndroidX Accessibility",
+    "AndroidX WebKit",
+    "Java-WebSocket (RFC 6455)",
+    "OkHttp"
+  ],
+  "scoping_mode": "Fast-Track",
+  "architecture": {
+    "pattern": "Clean Architecture with Event-Driven IPC Service & Unidirectional Data Flow (MVI/MVVM)",
+    "layers": [
+      "Presentation Layer: Accessible Android Activity & WebView UI with W3C WAI-ARIA 1.3 live announcements for TalkBack and Jieshuo",
+      "Bridge & IPC Layer: Local RFC 6455 WebSocket Server (127.0.0.1:8765) & Termux RUN_COMMAND Intent Dispatcher with PendingIntent callback capture",
+      "Automation & Accessibility Layer: Android AccessibilityService (API 34) managing active window node inspection, gesture dispatching, screenshot capture, and node action execution",
+      "Domain & Security Layer: Loopback socket binding, permission validation (com.termux.permission.RUN_COMMAND, BIND_ACCESSIBILITY_SERVICE), and rate-limited command execution"
+    ],
+    "a11y_strategy": "Strict compliance with WCAG 2.2 AAA & W3C WAI-ARIA. Direct screen reader integration for TalkBack & CSR/Jieshuo. Zero emoji clutter. All custom UI components declared with explicit semantic roles, focusable tabindex, and aria-live=\"polite\" status regions. Dynamic event narration for active window changes and Termux command execution results.",
+    "persistence": "EncryptedSharedPreferences / DataStore for bridge port configuration, allowed command whitelists, and local IPC auth tokens"
+  },
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "title": "Android Accessibility Service Core Implementation",
+      "description": "Implement AntigravityAccessibilityService extending AccessibilityService with android:canRetrieveWindowContent=\"true\", android:canPerformGestures=\"true\", and android:canTakeScreenshot=\"true\". Provide getRootInActiveWindow() and getRootInActiveWindow_prefetching(int) for low-latency hierarchy traversal, performAction(int, Bundle) on AccessibilityNodeInfo, performGlobalAction(int) for system navigation, and dispatchGesture(GestureDescription, GestureResultCallback, Handler) for tactile gesture dispatching.",
+      "priority": "P0",
+      "verification_criteria": "Service successfully binds, connects via onServiceConnected(), dumps hierarchy node tree without ANR, and dispatches back/home/recents global actions."
+    },
+    {
+      "id": "REQ-002",
+      "title": "Termux RUN_COMMAND Intent Integration",
+      "description": "Implement TermuxBridgeManager adhering to com.termux.RUN_COMMAND specifications. Dispatch explicit intents to com.termux/com.termux.app.RunCommandService with EXTRA_COMMAND_PATH, EXTRA_ARGUMENTS, EXTRA_WORKDIR, and EXTRA_BACKGROUND=true. Attach PendingIntent with FLAG_MUTABLE (API 31+) to capture asynchronous execution results (stdout, stderr, exitCode, errCode) without payload truncation.",
+      "priority": "P0",
+      "verification_criteria": "Successful round-trip command execution in Termux background, returning exitCode 0 and captured stdout back to the companion app."
+    },
+    {
+      "id": "REQ-003",
+      "title": "Local Duplex WebSocket IPC Server",
+      "description": "Embed Java-WebSocket WebSocketServer bound exclusively to 127.0.0.1:8765 running in a dedicated background executor thread. Provide real-time bidirectional JSON-RPC messaging between Termux Python/CLI agents and the companion Android app. Support actions: ping, get_window_tree, click_node, input_text, swipe, take_screenshot, and run_termux_command.",
+      "priority": "P0",
+      "verification_criteria": "WebSocket client in Termux connects to ws://127.0.0.1:8765, sends get_window_tree command, and receives complete JSON hierarchy."
+    },
+    {
+      "id": "REQ-004",
+      "title": "Accessible Companion UI & WebView ARIA Integration",
+      "description": "Build MainActivity with integrated WebView adhering to W3C WAI-ARIA and TalkBack/Jieshuo standards. WebSettings configured with JavaScript enabled and safe JavascriptInterface bridge (window.AntigravityBridge). Dynamic logs and service statuses stream to aria-live=\"polite\" container with accessible names, clear keyboard navigation, and zero decorative emoji noise.",
+      "priority": "P0",
+      "verification_criteria": "TalkBack and Jieshuo read status updates cleanly without focus trapping, and JavascriptInterface calls trigger Android bridge actions safely."
+    },
+    {
+      "id": "REQ-005",
+      "title": "Low-Latency Screenshot Acquisition",
+      "description": "Implement takeScreenshot(DEFAULT_DISPLAY, Executor, TakeScreenshotCallback) available on API 30+ to capture screen buffers for vision-language models and CLI OCR agents without requiring MediaProjection permissions or root access.",
+      "priority": "P1",
+      "verification_criteria": "Screenshot callback returns valid HardwareBuffer, converted to JPEG/PNG bytes and transmitted via WebSocket or written to shared cache."
+    },
+    {
+      "id": "REQ-006",
+      "title": "Self-Diagnostic Doctor & Health Check Engine",
+      "description": "Provide internal DoctorDiagnosticEngine verifying: (1) Accessibility Service enablement status, (2) com.termux.permission.RUN_COMMAND grant status, (3) ~/.termux/termux.properties allow-external-apps flag, (4) WebSocket server port 8765 availability, and (5) TalkBack/Jieshuo active accessibility services.",
+      "priority": "P1",
+      "verification_criteria": "Diagnostic returns structured JSON report with actionable 3-part remediation instructions for any missing permission or misconfiguration."
+    },
+    {
+      "id": "REQ-007",
+      "title": "Graceful Lifecycle Management & Signal Handling",
+      "description": "Ensure AntigravityAccessibilityService and WebSocketServer handle lifecycle events (onDestroy, onUnbind, configuration changes) gracefully. Stop socket listeners, release active node references, clear PendingIntent receivers, and flush pending log buffers atomically.",
+      "priority": "P2",
+      "verification_criteria": "Zero memory leaks, socket address-in-use collisions on restart, or orphan background threads."
+    },
+    {
+      "id": "REQ-008",
+      "title": "GitHub Actions Automated APK Build & Release Workflow",
+      "description": "Provide .github/workflows/build-apk.yml configuring an Ubuntu runner with JDK 17, Android SDK Platform 34, and Gradle to automatically compile app-debug.apk and app-release.apk on push or workflow_dispatch, publishing downloadable APK artifacts to GitHub Releases.",
+      "priority": "P0",
+      "verification_criteria": "GitHub Actions workflow YAML syntax is valid and builds APK artifact without needing local Android SDK in Termux."
+    }
+  ],
+  "entry_points": {
+    "run": "./gradlew installDebug && adb shell am start -n com.antigravity.companion/.MainActivity",
+    "test": "./gradlew testDebugUnitTest",
+    "doctor": "adb shell am broadcast -a com.antigravity.companion.ACTION_DOCTOR",
+    "build": "./gradlew assembleDebug"
+  }
+}

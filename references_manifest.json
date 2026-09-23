@@ -1,0 +1,515 @@
+{
+  "manifest_version": "1.0.0",
+  "reference_sources": [
+    {
+      "source_path": "https://developer.android.com/reference/android/accessibilityservice/AccessibilityService",
+      "format": "official_docs",
+      "description": "Android Official Reference for AccessibilityService (API Level 34 / Android 14)",
+      "symbol_count": 5
+    },
+    {
+      "source_path": "https://developer.android.com/reference/android/view/accessibility/AccessibilityNodeInfo",
+      "format": "official_docs",
+      "description": "Android Official Reference for AccessibilityNodeInfo & UI Element Interaction",
+      "symbol_count": 1
+    },
+    {
+      "source_path": "https://github.com/termux/termux-app/wiki/RUN_COMMAND-Intent",
+      "format": "github_wiki",
+      "description": "Termux Official Wiki & TermuxConstants for RUN_COMMAND Intent API & RunCommandService",
+      "symbol_count": 10
+    },
+    {
+      "source_path": "https://developer.android.com/reference/android/webkit/WebView",
+      "format": "official_docs",
+      "description": "Android WebView, WebSettings, JavaScriptInterface, and ARIA Accessibility Contracts",
+      "symbol_count": 5
+    },
+    {
+      "source_path": "https://github.com/TooTallNate/Java-WebSocket",
+      "format": "official_docs",
+      "description": "RFC 6455 Local Duplex WebSocket Architecture for Android & WebView IPC",
+      "symbol_count": 2
+    }
+  ],
+  "exported_namespaces": [
+    "android.accessibilityservice",
+    "android.view.accessibility",
+    "com.termux.shared.termux",
+    "com.termux.app",
+    "android.webkit",
+    "org.java_websocket.server",
+    "okhttp3",
+    "org.w3c.dom.aria"
+  ],
+  "symbols": [
+    {
+      "symbol_name": "getRootInActiveWindow",
+      "symbol_type": "method",
+      "namespace_or_module": "android.accessibilityservice.AccessibilityService",
+      "is_async": false,
+      "parameters": [],
+      "return_type": "android.view.accessibility.AccessibilityNodeInfo",
+      "constraints_and_contracts": {
+        "requires": [
+          "android:canRetrieveWindowContent=\"true\" declared in accessibility service XML configuration",
+          "AccessibilityService must be enabled and connected (onServiceConnected)"
+        ],
+        "ensures": [
+          "Returns root AccessibilityNodeInfo of the active window or null if unavailable"
+        ],
+        "invariants": [
+          "Active window is the window the user is currently touching or that has input focus"
+        ]
+      }
+    },
+    {
+      "symbol_name": "getRootInActiveWindow_prefetching",
+      "symbol_type": "method",
+      "namespace_or_module": "android.accessibilityservice.AccessibilityService",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "prefetchingStrategy",
+          "type": "int",
+          "required": true,
+          "description": "Bitmask strategy flags (e.g. FLAG_PREFETCH_ANCESTORS, FLAG_PREFETCH_SIBLINGS, FLAG_PREFETCH_DESCENDANTS_HYBRID)"
+        }
+      ],
+      "return_type": "android.view.accessibility.AccessibilityNodeInfo",
+      "constraints_and_contracts": {
+        "requires": [
+          "API Level >= 33 (Android 13 Tiramisu)",
+          "android:canRetrieveWindowContent=\"true\""
+        ],
+        "ensures": [
+          "Reduces IPC rounds by prefetching related nodes in the active window hierarchy"
+        ]
+      }
+    },
+    {
+      "symbol_name": "dispatchGesture",
+      "symbol_type": "method",
+      "namespace_or_module": "android.accessibilityservice.AccessibilityService",
+      "is_async": true,
+      "parameters": [
+        {
+          "name": "gesture",
+          "type": "android.accessibilityservice.GestureDescription",
+          "required": true,
+          "description": "GestureDescription containing stroke paths and durations"
+        },
+        {
+          "name": "callback",
+          "type": "android.accessibilityservice.AccessibilityService.GestureResultCallback",
+          "required": false,
+          "default_value": "null",
+          "description": "Optional callback to receive completion or cancellation notifications"
+        },
+        {
+          "name": "handler",
+          "type": "android.os.Handler",
+          "required": false,
+          "default_value": "null",
+          "description": "Handler for callback execution, or null for main thread"
+        }
+      ],
+      "return_type": "boolean",
+      "constraints_and_contracts": {
+        "requires": [
+          "API Level >= 24 (Android 7.0 Nougat)",
+          "android:canPerformGestures=\"true\" declared in service configuration XML"
+        ],
+        "ensures": [
+          "Returns true if gesture was accepted for dispatch, false if rejected"
+        ]
+      }
+    },
+    {
+      "symbol_name": "takeScreenshot",
+      "symbol_type": "method",
+      "namespace_or_module": "android.accessibilityservice.AccessibilityService",
+      "is_async": true,
+      "parameters": [
+        {
+          "name": "displayId",
+          "type": "int",
+          "required": true,
+          "default_value": "android.view.Display.DEFAULT_DISPLAY",
+          "description": "Logical display ID (0 for default display)"
+        },
+        {
+          "name": "executor",
+          "type": "java.util.concurrent.Executor",
+          "required": true,
+          "description": "Executor on which the callback methods will be executed"
+        },
+        {
+          "name": "callback",
+          "type": "android.accessibilityservice.AccessibilityService.TakeScreenshotCallback",
+          "required": true,
+          "description": "Callback receiving onSuccess(ScreenshotResult) or onFailure(int errorCode)"
+        }
+      ],
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "API Level >= 30 (Android 11)",
+          "android:canTakeScreenshot=\"true\" declared in accessibility service XML meta-data"
+        ],
+        "ensures": [
+          "Provides HardwareBuffer screenshot wrapped via Bitmap.wrapHardwareBuffer(result.getHardwareBuffer(), result.getColorSpace())"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "ERROR_TAKE_SCREENSHOT_INTERNAL_ERROR (1)",
+        "ERROR_TAKE_SCREENSHOT_NO_ACCESSIBILITY_ACCESS (2)",
+        "ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT (3)",
+        "ERROR_TAKE_SCREENSHOT_INVALID_DISPLAY (4)",
+        "ERROR_TAKE_SCREENSHOT_INVALID_WINDOW (5)"
+      ]
+    },
+    {
+      "symbol_name": "performGlobalAction",
+      "symbol_type": "method",
+      "namespace_or_module": "android.accessibilityservice.AccessibilityService",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "action",
+          "type": "int",
+          "required": true,
+          "description": "Action constant (GLOBAL_ACTION_BACK=1, GLOBAL_ACTION_HOME=2, GLOBAL_ACTION_RECENTS=3, GLOBAL_ACTION_NOTIFICATIONS=4, GLOBAL_ACTION_QUICK_SETTINGS=5, GLOBAL_ACTION_POWER_DIALOG=6, GLOBAL_ACTION_LOCK_SCREEN=8, GLOBAL_ACTION_TAKE_SCREENSHOT=9)"
+        }
+      ],
+      "return_type": "boolean",
+      "constraints_and_contracts": {
+        "requires": [
+          "API Level >= 16",
+          "AccessibilityService connected"
+        ],
+        "ensures": [
+          "Triggers system navigation actions across the OS"
+        ]
+      }
+    },
+    {
+      "symbol_name": "performAction",
+      "symbol_type": "method",
+      "namespace_or_module": "android.view.accessibility.AccessibilityNodeInfo",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "action",
+          "type": "int",
+          "required": true,
+          "description": "Action ID (ACTION_CLICK=16, ACTION_FOCUS=1, ACTION_SCROLL_FORWARD=4096, ACTION_SET_TEXT=2097152)"
+        },
+        {
+          "name": "arguments",
+          "type": "android.os.Bundle",
+          "required": false,
+          "default_value": "null",
+          "description": "Optional Bundle arguments such as ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE"
+        }
+      ],
+      "return_type": "boolean",
+      "constraints_and_contracts": {
+        "requires": [
+          "android:canRetrieveWindowContent=\"true\"",
+          "AccessibilityNodeInfo must represent an active attached node"
+        ],
+        "ensures": [
+          "Returns true if node accepted and performed action, false otherwise"
+        ]
+      }
+    },
+    {
+      "symbol_name": "RunCommandService",
+      "symbol_type": "class",
+      "namespace_or_module": "com.termux.app",
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "Permission com.termux.permission.RUN_COMMAND declared and granted",
+          "allow-external-apps=true in ~/.termux/termux.properties",
+          "Android 12+ (API 31+): Background start restrictions require explicit ComponentName and compliance with ForegroundService rules"
+        ],
+        "ensures": [
+          "Executes command within Termux environment and optionally returns stdout/stderr/exitCode"
+        ]
+      }
+    },
+    {
+      "symbol_name": "ACTION_RUN_COMMAND",
+      "symbol_type": "constant",
+      "namespace_or_module": "com.termux.shared.termux.TermuxConstants.TERMUX_APP.RUN_COMMAND_SERVICE",
+      "return_type": "java.lang.String",
+      "constraints_and_contracts": {
+        "invariants": [
+          "Value is 'com.termux.RUN_COMMAND'"
+        ]
+      }
+    },
+    {
+      "symbol_name": "PERMISSION_RUN_COMMAND",
+      "symbol_type": "constant",
+      "namespace_or_module": "com.termux.shared.termux.TermuxConstants.TERMUX_APP",
+      "return_type": "java.lang.String",
+      "constraints_and_contracts": {
+        "invariants": [
+          "Value is 'com.termux.permission.RUN_COMMAND'"
+        ]
+      }
+    },
+    {
+      "symbol_name": "EXTRA_COMMAND_PATH",
+      "symbol_type": "constant",
+      "namespace_or_module": "com.termux.shared.termux.TermuxConstants.TERMUX_APP.RUN_COMMAND_SERVICE",
+      "return_type": "java.lang.String",
+      "constraints_and_contracts": {
+        "invariants": [
+          "Value is 'com.termux.RUN_COMMAND_PATH'",
+          "Must be an absolute path inside Termux prefix (e.g. /data/data/com.termux/files/usr/bin/bash)"
+        ]
+      }
+    },
+    {
+      "symbol_name": "EXTRA_ARGUMENTS",
+      "symbol_type": "constant",
+      "namespace_or_module": "com.termux.shared.termux.TermuxConstants.TERMUX_APP.RUN_COMMAND_SERVICE",
+      "return_type": "java.lang.String",
+      "constraints_and_contracts": {
+        "invariants": [
+          "Value is 'com.termux.RUN_COMMAND_ARGUMENTS'",
+          "Value passed in intent must be String[] (String array)"
+        ]
+      }
+    },
+    {
+      "symbol_name": "EXTRA_WORKDIR",
+      "symbol_type": "constant",
+      "namespace_or_module": "com.termux.shared.termux.TermuxConstants.TERMUX_APP.RUN_COMMAND_SERVICE",
+      "return_type": "java.lang.String",
+      "constraints_and_contracts": {
+        "invariants": [
+          "Value is 'com.termux.RUN_COMMAND_WORKDIR'",
+          "Defaults to Termux HOME directory if not specified"
+        ]
+      }
+    },
+    {
+      "symbol_name": "EXTRA_BACKGROUND",
+      "symbol_type": "constant",
+      "namespace_or_module": "com.termux.shared.termux.TermuxConstants.TERMUX_APP.RUN_COMMAND_SERVICE",
+      "return_type": "java.lang.String",
+      "constraints_and_contracts": {
+        "invariants": [
+          "Value is 'com.termux.RUN_COMMAND_BACKGROUND'",
+          "Boolean extra: true executes without opening a terminal window"
+        ]
+      }
+    },
+    {
+      "symbol_name": "EXTRA_SESSION_ACTION",
+      "symbol_type": "constant",
+      "namespace_or_module": "com.termux.shared.termux.TermuxConstants.TERMUX_APP.RUN_COMMAND_SERVICE",
+      "return_type": "java.lang.String",
+      "constraints_and_contracts": {
+        "invariants": [
+          "Value is 'com.termux.RUN_COMMAND_SESSION_ACTION'",
+          "Values: '0'=new session, '1'=keep current, '2'=switch existing/create, '3'=fail if exists"
+        ]
+      }
+    },
+    {
+      "symbol_name": "EXTRA_PENDING_INTENT",
+      "symbol_type": "constant",
+      "namespace_or_module": "com.termux.shared.termux.TermuxConstants.TERMUX_APP.RUN_COMMAND_SERVICE",
+      "return_type": "java.lang.String",
+      "constraints_and_contracts": {
+        "requires": [
+          "On Android 12+ (API 31+), must be created with PendingIntent.FLAG_MUTABLE so Termux can attach result extras"
+        ],
+        "ensures": [
+          "Receives result extras: stdout, stderr, exitCode, errCode (truncated to 100KB to prevent TransactionTooLargeException)"
+        ],
+        "invariants": [
+          "Value is 'com.termux.RUN_COMMAND_PENDING_INTENT'"
+        ]
+      }
+    },
+    {
+      "symbol_name": "EXTRA_RESULT_DIRECTORY",
+      "symbol_type": "constant",
+      "namespace_or_module": "com.termux.shared.termux.TermuxConstants.TERMUX_APP.RUN_COMMAND_SERVICE",
+      "return_type": "java.lang.String",
+      "constraints_and_contracts": {
+        "invariants": [
+          "Value is 'com.termux.RUN_COMMAND_RESULT_DIRECTORY'",
+          "Directory where Termux will write output files for large payloads"
+        ]
+      }
+    },
+    {
+      "symbol_name": "WebView",
+      "symbol_type": "class",
+      "namespace_or_module": "android.webkit",
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "Internet permission in AndroidManifest if loading web URLs",
+          "Hardware acceleration recommended for fluid screen reader rendering"
+        ],
+        "ensures": [
+          "Exposes virtual accessibility nodes (DOM/ARIA) to TalkBack and Jieshuo"
+        ]
+      }
+    },
+    {
+      "symbol_name": "WebSettings",
+      "symbol_type": "class",
+      "namespace_or_module": "android.webkit",
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "Configured on UI thread via webView.getSettings()"
+        ]
+      }
+    },
+    {
+      "symbol_name": "setJavaScriptEnabled",
+      "symbol_type": "method",
+      "namespace_or_module": "android.webkit.WebSettings",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "flag",
+          "type": "boolean",
+          "required": true,
+          "description": "True to enable JavaScript execution, required for dynamic ARIA and WebSocket client"
+        }
+      ],
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "Must be called before loading dynamic interactive web apps"
+        ]
+      }
+    },
+    {
+      "symbol_name": "addJavascriptInterface",
+      "symbol_type": "method",
+      "namespace_or_module": "android.webkit.WebView",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "object",
+          "type": "java.lang.Object",
+          "required": true,
+          "description": "Object exposing methods annotated with @JavascriptInterface"
+        },
+        {
+          "name": "name",
+          "type": "java.lang.String",
+          "required": true,
+          "description": "Identifier injected into window object (e.g. window.AndroidBridge)"
+        }
+      ],
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "Methods must have @android.webkit.JavascriptInterface annotation",
+          "API Level >= 17 prevents reflection vulnerabilities"
+        ],
+        "invariants": [
+          "Bridge calls execute on private background WebCore thread"
+        ]
+      }
+    },
+    {
+      "symbol_name": "evaluateJavascript",
+      "symbol_type": "method",
+      "namespace_or_module": "android.webkit.WebView",
+      "is_async": true,
+      "parameters": [
+        {
+          "name": "script",
+          "type": "java.lang.String",
+          "required": true,
+          "description": "JavaScript snippet to execute in WebView context"
+        },
+        {
+          "name": "resultCallback",
+          "type": "android.webkit.ValueCallback<java.lang.String>",
+          "required": false,
+          "default_value": "null",
+          "description": "Callback receiving JSON-formatted evaluation result"
+        }
+      ],
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "API Level >= 19 (Android 4.4 KitKat)",
+          "Must be invoked on Android UI thread"
+        ]
+      }
+    },
+    {
+      "symbol_name": "WebSocketServer",
+      "symbol_type": "class",
+      "namespace_or_module": "org.java_websocket.server",
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "Must run on background thread or Android Service (never Main UI Thread)",
+          "Bind to 127.0.0.1 for secure local-only IPC communication"
+        ],
+        "lifecycle_hooks": [
+          "onStart",
+          "onOpen",
+          "onMessage",
+          "onClose",
+          "onError"
+        ]
+      }
+    },
+    {
+      "symbol_name": "WebSocketListener",
+      "symbol_type": "class",
+      "namespace_or_module": "okhttp3",
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "OkHttpClient instance calling client.newWebSocket(request, listener)"
+        ],
+        "lifecycle_hooks": [
+          "onOpen",
+          "onMessage",
+          "onClosing",
+          "onClosed",
+          "onFailure"
+        ]
+      }
+    },
+    {
+      "symbol_name": "W3C_WAI_ARIA_A11y_Contract",
+      "symbol_type": "interface",
+      "namespace_or_module": "org.w3c.dom.aria",
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "aria-live=\"polite\" on dynamic output containers for TalkBack announcements",
+          "role=\"button\" and tabindex=\"0\" on clickable interactive custom elements",
+          "Explicit aria-label or accessible text on all controls without icon-only ambiguity",
+          "Zero decorative emoji clutter in screen reader stream"
+        ]
+      }
+    }
+  ],
+  "coverage_audit": {
+    "total_symbols_extracted": 24,
+    "verified_against_code": true,
+    "implementation_status": "LOCKED_GROUNDED_2026"
+  }
+}

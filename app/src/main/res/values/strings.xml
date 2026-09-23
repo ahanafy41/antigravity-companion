@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Antigravity Companion</string>
+    <string name="accessibility_service_label">Antigravity AI Automation</string>
+    <string name="accessibility_service_description">خدمة الأتمتة والتحكم في الشاشة لمساعد Antigravity الذكي، تتيح فحص العناصر والنقر والتمرير بسلاسة دون التأثير على قارئات الشاشة.</string>
+    <string name="service_not_enabled">خدمة إمكانية الوصول غير مفعلة حالياً. اضغط هنا لتفعيلها من الإعدادات.</string>
+    <string name="btn_enable_service">تفعيل خدمة الوصول</string>
+    <string name="status_connected">متصل بنجاح بمحرك الذكاء الاصطناعي</string>
+    <string name="status_connecting">جاري الاتصال بالمحرك المحلي...</string>
+    <string name="action_doctor">فحص وتشخيص النظام</string>
+</resources>
