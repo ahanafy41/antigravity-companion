@@ -36,7 +36,16 @@
 - [ ] Execute unit tests and run AST/craftsmanship validation via `validate_code.py`.
 
 ## Phase 7: GitHub Actions CI/CD & Automated APK Delivery
-- [ ] Create `.github/workflows/build-apk.yml` with JDK 17, Android SDK 34, and Gradle assembly.
-- [ ] Configure automatic APK artifact upload on push and manual trigger (`workflow_dispatch`).
-- [ ] Provide setup instructions and git repository initialization for immediate 1-click cloud build.
+- [x] Create `.github/workflows/build-apk.yml` with JDK 17, Android SDK 34, and Gradle assembly.
+- [x] Configure automatic APK artifact upload on push and manual trigger (`workflow_dispatch`).
+- [x] Provide setup instructions and git repository initialization for immediate 1-click cloud build.
+
+## Phase 8: Termux Package Visibility & Smart Server Auto-Wake (BUG-A11Y-TERMUX-001)
+- [x] Add `<queries>` tag in `AndroidManifest.xml` for `com.termux` package visibility on Android 11+ (API 30+).
+- [x] Add robust filesystem and intent fallback detection in `DoctorDiagnosticEngine.isPackageInstalled`.
+- [x] Add runtime permission request for `com.termux.permission.RUN_COMMAND` in `MainActivity.onCreate`.
+- [x] Expose `isTermuxServerReady`, `isAutomationServerReady`, and `loadChatUrl` in `AntigravityJsBridge`.
+- [x] Separate status reporting for internal Automation Server (8765) and Termux Chat Server (7681) in `index.html`.
+- [x] Implement non-blocking auto-wake, polling, and `aria-live` accessible notifications in `goToChat()`.
+- [x] Verify AST integrity, human-grade craftsmanship, and diff verification via `validate_code.py` and `diff_verifier.py`.
 

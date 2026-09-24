@@ -2,7 +2,6 @@ package com.antigravity.companion;
 
 import android.annotation.SuppressLint;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -18,8 +17,6 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 
 import com.google.gson.JsonObject;
 
@@ -40,31 +37,20 @@ public class MainActivity extends AppCompatActivity {
 
     public static final String LOCAL_URL = "http://127.0.0.1:7681";
     public static final String FALLBACK_ASSET_URL = "file:///android_asset/web/index.html";
-    private static final int REQ_CODE_TERMUX_PERM = 2001;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setupViews();
 
-        // 1. Request Termux RUN_COMMAND permission if needed
-        checkAndRequestTermuxPermission();
-
-        // 2. Silent check & auto-start of local Termux server
+        // 1. Silent check & auto-start of local Termux server
         TermuxBridge.ensureServerRunningAsync(this);
 
-        // 3. Start WebSocket bridge if service already connected
+        // 2. Start WebSocket bridge if service already connected
         LocalAutomationServer.startServer();
 
-        // 4. Load initial web dashboard
+        // 3. Load initial web dashboard
         loadInitialPage();
-    }
-
-    private void checkAndRequestTermuxPermission() {
-        String perm = "com.termux.permission.RUN_COMMAND";
-        if (ContextCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{perm}, REQ_CODE_TERMUX_PERM);
-        }
     }
 
     @Override
@@ -216,28 +202,6 @@ public class MainActivity extends AppCompatActivity {
         public String runDiagnostics() {
             JsonObject diag = DoctorDiagnosticEngine.runDiagnosis(MainActivity.this);
             return diag.toString();
-        }
-
-        @JavascriptInterface
-        public boolean isTermuxServerReady() {
-            return TermuxBridge.isPortOpen("127.0.0.1", 7681, 400);
-        }
-
-        @JavascriptInterface
-        public boolean isAutomationServerReady() {
-            return TermuxBridge.isPortOpen("127.0.0.1", 8765, 300);
-        }
-
-        @JavascriptInterface
-        public void loadChatUrl() {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    if (mWebView != null) {
-                        mWebView.loadUrl(LOCAL_URL);
-                    }
-                }
-            });
         }
     }
 }

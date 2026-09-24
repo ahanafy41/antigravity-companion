@@ -1,12 +1,9 @@
 package com.antigravity.companion;
 
 import android.content.Context;
-import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.provider.Settings;
 import android.text.TextUtils;
-
-import java.io.File;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -110,18 +107,7 @@ public class DoctorDiagnosticEngine {
         try {
             context.getPackageManager().getPackageInfo(packageName, 0);
             return true;
-        } catch (Exception e) {
-            // Defense-in-depth: Fallback checks for Termux presence
-            File packageDir = new File("/data/data/" + packageName);
-            if (packageDir.exists()) {
-                return true;
-            }
-            try {
-                Intent intent = context.getPackageManager().getLaunchIntentForPackage(packageName);
-                if (intent != null) {
-                    return true;
-                }
-            } catch (Exception ignored) {}
+        } catch (PackageManager.NameNotFoundException e) {
             return false;
         }
     }

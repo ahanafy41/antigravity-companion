@@ -138,37 +138,29 @@
         }
 
         function checkStatus() {
-            announce('جاري فحص حالة الخدمات...');
+            announce('جاري فحص الاتصال...');
             const statusBox = document.getElementById('status-text');
 
             let a11yActive = false;
-            let bridgeAvailable = !!(window.AntigravityBridge);
-
-            if (bridgeAvailable && typeof window.AntigravityBridge.isAccessibilityActive === 'function') {
+            if (window.AntigravityBridge && typeof window.AntigravityBridge.isAccessibilityActive === 'function') {
                 a11yActive = window.AntigravityBridge.isAccessibilityActive();
             }
 
-            let ws8765Ready = false;
-            let py7681Ready = false;
-
-            if (bridgeAvailable && typeof window.AntigravityBridge.isAutomationServerReady === 'function') {
-                ws8765Ready = window.AntigravityBridge.isAutomationServerReady();
+            // Check WebSocket 8765
+            try {
+                const ws = new WebSocket('ws://127.0.0.1:8765');
+                ws.onopen = function() {
+                    statusBox.textContent = 'خادم الأتمتة (8765): متصل | خدمة الوصول: ' + (a11yActive ? 'مفعلة' : 'معطلة');
+                    announce(statusBox.textContent);
+                    ws.close();
+                };
+                ws.onerror = function() {
+                    statusBox.textContent = 'خادم الأتمتة: غير متصل | خدمة الوصول: ' + (a11yActive ? 'مفعلة' : 'معطلة');
+                    announce(statusBox.textContent);
+                };
+            } catch (e) {
+                statusBox.textContent = 'خطأ أثناء محاولة الاتصال: ' + e.message;
             }
-
-            if (bridgeAvailable && typeof window.AntigravityBridge.isTermuxServerReady === 'function') {
-                py7681Ready = window.AntigravityBridge.isTermuxServerReady();
-            }
-
-            const a11yLabel = a11yActive ? 'مفعلة' : 'معطلة';
-            const wsLabel = ws8765Ready ? 'متصل' : 'غير متصل';
-            const pyLabel = py7681Ready ? 'نشط وجاهز' : 'غير نشط (يتطلب إيقاظ)';
-
-            statusBox.innerHTML = 
-                '<div>خدمة الوصول: <strong>' + a11yLabel + '</strong></div>' +
-                '<div>خادم الأتمتة الداخلي (8765): <strong>' + wsLabel + '</strong></div>' +
-                '<div>خادم تيرمكس للشات (7681): <strong>' + pyLabel + '</strong></div>';
-
-            announce('حالة النظام: خدمة الوصول ' + a11yLabel + '، وخادم الأتمتة ' + wsLabel + '، وخادم تيرمكس ' + (py7681Ready ? 'جاهز' : 'غير نشط'));
         }
 
         function openA11ySettings() {
@@ -185,66 +177,11 @@
                 window.AntigravityBridge.triggerServerWakeup();
                 announce('تم إرسال أمر إيقاظ خادم تيرمكس في الخلفية');
                 setTimeout(checkStatus, 2000);
-            } else {
-                announce('الجسر الأصلي غير متوفر لإيقاظ الخادم');
             }
         }
 
-        let isNavigatingToChat = false;
         function goToChat() {
-            if (isNavigatingToChat) return;
-
-            let bridgeAvailable = !!(window.AntigravityBridge);
-            let py7681Ready = false;
-            if (bridgeAvailable && typeof window.AntigravityBridge.isTermuxServerReady === 'function') {
-                py7681Ready = window.AntigravityBridge.isTermuxServerReady();
-            }
-
-            if (py7681Ready) {
-                announce('جاري فتح واجهة الشات...');
-                if (bridgeAvailable && typeof window.AntigravityBridge.loadChatUrl === 'function') {
-                    window.AntigravityBridge.loadChatUrl();
-                } else {
-                    window.location.href = 'http://127.0.0.1:7681';
-                }
-                return;
-            }
-
-            // Server not ready - auto-wake and poll
-            isNavigatingToChat = true;
-            announce('خادم تيرمكس غير نشط حالياً. جاري إيقاظه تلقائياً في الخلفية، يرجى الانتظار ثوانٍ...');
-            const statusBox = document.getElementById('status-text');
-            statusBox.textContent = 'جاري إيقاظ خادم تيرمكس في الخلفية والتحضير لفتح الشات...';
-
-            if (bridgeAvailable && typeof window.AntigravityBridge.triggerServerWakeup === 'function') {
-                window.AntigravityBridge.triggerServerWakeup();
-            }
-
-            let attempts = 0;
-            const maxAttempts = 12;
-            const pollInterval = setInterval(function() {
-                attempts++;
-                let readyNow = false;
-                if (window.AntigravityBridge && typeof window.AntigravityBridge.isTermuxServerReady === 'function') {
-                    readyNow = window.AntigravityBridge.isTermuxServerReady();
-                }
-
-                if (readyNow) {
-                    clearInterval(pollInterval);
-                    isNavigatingToChat = false;
-                    announce('تم تشغيل خادم تيرمكس بنجاح، جاري فتح الشات الآن...');
-                    if (window.AntigravityBridge && typeof window.AntigravityBridge.loadChatUrl === 'function') {
-                        window.AntigravityBridge.loadChatUrl();
-                    } else {
-                        window.location.href = 'http://127.0.0.1:7681';
-                    }
-                } else if (attempts >= maxAttempts) {
-                    clearInterval(pollInterval);
-                    isNavigatingToChat = false;
-                    announce('استغرق تشغيل الخادم وقتاً أطول من المتوقع. يمكنك محاولة الضغط مجدداً أو تشغيله عبر تيرمكس.');
-                    checkStatus();
-                }
-            }, 800);
+            window.location.href = 'http://127.0.0.1:7681';
         }
 
         function runDiagnostics() {
