@@ -1,34 +1,32 @@
 {
-  "issue_id": "BUG-A11Y-TERMUX-001",
-  "severity": "HIGH",
-  "diagnostic_branch": "Branch A: API Contract Mismatch",
+  "issue_id": "BUG-PGREP-FALSE-POSITIVE-002",
+  "severity": "CRITICAL",
+  "diagnostic_branch": "Branch B: Concurrency / Lifecycle",
   "environment": {
-    "os": "Android 11+ / Linux",
-    "runtime": "Java 17 / Android SDK 34 / Termux",
+    "os": "Android 11+ / Termux",
+    "runtime": "Bash / Java 17 / Python 3",
     "dependencies": [
       "com.termux",
-      "org.java_websocket:Java-WebSocket:1.5.6",
-      "com.google.code.gson:gson:2.10.1"
+      "launch_server.sh"
     ]
   },
   "symptoms": [
-    "فحص التشخيص في التطبيق يظهر أن تيرمكس غير مثبت رغم أنه مثبت ومعد بشكل سليم",
-    "التطبيق يوضح أن السيرفر متصل (خادم 8765 الداخلي) ولكن صفحة الشات (7681) تفشل في الفتح وتتطلب تشغيلاً يدوياً من تيرمكس",
-    "غياب إذن RUN_COMMAND في وقت التشغيل وغياب تصريح queries في الـ Manifest"
+    "التطبيق يرسل أمر الإيقاظ عبر RUN_COMMAND بنجاح لكن السيرفر لا يبدأ",
+    "ملف server_launcher.log يكرر رسالة server.py is already running رغم أن السيرفر متوقف وبورت 7681 مغلق",
+    "فحص pgrep -f يطابق أمر الطرفية الأب نفسه لاحتوائه على نص server.py في وسائط الأمر"
   ],
   "exact_location_pinpoint": {
-    "file_path": "app/src/main/AndroidManifest.xml",
-    "line_number": 3,
-    "symbol_or_ast_node": "manifest.queries",
-    "offending_snippet": "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\"> (Missing <queries> tag for package com.termux)"
+    "file_path": "/data/data/com.termux/files/home/launch_server.sh",
+    "line_number": 6,
+    "symbol_or_ast_node": "launch_server.pgrep_check",
+    "offending_snippet": "if ! pgrep -f 'server.py' >/dev/null; then"
   },
-  "hypothesis": "على إصدارات أندرويد 11 فما فوق (API 30+)، تطبق جوجل قيود Package Visibility، مما يجعل PackageManager.getPackageInfo يعيد NameNotFoundException ما لم يتم التصريح عن com.termux داخل وسم queries في AndroidManifest.xml. كما أن إذن com.termux.permission.RUN_COMMAND يتطلب طلباً في وقت التشغيل (Runtime Permission) في MainActivity لكي يتمكن التطبيق من إيقاظ سيرفر تيرمكس تلقائياً، بالإضافة إلى حاجة واجهة الويب لفحص بورت 7681 صراحة قبل الانتقال للشات بدلاً من الاعتماد المضلل على بورت 8765 الداخلي فقط.",
+  "hypothesis": "عند استدعاء TermuxBridge لأمر الإيقاظ باستخدام bash -c المحتوي على النص 'server.py'، يصبح هذا النص موجوداً في /proc/<pid>/cmdline للعملية الأب. وبالتالي، عند تنفيذ أمر pgrep -f 'server.py' داخل launch_server.sh، يجد pgrep عملية bash نفسها ويعيد رمز النجاح 0 متوهماً أن السيرفر يعمل بالفعل، فيتخطى أمر التشغيل ويكتفي بتسجيل server.py is already running. الحل الجذري هو فحص بورت 7681 الحقيقي عبر مقبس شبكة بدلاً من مطابقة النصوص العشوائية، وجعل TermuxBridge يستدعي launch_server.sh مباشرة كملف تنفيذي نظيف مع تمرير EXTRA_SESSION_ACTION صراحة.",
   "fix_plan": [
-    "إضافة وسم <queries> في AndroidManifest.xml للتصريح عن com.termux والـ Intent الخاص بـ RUN_COMMAND",
-    "تحديث DoctorDiagnosticEngine.java ليدعم فحصاً دفاعياً إضافياً لوجود تيرمكس عبر مجلد النظام وحزم التشغيل كـ Fallback",
-    "تحديث MainActivity.java لطلب إذن com.termux.permission.RUN_COMMAND برمجياً عند بدء التشغيل إذا لم يكن ممنوحاً",
-    "تحديث assets/web/index.html لفحص حالة بورت الشات (7681) وبورت الأتمتة (8765) بشكل منفصل وواضح لقارئات الشاشة",
-    "تطوير وظيفة الانتقال للشات في index.html لتقوم بالإيقاظ التلقائي وانتظار استجابة 7681 مع تنبيه صوتي عبر aria-live بدلاً من الفشل الصامت"
+    "تحديث /data/data/com.termux/files/home/launch_server.sh ليفحص حالة الاستماع الحقيقية لبورت 7681 بدلاً من pgrep",
+    "تحديث TermuxBridge.java لتنفيذ launch_server.sh مباشرة كمسار تنفيذي مستقل بدون وسائط تلوث cmdline",
+    "إضافة EXTRA_SESSION_ACTION بقيمة 0 صراحة في TermuxBridge.java طبقاً لمواصفات Termux الرسمية",
+    "تشغيل الفحص الآلي validate_code.py و diff_verifier.py وبناء النسخة الجديدة"
   ],
-  "verification_test": "تشغيل فحص validate_code.py على ملفات المشروع والتحقق من سلامة البناء وتوافق معايير إمكانية الوصول"
+  "verification_test": "تشغيل أمر الإيقاظ في غياب السيرفر والتأكد من فتح بورت 7681 وتسجيل رسالة التشغيل بنجاح"
 }

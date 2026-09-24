@@ -49,3 +49,10 @@
 - [x] Implement non-blocking auto-wake, polling, and `aria-live` accessible notifications in `goToChat()`.
 - [x] Verify AST integrity, human-grade craftsmanship, and diff verification via `validate_code.py` and `diff_verifier.py`.
 
+## Phase 9: Direct Port 7681 Verification & Clean TermuxBridge Execution (BUG-PGREP-FALSE-POSITIVE-002)
+- [x] Replace flaky `pgrep` check with direct socket check on port 7681 in `launch_server.sh`.
+- [x] Add explicit `EXTRA_SESSION_ACTION = "0"` in `TermuxBridge.java` according to official Termux RUN_COMMAND specification.
+- [x] Streamline `ensureServerRunningAsync` to invoke `launch_server.sh` directly without noisy bash wrapper arguments.
+- [x] Verify AST integrity, human-grade craftsmanship, and diff verification via `validate_code.py` and `diff_verifier.py`.
+- [x] Commit and push changes to trigger automated GitHub Actions build.
+
