@@ -1,32 +1,35 @@
 {
-  "issue_id": "BUG-PGREP-FALSE-POSITIVE-002",
-  "severity": "CRITICAL",
-  "diagnostic_branch": "Branch B: Concurrency / Lifecycle",
+  "issue_id": "BUG-AUTH-TIMEZONE-FLAG-004",
+  "severity": "HIGH",
+  "diagnostic_branch": "Branch C: Data Boundary & Null",
   "environment": {
-    "os": "Android 11+ / Termux",
-    "runtime": "Bash / Java 17 / Python 3",
+    "os": "Android 14+ / Termux Linux aarch64 (Egypt UTC+3)",
+    "runtime": "Python 3.11 / glibc",
     "dependencies": [
-      "com.termux",
-      "launch_server.sh"
+      "datetime",
+      "pty",
+      "agy.va39"
     ]
   },
   "symptoms": [
-    "التطبيق يرسل أمر الإيقاظ عبر RUN_COMMAND بنجاح لكن السيرفر لا يبدأ",
-    "ملف server_launcher.log يكرر رسالة server.py is already running رغم أن السيرفر متوقف وبورت 7681 مغلق",
-    "فحص pgrep -f يطابق أمر الطرفية الأب نفسه لاحتوائه على نص server.py في وسائط الأمر"
+    "get_auth_token_info falsely marks valid tokens as expired due to local timezone offset (UTC+3) in time.mktime()",
+    "InteractivePTYAuthManager crashes agy.va39 with exit code 2 due to flag needs an argument: -i",
+    "Premature removal of antigravity-oauth-token causes background AI sessions to trigger am start browser popup unexpectedly",
+    "Web UI Google login link defaults to href=# and fails to open when auth_url is not ready"
   ],
   "exact_location_pinpoint": {
-    "file_path": "/data/data/com.termux/files/home/launch_server.sh",
-    "line_number": 6,
-    "symbol_or_ast_node": "launch_server.pgrep_check",
-    "offending_snippet": "if ! pgrep -f 'server.py' >/dev/null; then"
+    "file_path": "server/server.py",
+    "line_number": 205,
+    "symbol_or_ast_node": "get_auth_token_info",
+    "offending_snippet": "clean_exp = expiry_str.split(\".\")[0].replace(\"Z\", \"\"); exp_ts = time.mktime(time.strptime(clean_exp[:19], \"%Y-%m-%dT%H:%M:%S\"))"
   },
-  "hypothesis": "عند استدعاء TermuxBridge لأمر الإيقاظ باستخدام bash -c المحتوي على النص 'server.py'، يصبح هذا النص موجوداً في /proc/<pid>/cmdline للعملية الأب. وبالتالي، عند تنفيذ أمر pgrep -f 'server.py' داخل launch_server.sh، يجد pgrep عملية bash نفسها ويعيد رمز النجاح 0 متوهماً أن السيرفر يعمل بالفعل، فيتخطى أمر التشغيل ويكتفي بتسجيل server.py is already running. الحل الجذري هو فحص بورت 7681 الحقيقي عبر مقبس شبكة بدلاً من مطابقة النصوص العشوائية، وجعل TermuxBridge يستدعي launch_server.sh مباشرة كملف تنفيذي نظيف مع تمرير EXTRA_SESSION_ACTION صراحة.",
+  "hypothesis": "Parsing ISO 8601 UTC timestamp using datetime.datetime.fromisoformat(expiry_str.replace(\"Z\", \"+00:00\")).timestamp() resolves timezone skew. Removing -i from agy execution command allows interactive session to initialize cleanly. Retaining token file until new credentials arrive prevents background am start browser triggers.",
   "fix_plan": [
-    "تحديث /data/data/com.termux/files/home/launch_server.sh ليفحص حالة الاستماع الحقيقية لبورت 7681 بدلاً من pgrep",
-    "تحديث TermuxBridge.java لتنفيذ launch_server.sh مباشرة كمسار تنفيذي مستقل بدون وسائط تلوث cmdline",
-    "إضافة EXTRA_SESSION_ACTION بقيمة 0 صراحة في TermuxBridge.java طبقاً لمواصفات Termux الرسمية",
-    "تشغيل الفحص الآلي validate_code.py و diff_verifier.py وبناء النسخة الجديدة"
+    "Import datetime in server/server.py and use datetime.datetime.fromisoformat for robust UTC expiration validation",
+    "Fix agy execution command in InteractivePTYAuthManager.start_login to remove erroneous -i flag",
+    "Prevent premature deletion of AUTH_TOKEN_FILE in start_login",
+    "Update index.html to disable open-link button and show loading state until auth_url is populated",
+    "Validate server.py, index.html, and debug_manifest.json with validate_code.py"
   ],
-  "verification_test": "تشغيل أمر الإيقاظ في غياب السيرفر والتأكد من فتح بورت 7681 وتسجيل رسالة التشغيل بنجاح"
+  "verification_test": "Verify /api/auth/status returns is_valid: True and logged_in: True for current ahanafy545 token"
 }

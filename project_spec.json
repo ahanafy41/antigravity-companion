@@ -86,6 +86,13 @@
       "description": "Relocate Python web/chat server into hidden protected directory ~/.antigravity-server/ inside Termux. Bundle server.py and web/ into repository and APK assets. Provide one-line idempotent setup.sh script executing Termux permissions, package installations, port 7681 startup test, and culminating in agy installation.",
       "priority": "P0",
       "verification_criteria": "setup.sh executes end-to-end cleanly, hidden directory is populated, port 7681 is active, and Android app detects and recovers server state without user intervention."
+    },
+    {
+      "id": "REQ-010",
+      "title": "Accessible In-App Authentication Wizard & PTY Subprocess Bridge",
+      "description": "Implement an interactive, screen-reader accessible authentication flow directly within the companion app web UI and backend server.py. The backend spawns agy inside a pseudo-terminal (PTY) using Python pty.openpty() and os.login_tty() to intercept authentication states: (1) OAuth Authorization URL, (2) Prompt for authorization code, (3) Terms of Service & License acceptance (AcceptTermsOfService), and (4) Authentication success or failure. The Web UI exposes accessible semantic controls (open browser button, clean input field for authorization code with aria-label, and two-button agreement dialog for license acceptance) with live announcements (aria-live=\"polite\"). The backend also provides /api/auth/status checking token validity via ~/.gemini/antigravity-cli/antigravity-oauth-token, and /api/auth/logout to safely revoke or clear session credentials.",
+      "priority": "P0",
+      "verification_criteria": "Verification that /api/auth/status, /api/auth/start, /api/auth/input, /api/auth/accept_terms, and /api/auth/logout endpoints function properly, token validity is accurately reported, and the Web UI renders accessible controls compliant with WCAG 2.2 AAA without requiring raw CLI terminal interaction."
     }
   ],
   "entry_points": {

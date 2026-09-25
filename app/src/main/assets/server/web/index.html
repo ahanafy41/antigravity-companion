@@ -2232,6 +2232,7 @@ dialog.accessible-dialog::backdrop {
 
 
     <div class="header-actions" role="toolbar" aria-label="إجراءات سريعة">
+      <button type="button" id="btn-header-auth" class="btn" aria-label="حساب Google ومصادقة الوكيل"><span id="header-auth-badge">الحساب</span></button>
       <button type="button" id="btn-header-model" class="btn btn-header-model" aria-label="النموذج النشط حالياً: Gemini 3.8 Flash. اضغط لتغيير النموذج"><span id="header-active-model-name">Gemini 3.8</span></button>
       <button type="button" id="btn-new-ai-chat" class="btn btn-primary" aria-label="بدء محادثة جديدة وتفريغ الشاشة">جديد</button>
       <button type="button" id="btn-toggle-tones" class="btn" style="display:none;" aria-label="تبديل النغمات التفاعلية">أصوات</button>
@@ -2253,6 +2254,10 @@ dialog.accessible-dialog::backdrop {
       <button type="button" id="btn-drawer-change-model" class="drawer-btn" aria-label="النموذج النشط ومستوى التفكير">
         <span>النموذج ومستوى التفكير</span>
         <strong id="drawer-active-model-name" class="badge-count" style="font-size:0.78rem;">Gemini 3.8</strong>
+      </button>
+      <button type="button" id="btn-open-auth-wizard" class="drawer-btn" aria-label="حساب Google ومصادقة الوكيل">
+        <span>حساب Google والمصادقة</span>
+        <strong id="drawer-auth-badge" class="badge-count" style="font-size:0.78rem;">فحص...</strong>
       </button>
       <button type="button" id="btn-open-settings" class="drawer-btn" aria-label="إعدادات الوكيل وسياسات الأمان">
         <span>إعدادات الوكيل والأمان</span>
@@ -2909,6 +2914,96 @@ dialog.accessible-dialog::backdrop {
       <footer class="dialog-footer">
         <button type="button" id="btn-force-refresh-quota" class="btn btn-primary" aria-label="تحديث فوري للحصة من الخادم">🔄 تحديث فوري</button>
         <button type="button" id="btn-close-quota" class="btn" aria-label="إغلاق">إغلاق</button>
+      </footer>
+    </div>
+  </dialog>
+  
+  
+  <dialog id="auth-wizard-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-wizard-title" style="max-width: 600px;">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <h2 id="auth-wizard-title">حساب Google ومصادقة الوكيل</h2>
+        <button type="button" id="btn-close-auth-wizard-top" class="btn-close-dialog" aria-label="إغلاق نافذة المصادقة">✕</button>
+      </header>
+      <div class="dialog-body">
+        <!-- Live Status Card -->
+        <div id="auth-status-card" class="auth-status-box" style="padding: 14px; background: var(--bg-card-header); border-radius: 8px; margin-bottom: 16px; border: 1px solid var(--border-color);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <strong id="auth-card-title">حالة الحساب</strong>
+            <span id="auth-card-badge" class="badge" style="padding: 4px 8px; border-radius: 4px; font-size: 0.82rem;">فحص...</span>
+          </div>
+          <p id="auth-card-desc" style="margin: 0; font-size: 0.9rem; color: var(--text-muted);"></p>
+        </div>
+
+        <!-- Wizard Step 1: Start Login -->
+        <div id="auth-step-idle" class="auth-step-container">
+          <p style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 14px;">
+            لتشغيل الوكيل الذكي والاستفادة من النماذج المتقدمة، يمكنك تسجيل الدخول بحساب Google المعتمد بسهولة بضغطة زر واحدة بدون أوامر Terminal.
+          </p>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" id="btn-start-auth-wizard" class="btn btn-primary" aria-label="بدء تسجيل الدخول بحساب Google">
+              تسجيل الدخول بحساب Google
+            </button>
+            <button type="button" id="btn-auth-logout" class="btn btn-danger" style="display: none;" aria-label="تسجيل الخروج ومسح الجلسة">
+              تسجيل الخروج
+            </button>
+          </div>
+        </div>
+
+        <!-- Wizard Step 2: In-Progress / Waiting for code -->
+        <div id="auth-step-code" class="auth-step-container" style="display: none;">
+          <div style="padding: 12px; background: rgba(59, 130, 246, 0.1); border-left: 4px solid var(--accent-blue); border-radius: 4px; margin-bottom: 14px;">
+            <p id="auth-code-instruction" style="margin: 0 0 10px 0; font-weight: bold; color: var(--text-main);">
+              الخطوة 1: اضغط على الزر لفتح صفحة تسجيل الدخول في جوجل وانسخ كود المصادقة.
+            </p>
+            <a id="btn-open-google-login-url" href="#" target="_blank" class="btn btn-primary btn-sm" role="button" aria-disabled="true" aria-label="فتح صفحة تسجيل الدخول في Google في المتصفح" style="display: inline-block; text-decoration: none; opacity: 0.6; pointer-events: none;">
+              ⏳ جاري تحضير الرابط...
+            </a>
+          </div>
+
+          <div class="form-group" style="margin-top: 14px;">
+            <label for="auth-code-input" style="display: block; margin-bottom: 6px; font-weight: bold;">
+              الخطوة 2: الصق كود المصادقة هنا:
+            </label>
+            <input type="text" id="auth-code-input" class="form-control" placeholder="الصق كود المصادقة (4/0A...)" aria-label="كود المصادقة من جوجل" style="width: 100%; box-sizing: border-box; padding: 10px; font-family: monospace;" />
+          </div>
+
+          <div style="margin-top: 12px; display: flex; gap: 8px;">
+            <button type="button" id="btn-submit-auth-code" class="btn btn-primary" aria-label="تأكيد وإرسال كود المصادقة">
+              تأكيد وإرسال الكود
+            </button>
+            <button type="button" id="btn-cancel-auth-wizard" class="btn" aria-label="إلغاء عملية تسجيل الدخول">
+              إلغاء
+            </button>
+          </div>
+        </div>
+
+        <!-- Wizard Step 3: Terms of Service Agreement -->
+        <div id="auth-step-terms" class="auth-step-container" style="display: none;">
+          <div style="padding: 14px; background: rgba(245, 158, 11, 0.1); border-left: 4px solid #f59e0b; border-radius: 4px; margin-bottom: 14px;">
+            <h3 style="margin: 0 0 8px 0; font-size: 1rem; color: #f59e0b;">اتفاقية ترخيص خدمة Antigravity</h3>
+            <p style="margin: 0; font-size: 0.9rem; line-height: 1.5;">
+              لاستكمال تفعيل الترخيص وربط الحساب بالوكيل الذكي، يلزم الموافقة على شروط خدمة Google Cloud Code و Antigravity.
+            </p>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button type="button" id="btn-accept-auth-terms" class="btn btn-primary" aria-label="موافق على شروط الخدمة والترخيص">
+              أوافق على الشروط والترخيص
+            </button>
+            <button type="button" id="btn-decline-auth-terms" class="btn btn-danger" aria-label="رفض الشروط وإلغاء العملية">
+              رفض وإلغاء
+            </button>
+          </div>
+        </div>
+
+        <!-- Wizard Step 4: Loading / Verifying indicator -->
+        <div id="auth-step-loading" class="auth-step-container" style="display: none; text-align: center; padding: 20px;">
+          <p id="auth-loading-text" style="font-size: 1rem; color: var(--accent-cyan);">⏳ جاري المعالجة والتحقق...</p>
+        </div>
+
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" id="btn-close-auth-wizard" class="btn" aria-label="إغلاق نافذة الحساب">إغلاق</button>
       </footer>
     </div>
   </dialog>
@@ -5433,6 +5528,333 @@ dialog.accessible-dialog::backdrop {
     // Auto-load quota on page init and every 60 seconds
     loadQuotaData(false);
     setInterval(() => loadQuotaData(false), 60000);
+
+    // ==========================================
+    // ACCESSIBLE AUTH WIZARD CONTROLLER (REQ-010)
+    // ==========================================
+    const authWizardDialog = document.getElementById('auth-wizard-dialog');
+    const btnOpenAuthWizard = document.getElementById('btn-open-auth-wizard');
+    const btnHeaderAuth = document.getElementById('btn-header-auth');
+    const headerAuthBadge = document.getElementById('header-auth-badge');
+    const drawerAuthBadge = document.getElementById('drawer-auth-badge');
+    const btnCloseAuthWizard = document.getElementById('btn-close-auth-wizard');
+    const btnCloseAuthWizardTop = document.getElementById('btn-close-auth-wizard-top');
+    
+    const authCardBadge = document.getElementById('auth-card-badge');
+    const authCardDesc = document.getElementById('auth-card-desc');
+    const btnStartAuthWizard = document.getElementById('btn-start-auth-wizard');
+    const btnAuthLogout = document.getElementById('btn-auth-logout');
+
+    const authStepIdle = document.getElementById('auth-step-idle');
+    const authStepCode = document.getElementById('auth-step-code');
+    const authStepTerms = document.getElementById('auth-step-terms');
+    const authStepLoading = document.getElementById('auth-step-loading');
+    const authLoadingText = document.getElementById('auth-loading-text');
+
+    const btnOpenGoogleLoginUrl = document.getElementById('btn-open-google-login-url');
+    const authCodeInput = document.getElementById('auth-code-input');
+    const btnSubmitAuthCode = document.getElementById('btn-submit-auth-code');
+    const btnCancelAuthWizard = document.getElementById('btn-cancel-auth-wizard');
+    const btnAcceptAuthTerms = document.getElementById('btn-accept-auth-terms');
+    const btnDeclineAuthTerms = document.getElementById('btn-decline-auth-terms');
+
+    let authPollTimer = null;
+
+    async function checkAuthStatus(silent) {
+      try {
+        const res = await fetch('/api/auth/status');
+        const data = await res.json();
+        const auth = data.auth || {};
+        const wizard = data.wizard || {};
+
+        if (auth.logged_in && auth.is_valid) {
+          const emailDisplay = auth.email ? auth.email.split('@')[0] : 'متصل';
+          if (headerAuthBadge) headerAuthBadge.textContent = '👤 ' + emailDisplay;
+          if (drawerAuthBadge) {
+            drawerAuthBadge.textContent = 'متصل (' + (auth.email || '') + ')';
+            drawerAuthBadge.style.color = '#10b981';
+          }
+          if (btnHeaderAuth) {
+            btnHeaderAuth.setAttribute('aria-label', 'حساب جوجل مسجل ونشط: ' + (auth.email || ''));
+          }
+        } else if (auth.logged_in && !auth.is_valid) {
+          if (headerAuthBadge) headerAuthBadge.textContent = '⚠️ الجلسة منتهية';
+          if (drawerAuthBadge) {
+            drawerAuthBadge.textContent = 'منتهي الصلاحية';
+            drawerAuthBadge.style.color = '#f59e0b';
+          }
+          if (btnHeaderAuth) {
+            btnHeaderAuth.setAttribute('aria-label', 'جلسة الحساب منتهية الصلاحية، اضغط لتجديد تسجيل الدخول');
+          }
+        } else {
+          if (headerAuthBadge) headerAuthBadge.textContent = 'تسجيل الدخول';
+          if (drawerAuthBadge) {
+            drawerAuthBadge.textContent = 'غير مسجل';
+            drawerAuthBadge.style.color = '#06b6d4';
+          }
+          if (btnHeaderAuth) {
+            btnHeaderAuth.setAttribute('aria-label', 'تسجيل الدخول بحساب Google');
+          }
+        }
+
+        if (authWizardDialog && authWizardDialog.open) {
+          updateAuthWizardUI(auth, wizard);
+        }
+
+        if (wizard.is_running && wizard.state !== 'SUCCESS' && wizard.state !== 'ERROR') {
+          if (!authPollTimer) {
+            authPollTimer = setInterval(() => checkAuthStatus(true), 1500);
+          }
+        } else {
+          if (authPollTimer) {
+            clearInterval(authPollTimer);
+            authPollTimer = null;
+          }
+        }
+
+        return data;
+      } catch (err) {
+        console.error('Error fetching auth status:', err);
+      }
+    }
+
+    function updateAuthWizardUI(auth, wizard) {
+      if (!authCardBadge || !authCardDesc) return;
+
+      if (authStepIdle) authStepIdle.style.display = 'none';
+      if (authStepCode) authStepCode.style.display = 'none';
+      if (authStepTerms) authStepTerms.style.display = 'none';
+      if (authStepLoading) authStepLoading.style.display = 'none';
+
+      if (wizard && wizard.is_running) {
+        if (wizard.state === 'STARTING') {
+          if (authStepLoading) {
+            authStepLoading.style.display = 'block';
+            if (authLoadingText) authLoadingText.textContent = wizard.prompt_message || '⏳ جاري تهيئة جلسة تسجيل الدخول...';
+          }
+        } else if (wizard.state === 'WAITING_FOR_CODE') {
+          if (authStepCode) {
+            authStepCode.style.display = 'block';
+            if (btnOpenGoogleLoginUrl) {
+              if (wizard.auth_url) {
+                btnOpenGoogleLoginUrl.href = wizard.auth_url;
+                btnOpenGoogleLoginUrl.removeAttribute('aria-disabled');
+                btnOpenGoogleLoginUrl.style.opacity = '1';
+                btnOpenGoogleLoginUrl.style.pointerEvents = 'auto';
+                btnOpenGoogleLoginUrl.textContent = 'فتح صفحة Google للمصادقة';
+              } else {
+                btnOpenGoogleLoginUrl.href = '#';
+                btnOpenGoogleLoginUrl.setAttribute('aria-disabled', 'true');
+                btnOpenGoogleLoginUrl.style.opacity = '0.6';
+                btnOpenGoogleLoginUrl.style.pointerEvents = 'none';
+                btnOpenGoogleLoginUrl.textContent = '⏳ جاري تحضير الرابط...';
+              }
+            }
+          }
+        } else if (wizard.state === 'WAITING_FOR_TERMS') {
+          if (authStepTerms) {
+            authStepTerms.style.display = 'block';
+          }
+        }
+        authCardBadge.textContent = 'جاري المصادقة';
+        authCardBadge.style.background = '#3b82f6';
+        authCardBadge.style.color = '#fff';
+        authCardDesc.textContent = wizard.prompt_message || 'جلسة تسجيل الدخول قيد التنفيذ في الخلفية.';
+        return;
+      }
+
+      if (auth.logged_in && auth.is_valid) {
+        authCardBadge.textContent = 'نشط ومصرح';
+        authCardBadge.style.background = '#10b981';
+        authCardBadge.style.color = '#fff';
+        authCardDesc.textContent = 'تم تسجيل الدخول بنجاح بحساب: ' + (auth.email || 'معتمد') + (auth.expiry ? ' (تنتهي في: ' + auth.expiry.substring(0, 10) + ')' : '');
+        if (authStepIdle) authStepIdle.style.display = 'block';
+        if (btnStartAuthWizard) btnStartAuthWizard.textContent = 'تبديل الحساب أو إعادة التسجيل';
+        if (btnAuthLogout) btnAuthLogout.style.display = 'inline-block';
+      } else if (auth.logged_in && !auth.is_valid) {
+        authCardBadge.textContent = 'الجلسة منتهية';
+        authCardBadge.style.background = '#f59e0b';
+        authCardBadge.style.color = '#fff';
+        authCardDesc.textContent = 'انتهت صلاحية جلسة الحساب (' + (auth.email || '') + '). يرجى إعادة تسجيل الدخول لتجديد التوكن.';
+        if (authStepIdle) authStepIdle.style.display = 'block';
+        if (btnStartAuthWizard) btnStartAuthWizard.textContent = 'تجديد تسجيل الدخول بحساب Google';
+        if (btnAuthLogout) btnAuthLogout.style.display = 'inline-block';
+      } else {
+        authCardBadge.textContent = 'غير مسجل';
+        authCardBadge.style.background = '#6b7280';
+        authCardBadge.style.color = '#fff';
+        authCardDesc.textContent = 'لم يتم تسجيل أي حساب Google حتى الآن. اضغط على الزر أدناه لبدء التسجيل بسهولة.';
+        if (authStepIdle) authStepIdle.style.display = 'block';
+        if (btnStartAuthWizard) btnStartAuthWizard.textContent = 'تسجيل الدخول بحساب Google';
+        if (btnAuthLogout) btnAuthLogout.style.display = 'none';
+      }
+    }
+
+    if (btnOpenAuthWizard && authWizardDialog) {
+      btnOpenAuthWizard.addEventListener('click', () => {
+        authWizardDialog.showModal();
+        announce('تم فتح نافذة حساب Google ومصادقة الوكيل');
+        checkAuthStatus(false);
+      });
+    }
+
+    if (btnHeaderAuth && authWizardDialog) {
+      btnHeaderAuth.addEventListener('click', () => {
+        authWizardDialog.showModal();
+        announce('تم فتح نافذة حساب Google ومصادقة الوكيل');
+        checkAuthStatus(false);
+      });
+    }
+
+    if (btnCloseAuthWizard && authWizardDialog) {
+      btnCloseAuthWizard.addEventListener('click', () => {
+        if (authPollTimer) { clearInterval(authPollTimer); authPollTimer = null; }
+        authWizardDialog.close();
+      });
+    }
+
+    if (btnCloseAuthWizardTop && authWizardDialog) {
+      btnCloseAuthWizardTop.addEventListener('click', () => {
+        if (authPollTimer) { clearInterval(authPollTimer); authPollTimer = null; }
+        authWizardDialog.close();
+      });
+    }
+
+    if (btnOpenGoogleLoginUrl) {
+      btnOpenGoogleLoginUrl.addEventListener('click', (e) => {
+        const href = btnOpenGoogleLoginUrl.getAttribute('href');
+        if (!href || href === '#' || href === 'javascript:void(0)') {
+          e.preventDefault();
+          announce('رابط تسجيل الدخول قيد التحضير، يرجى الانتظار ثوانٍ معدودة');
+        }
+      });
+    }
+
+    if (btnStartAuthWizard) {
+      btnStartAuthWizard.addEventListener('click', async () => {
+        try {
+          if (authStepIdle) authStepIdle.style.display = 'none';
+          if (authStepLoading) {
+            authStepLoading.style.display = 'block';
+            if (authLoadingText) authLoadingText.textContent = '⏳ جاري تهيئة رابط المصادقة من جوجل...';
+          }
+          if (btnOpenGoogleLoginUrl) {
+            btnOpenGoogleLoginUrl.href = '#';
+            btnOpenGoogleLoginUrl.setAttribute('aria-disabled', 'true');
+            btnOpenGoogleLoginUrl.style.opacity = '0.6';
+            btnOpenGoogleLoginUrl.style.pointerEvents = 'none';
+            btnOpenGoogleLoginUrl.textContent = '⏳ جاري تحضير الرابط...';
+          }
+          announce('جاري بدء جلسة تسجيل الدخول');
+          await fetch('/api/auth/start', { method: 'POST' });
+          checkAuthStatus(false);
+        } catch (err) {
+          announce('حدث خطأ أثناء بدء تسجيل الدخول');
+          console.error(err);
+        }
+      });
+    }
+
+    if (btnSubmitAuthCode) {
+      btnSubmitAuthCode.addEventListener('click', async () => {
+        const code = (authCodeInput ? authCodeInput.value : '').trim();
+        if (!code) {
+          announce('يرجى إدخال أو لصق كود المصادقة أولاً');
+          if (authCodeInput) authCodeInput.focus();
+          return;
+        }
+        try {
+          if (authStepCode) authStepCode.style.display = 'none';
+          if (authStepLoading) {
+            authStepLoading.style.display = 'block';
+            if (authLoadingText) authLoadingText.textContent = '⏳ جاري إرسال الكود والتحقق من التراخيص...';
+          }
+          announce('جاري التحقق من الكود وتفعيل الترخيص');
+          await fetch('/api/auth/input', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: code })
+          });
+          if (authCodeInput) authCodeInput.value = '';
+          checkAuthStatus(false);
+        } catch (err) {
+          announce('فشل إرسال كود المصادقة');
+          console.error(err);
+        }
+      });
+    }
+
+    if (btnAcceptAuthTerms) {
+      btnAcceptAuthTerms.addEventListener('click', async () => {
+        try {
+          if (authStepTerms) authStepTerms.style.display = 'none';
+          if (authStepLoading) {
+            authStepLoading.style.display = 'block';
+            if (authLoadingText) authLoadingText.textContent = '⏳ جاري اعتماد الموافقة على شروط الترخيص...';
+          }
+          announce('تم إرسال الموافقة على اتفاقية الترخيص');
+          await fetch('/api/auth/accept_terms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accept: true })
+          });
+          checkAuthStatus(false);
+        } catch (err) {
+          announce('فشل إرسال الموافقة على الشروط');
+          console.error(err);
+        }
+      });
+    }
+
+    if (btnDeclineAuthTerms) {
+      btnDeclineAuthTerms.addEventListener('click', async () => {
+        try {
+          announce('تم رفض الشروط وإلغاء العملية');
+          await fetch('/api/auth/accept_terms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accept: false })
+          });
+          checkAuthStatus(false);
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    }
+
+    if (btnCancelAuthWizard) {
+      btnCancelAuthWizard.addEventListener('click', async () => {
+        try {
+          announce('تم إلغاء عملية تسجيل الدخول');
+          await fetch('/api/auth/cancel', { method: 'POST' });
+          checkAuthStatus(false);
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    }
+
+    if (btnAuthLogout) {
+      btnAuthLogout.addEventListener('click', async () => {
+        if (!confirm('هل أنت متأكد من رغبتك في تسجيل الخروج ومسح بيانات الجلسة؟')) {
+          return;
+        }
+        try {
+          announce('جاري تسجيل الخروج ومسح الجلسة');
+          const res = await fetch('/api/auth/logout', { method: 'POST' });
+          const data = await res.json();
+          announce(data.message || 'تم تسجيل الخروج بنجاح');
+          checkAuthStatus(false);
+          loadQuotaData(true);
+        } catch (err) {
+          announce('فشل تسجيل الخروج');
+          console.error(err);
+        }
+      });
+    }
+
+    // Initialize Auth status on boot
+    checkAuthStatus(true);
 
     // ==========================================
     // SKILLS MANAGER CONTROLLER

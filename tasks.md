@@ -64,4 +64,14 @@
 - [x] Add 1-click 'Copy Termux Setup Code & Launch Terminal' button to companion dashboard.
 - [x] Pass automated AST validation and diff verification via `validate_code.py` and `diff_verifier.py`.
 - [x] Deploy to GitHub repository and trigger automated CI/CD APK build.
+## Phase 11: Accessible In-App Authentication Wizard & PTY Subprocess Bridge (REQ-010)
+- [x] Task 1: Implement `InteractivePTYAuthManager` in `server/server.py` using `pty.openpty()` and `os.login_tty()` to spawn `agy` in a virtual terminal, intercepting login URLs, auth code prompts, terms of service agreements, and final status.
+- [x] Task 2: Add REST API endpoints in `server/server.py` (`/api/auth/status`, `/api/auth/start`, `/api/auth/input`, `/api/auth/accept_terms`, and `/api/auth/logout`).
+- [x] Task 3: Build the Accessible Auth Modal / Wizard in `server/web/index.html` with full ARIA semantics, live announcements (`aria-live="polite"`), clean text input for code pasting, and distinct buttons for Terms of Service acceptance.
+- [x] Task 4: Add Auth Status badge and Login/Logout action in the Companion Web UI top navigation / settings drawer.
+- [x] Task 5: Sync updated server and web assets to APK assets (`app/src/main/assets/server/`).
+- [x] Task 6: Verify AST integrity, human-grade craftsmanship, and zero-violation lint via `validate_code.py`.
+- [x] Task 7: Diagnose and resolve BUG-AUTH-TIMEZONE-FLAG-004 (UTC timezone skew in token expiry, invalid `-i` flag in PTY spawn, premature token deletion, and anchor tag link protection).
+- [x] Task 8: Add BROWSER=true defensive flag in server background CLI calls to eliminate unexpected browser popups while on the Android home screen.
+- [x] Task 9: Live server deployment and verification: verified `/api/auth/status` correctly recognizes active `ahanafy545@gmail.com` token (`is_valid: true`, `logged_in: true`).
 

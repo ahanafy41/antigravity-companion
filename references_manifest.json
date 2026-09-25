@@ -30,6 +30,18 @@
       "format": "official_docs",
       "description": "RFC 6455 Local Duplex WebSocket Architecture for Android & WebView IPC",
       "symbol_count": 2
+    },
+    {
+      "source_path": "https://docs.python.org/3/library/pty.html",
+      "format": "official_docs",
+      "description": "Python Official Documentation for Pseudo-Terminal Utilities (pty, os.login_tty, os.read/write, non-blocking I/O, termios line discipline)",
+      "symbol_count": 8
+    },
+    {
+      "source_path": "file:///data/data/com.termux/files/home/.gemini/antigravity-cli/antigravity-oauth-token",
+      "format": "filesystem_schema",
+      "description": "Antigravity CLI OAuth 2.0 Bearer Token, Refresh Token, and Identity Manifest Specification",
+      "symbol_count": 2
     }
   ],
   "exported_namespaces": [
@@ -40,7 +52,13 @@
     "android.webkit",
     "org.java_websocket.server",
     "okhttp3",
-    "org.w3c.dom.aria"
+    "org.w3c.dom.aria",
+    "pty",
+    "os",
+    "select",
+    "fcntl",
+    "termios",
+    "com.gemini.antigravity.auth"
   ],
   "symbols": [
     {
@@ -505,10 +523,390 @@
           "Zero decorative emoji clutter in screen reader stream"
         ]
       }
+    },
+    {
+      "symbol_name": "openpty",
+      "symbol_type": "function",
+      "namespace_or_module": "pty",
+      "is_async": false,
+      "parameters": [],
+      "return_type": "tuple[int, int]",
+      "constraints_and_contracts": {
+        "requires": [
+          "POSIX/Linux OS with pseudo-terminal multiplexer support (/dev/ptmx)"
+        ],
+        "ensures": [
+          "Allocates a new pseudo-terminal pair returning (master_fd, slave_fd)"
+        ],
+        "invariants": [
+          "Parent must close slave_fd immediately after child spawn to ensure EOF propagation on child exit; master_fd must be closed when session finishes"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "OSError"
+      ]
+    },
+    {
+      "symbol_name": "login_tty",
+      "symbol_type": "function",
+      "namespace_or_module": "os",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "fd",
+          "type": "int",
+          "required": true,
+          "description": "Slave pseudo-terminal file descriptor to prepare for login session"
+        }
+      ],
+      "return_type": "None",
+      "constraints_and_contracts": {
+        "requires": [
+          "fd must be an open file descriptor referring to a terminal slave",
+          "Must be executed inside child process before exec (e.g. inside subprocess.Popen preexec_fn)"
+        ],
+        "ensures": [
+          "Makes caller a session leader via setsid(), sets fd as controlling terminal via TIOCSCTTY ioctl, duplicates fd to stdin (0), stdout (1), stderr (2), and closes fd if > 2"
+        ],
+        "invariants": [
+          "Child process is guaranteed to have isatty(0)==True, enabling interactive prompts, ANSI color, line buffering, and signal generation"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "OSError"
+      ]
+    },
+    {
+      "symbol_name": "set_blocking",
+      "symbol_type": "function",
+      "namespace_or_module": "os",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "fd",
+          "type": "int",
+          "required": true,
+          "description": "File descriptor to modify"
+        },
+        {
+          "name": "blocking",
+          "type": "bool",
+          "required": true,
+          "description": "False to enable O_NONBLOCK, True to disable"
+        }
+      ],
+      "return_type": "None",
+      "constraints_and_contracts": {
+        "requires": [
+          "Valid open file descriptor",
+          "Python 3.5+"
+        ],
+        "ensures": [
+          "Sets O_NONBLOCK flag atomically without overwriting other file status flags"
+        ],
+        "invariants": [
+          "When blocking=False, read operations never block execution and raise BlockingIOError if no bytes are available"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "OSError",
+        "ValueError"
+      ]
+    },
+    {
+      "symbol_name": "read",
+      "symbol_type": "function",
+      "namespace_or_module": "os",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "fd",
+          "type": "int",
+          "required": true,
+          "description": "File descriptor to read from (PTY master_fd)"
+        },
+        {
+          "name": "length",
+          "type": "int",
+          "required": true,
+          "description": "Maximum number of bytes to read"
+        }
+      ],
+      "return_type": "bytes",
+      "constraints_and_contracts": {
+        "requires": [
+          "fd is an open readable descriptor"
+        ],
+        "ensures": [
+          "Returns raw byte buffer of available output from child process"
+        ],
+        "invariants": [
+          "CRITICAL POSIX PTY INVARIANT: When child exits or closes slave, reading from master_fd raises OSError with errno.EIO (Errno 5); this must be caught as normal EOF. In non-blocking mode, raises BlockingIOError if no data is pending."
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "OSError",
+        "BlockingIOError"
+      ]
+    },
+    {
+      "symbol_name": "write",
+      "symbol_type": "function",
+      "namespace_or_module": "os",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "fd",
+          "type": "int",
+          "required": true,
+          "description": "File descriptor to write to (PTY master_fd)"
+        },
+        {
+          "name": "data",
+          "type": "bytes",
+          "required": true,
+          "description": "Raw bytes payload to deliver to child stdin"
+        }
+      ],
+      "return_type": "int",
+      "constraints_and_contracts": {
+        "requires": [
+          "fd is open and writable",
+          "data is a bytes-like object"
+        ],
+        "ensures": [
+          "Injects bytes into child terminal input buffer; returns number of bytes written"
+        ],
+        "invariants": [
+          "Terminal slave echoes back written characters unless ECHO is suppressed; line endings should end with newline"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "OSError"
+      ]
+    },
+    {
+      "symbol_name": "select",
+      "symbol_type": "function",
+      "namespace_or_module": "select",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "rlist",
+          "type": "Sequence[int | Any]",
+          "required": true,
+          "description": "Descriptors to monitor for readability"
+        },
+        {
+          "name": "wlist",
+          "type": "Sequence[int | Any]",
+          "required": true,
+          "description": "Descriptors to monitor for writability"
+        },
+        {
+          "name": "xlist",
+          "type": "Sequence[int | Any]",
+          "required": true,
+          "description": "Descriptors to monitor for exceptional conditions"
+        },
+        {
+          "name": "timeout",
+          "type": "float | None",
+          "required": false,
+          "default_value": "None",
+          "description": "Timeout in seconds"
+        }
+      ],
+      "return_type": "tuple[list, list, list]",
+      "constraints_and_contracts": {
+        "requires": [
+          "Valid file descriptor sequences"
+        ],
+        "ensures": [
+          "Returns three lists containing descriptors ready for read, write, or exceptions"
+        ],
+        "invariants": [
+          "PTY master_fd becomes ready in rlist when child outputs text or terminates"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "InterruptedError",
+        "OSError"
+      ]
+    },
+    {
+      "symbol_name": "ioctl",
+      "symbol_type": "function",
+      "namespace_or_module": "fcntl",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "fd",
+          "type": "int",
+          "required": true,
+          "description": "File descriptor (PTY master_fd)"
+        },
+        {
+          "name": "request",
+          "type": "int",
+          "required": true,
+          "description": "Terminal ioctl request code"
+        },
+        {
+          "name": "arg",
+          "type": "bytes | int | bytearray",
+          "required": false,
+          "default_value": "0",
+          "description": "Packed binary structure struct.pack(HHHH, rows, cols, xpixels, ypixels)"
+        },
+        {
+          "name": "mutate_flag",
+          "type": "bool",
+          "required": false,
+          "default_value": "True",
+          "description": "Whether to mutate buffer argument"
+        }
+      ],
+      "return_type": "int | bytes",
+      "constraints_and_contracts": {
+        "requires": [
+          "Valid terminal descriptor and supported ioctl code"
+        ],
+        "ensures": [
+          "Updates kernel terminal window size parameters for proper CLI formatting"
+        ],
+        "invariants": [
+          "Setting rows > 0 and cols > 0 prevents CLI tools from crashing or assuming 0-width fallback"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "OSError"
+      ]
+    },
+    {
+      "symbol_name": "tcsetattr",
+      "symbol_type": "function",
+      "namespace_or_module": "termios",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "fd",
+          "type": "int",
+          "required": true,
+          "description": "Terminal file descriptor (slave_fd)"
+        },
+        {
+          "name": "when",
+          "type": "int",
+          "required": true,
+          "description": "Change action"
+        },
+        {
+          "name": "attributes",
+          "type": "list",
+          "required": true,
+          "description": "Terminal attributes list"
+        }
+      ],
+      "return_type": "None",
+      "constraints_and_contracts": {
+        "requires": [
+          "fd must be an active tty device"
+        ],
+        "ensures": [
+          "Applies terminal line configuration such as disabling local ECHO"
+        ],
+        "invariants": [
+          "Must be applied before or during child process session setup"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "termios.error",
+        "OSError"
+      ]
+    },
+    {
+      "symbol_name": "AntigravityOAuthTokenSchema",
+      "symbol_type": "interface",
+      "namespace_or_module": "com.gemini.antigravity.auth",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "token",
+          "type": "dict",
+          "required": true,
+          "description": "OAuth 2.0 token container"
+        },
+        {
+          "name": "auth_method",
+          "type": "str",
+          "required": true,
+          "description": "Authentication method identifier"
+        },
+        {
+          "name": "id_token",
+          "type": "str",
+          "required": false,
+          "default_value": "''",
+          "description": "OpenID Connect ID JWT token"
+        }
+      ],
+      "return_type": "dict",
+      "constraints_and_contracts": {
+        "requires": [
+          "File located at ~/.gemini/antigravity-cli/antigravity-oauth-token with 0600 permissions"
+        ],
+        "ensures": [
+          "Provides valid Bearer authorization for Google Cloud Code / Gemini CLI backend services"
+        ],
+        "invariants": [
+          "expiry is an ISO 8601 UTC timestamp string"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "FileNotFoundError",
+        "json.JSONDecodeError",
+        "KeyError"
+      ]
+    },
+    {
+      "symbol_name": "is_oauth_token_valid",
+      "symbol_type": "function",
+      "namespace_or_module": "com.gemini.antigravity.auth",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "token_path",
+          "type": "str",
+          "required": false,
+          "default_value": "'~/.gemini/antigravity-cli/antigravity-oauth-token'",
+          "description": "Filesystem path to OAuth token JSON file"
+        },
+        {
+          "name": "leeway_seconds",
+          "type": "int",
+          "required": false,
+          "default_value": "60",
+          "description": "Expiration safety buffer in seconds"
+        }
+      ],
+      "return_type": "bool",
+      "constraints_and_contracts": {
+        "requires": [
+          "token_path exists and is readable"
+        ],
+        "ensures": [
+          "Returns True if token exists and expiry is in the future; returns False otherwise"
+        ],
+        "invariants": [
+          "Non-raising function: returns False on missing file, corrupted JSON, or expired token"
+        ]
+      },
+      "error_codes_or_exceptions": []
     }
   ],
   "coverage_audit": {
-    "total_symbols_extracted": 24,
+    "total_symbols_extracted": 34,
     "verified_against_code": true,
     "implementation_status": "LOCKED_GROUNDED_2026"
   }
