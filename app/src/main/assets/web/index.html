@@ -118,6 +118,7 @@
         <section class="card" aria-labelledby="actions-heading">
             <h2 id="actions-heading" style="font-size: 1.2rem; margin-top: 0;">الإجراءات السريعة</h2>
             <button class="btn" onclick="openA11ySettings()">فتح إعدادات إمكانية الوصول</button>
+            <button class="btn" style="background-color: #2e7d32;" onclick="setupTermux()">نسخ كود تجهيز Termux وفتح الطرفية</button>
             <button class="btn btn-accent" onclick="wakeServer()">إيقاظ خادم تيرمكس في الخلفية</button>
             <button class="btn" onclick="goToChat()">الانتقال لواجهة الشات الرئيسية</button>
         </section>
@@ -177,6 +178,21 @@
                 announce('تم فتح إعدادات إمكانية الوصول');
             } else {
                 alert('الجسر الأصلي غير متوفر');
+            }
+        }
+
+        function setupTermux() {
+            if (window.AntigravityBridge && typeof window.AntigravityBridge.copySetupCommand === 'function') {
+                window.AntigravityBridge.copySetupCommand();
+                announce('تم نسخ كود التجهيز في الحافظة بنجاح، جاري فتح Termux...');
+                setTimeout(function() {
+                    if (typeof window.AntigravityBridge.openTermuxApp === 'function') {
+                        window.AntigravityBridge.openTermuxApp();
+                    }
+                }, 400);
+            } else {
+                navigator.clipboard.writeText('curl -fsSL https://raw.githubusercontent.com/ahanafy41/antigravity-companion/main/setup.sh | bash');
+                alert('تم نسخ كود التجهيز إلى الحافظة');
             }
         }
 

@@ -79,6 +79,13 @@
       "description": "Provide .github/workflows/build-apk.yml configuring an Ubuntu runner with JDK 17, Android SDK Platform 34, and Gradle to automatically compile app-debug.apk and app-release.apk on push or workflow_dispatch, publishing downloadable APK artifacts to GitHub Releases.",
       "priority": "P0",
       "verification_criteria": "GitHub Actions workflow YAML syntax is valid and builds APK artifact without needing local Android SDK in Termux."
+    },
+    {
+      "id": "REQ-009",
+      "title": "Hidden Server Architecture & Zero-Friction Automated Setup",
+      "description": "Relocate Python web/chat server into hidden protected directory ~/.antigravity-server/ inside Termux. Bundle server.py and web/ into repository and APK assets. Provide one-line idempotent setup.sh script executing Termux permissions, package installations, port 7681 startup test, and culminating in agy installation.",
+      "priority": "P0",
+      "verification_criteria": "setup.sh executes end-to-end cleanly, hidden directory is populated, port 7681 is active, and Android app detects and recovers server state without user intervention."
     }
   ],
   "entry_points": {

@@ -109,7 +109,9 @@ public class TermuxBridge {
                 boolean running = isPortOpen("127.0.0.1", 7681, 600);
                 if (!running) {
                     LOGGER.info("Local Python server on 7681 not detected. Launching silently via Termux RUN_COMMAND...");
-                    String launcherScript = "/data/data/com.termux/files/home/launch_server.sh";
+                    String hiddenScript = "/data/data/com.termux/files/home/.antigravity-server/launch_server.sh";
+                    String fallbackScript = "/data/data/com.termux/files/home/launch_server.sh";
+                    String launcherScript = new java.io.File(hiddenScript).exists() ? hiddenScript : fallbackScript;
 
                     executeCommand(context, launcherScript, null, "/data/data/com.termux/files/home", new CommandCallback() {
                         @Override

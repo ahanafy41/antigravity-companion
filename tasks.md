@@ -56,3 +56,12 @@
 - [x] Verify AST integrity, human-grade craftsmanship, and diff verification via `validate_code.py` and `diff_verifier.py`.
 - [x] Commit and push changes to trigger automated GitHub Actions build.
 
+## Phase 10: Zero-Friction Hidden Server Architecture & Universal Automated Setup (REQ-009)
+- [x] Package clean Python server and web assets in `server/` (excluding Lua files entirely).
+- [x] Bundle `server/` into APK `assets/server/` as local offline resilience fallback.
+- [x] Create idempotent `setup.sh` orchestrating Termux security properties, package updates, hidden directory `~/.antigravity-server/` deployment, port 7681 test, and ending with `agy` interactive login.
+- [x] Update `TermuxBridge.java` to target `~/.antigravity-server/launch_server.sh` with seamless fallback.
+- [x] Add 1-click 'Copy Termux Setup Code & Launch Terminal' button to companion dashboard.
+- [x] Pass automated AST validation and diff verification via `validate_code.py` and `diff_verifier.py`.
+- [x] Deploy to GitHub repository and trigger automated CI/CD APK build.
+

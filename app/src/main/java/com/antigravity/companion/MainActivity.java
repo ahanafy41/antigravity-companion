@@ -239,5 +239,33 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
         }
+
+        @JavascriptInterface
+        public void copySetupCommand() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    android.content.ClipData clip = android.content.ClipData.newPlainText("Antigravity Setup", "curl -fsSL https://raw.githubusercontent.com/ahanafy41/antigravity-companion/main/setup.sh | bash");
+                    if (clipboard != null) {
+                        clipboard.setPrimaryClip(clip);
+                    }
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void openTermuxApp() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    Intent intent = getPackageManager().getLaunchIntentForPackage("com.termux");
+                    if (intent != null) {
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(intent);
+                    }
+                }
+            });
+        }
     }
 }
