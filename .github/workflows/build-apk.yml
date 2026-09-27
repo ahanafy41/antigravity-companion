@@ -12,6 +12,9 @@ jobs:
   build:
     name: Assemble Android APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
 
     steps:
       - name: Checkout Code
