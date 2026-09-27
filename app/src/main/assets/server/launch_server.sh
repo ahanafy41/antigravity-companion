@@ -4,6 +4,11 @@
 # ==============================================================================
 export PATH="/data/data/com.termux/files/usr/bin:$PATH"
 export HOME="/data/data/com.termux/files/home"
+export GODEBUG="netdns=cgo"
+export SSL_CERT_FILE="/data/data/com.termux/files/usr/etc/tls/cert.pem"
+export LANG="en_US.UTF-8"
+export LC_ALL="en_US.UTF-8"
+unset LD_PRELOAD
 SERVER_DIR="$HOME/.antigravity-server"
 
 mkdir -p "$SERVER_DIR"

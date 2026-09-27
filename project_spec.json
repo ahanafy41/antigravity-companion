@@ -93,6 +93,13 @@
       "description": "Implement an interactive, screen-reader accessible authentication flow directly within the companion app web UI and backend server.py. The backend spawns agy inside a pseudo-terminal (PTY) using Python pty.openpty() and os.login_tty() to intercept authentication states: (1) OAuth Authorization URL, (2) Prompt for authorization code, (3) Terms of Service & License acceptance (AcceptTermsOfService), and (4) Authentication success or failure. The Web UI exposes accessible semantic controls (open browser button, clean input field for authorization code with aria-label, and two-button agreement dialog for license acceptance) with live announcements (aria-live=\"polite\"). The backend also provides /api/auth/status checking token validity via ~/.gemini/antigravity-cli/antigravity-oauth-token, and /api/auth/logout to safely revoke or clear session credentials.",
       "priority": "P0",
       "verification_criteria": "Verification that /api/auth/status, /api/auth/start, /api/auth/input, /api/auth/accept_terms, and /api/auth/logout endpoints function properly, token validity is accurately reported, and the Web UI renders accessible controls compliant with WCAG 2.2 AAA without requiring raw CLI terminal interaction."
+    },
+    {
+      "id": "REQ-011",
+      "title": "Model Context Protocol (MCP) In-App Authentication & Token Pairing Engine",
+      "description": "Provide in-app OAuth 2.0 / 2.1 Device Authorization Grant (RFC 8628) and direct Bearer Token / API Key pairing for any MCP server. Support fetching user verification code/link, pasting authorization code/token to link the server, testing connection health, and persisting credentials atomically into ~/.gemini/config/mcp_config.json.",
+      "priority": "P0",
+      "verification_criteria": "Endpoints /api/mcp/auth/request_device, /api/mcp/auth/pair, and /api/mcp/auth/test return 200 with valid data, tokens are persisted atomically into mcp_config.json, and the accessible dialog renders screen-reader friendly controls with TalkBack/Jieshuo support."
     }
   ],
   "entry_points": {

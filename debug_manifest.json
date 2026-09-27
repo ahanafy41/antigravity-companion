@@ -1,35 +1,35 @@
 {
-  "issue_id": "BUG-AUTH-TIMEZONE-FLAG-004",
-  "severity": "HIGH",
-  "diagnostic_branch": "Branch C: Data Boundary & Null",
+  "issue_id": "AUTH-OAUTH-WEBVIEW-HANG",
+  "severity": "CRITICAL",
   "environment": {
-    "os": "Android 14+ / Termux Linux aarch64 (Egypt UTC+3)",
-    "runtime": "Python 3.11 / glibc",
+    "os": "Android / Linux Termux aarch64",
+    "runtime": "Python 3.11 / Termux glibc",
     "dependencies": [
-      "datetime",
-      "pty",
-      "agy.va39"
+      "agy.va39",
+      "glibc-repo",
+      "resolv-conf",
+      "termux-tools"
     ]
   },
+  "reproduction_command": "curl -X POST http://127.0.0.1:7681/api/auth/start",
   "symptoms": [
-    "get_auth_token_info falsely marks valid tokens as expired due to local timezone offset (UTC+3) in time.mktime()",
-    "InteractivePTYAuthManager crashes agy.va39 with exit code 2 due to flag needs an argument: -i",
-    "Premature removal of antigravity-oauth-token causes background AI sessions to trigger am start browser popup unexpectedly",
-    "Web UI Google login link defaults to href=# and fails to open when auth_url is not ready"
+    "Infinite hang on loading OAuth URL when starting auth from Companion App web UI",
+    "Go netdns resolver failure: lookup play.googleapis.com on [::1]:53 connection refused due to missing GODEBUG=netdns=cgo",
+    "Direct execution of agy.va39 bypassing the official C wrapper /data/data/com.termux/files/usr/bin/agy",
+    "WebView navigation via window.location.href to Google Accounts OAuth URL causes blank/blocked 403 disallowed_useragent and kicks user out of Companion App"
   ],
+  "diagnostic_branch": "Branch B: Concurrency / Lifecycle",
   "exact_location_pinpoint": {
     "file_path": "server/server.py",
-    "line_number": 205,
-    "symbol_or_ast_node": "get_auth_token_info",
-    "offending_snippet": "clean_exp = expiry_str.split(\".\")[0].replace(\"Z\", \"\"); exp_ts = time.mktime(time.strptime(clean_exp[:19], \"%Y-%m-%dT%H:%M:%S\"))"
+    "line_number": 298,
+    "symbol_or_ast_node": "InteractivePTYAuthManager.start_login",
+    "offending_snippet": "cmd = [glibc_ld, \"--library-path\", glibc_lib, agy_payload]"
   },
-  "hypothesis": "Parsing ISO 8601 UTC timestamp using datetime.datetime.fromisoformat(expiry_str.replace(\"Z\", \"+00:00\")).timestamp() resolves timezone skew. Removing -i from agy execution command allows interactive session to initialize cleanly. Retaining token file until new credentials arrive prevents background am start browser triggers.",
+  "hypothesis": "Two distinct defects compound to break login in the web interface: (1) In server.py, start_login directly executes agy.va39 with ld-linux-aarch64.so.1 bypassing the official C wrapper /data/data/com.termux/files/usr/bin/agy and omitting GODEBUG=netdns=cgo and SSL_CERT_FILE. Without this, Go binaries in Termux glibc fail DNS queries on [::1]:53 because Android lacks /etc/resolv.conf, preventing agy from contacting Google to generate the OAuth URL. (2) In index.html, clicking the login link navigates the embedded Android WebView via window.location.href instead of delegating strictly to the system browser via termux-open-url (am start). Google explicitly blocks OAuth inside embedded WebViews (RFC 8252), causing the app view to freeze or show a blank loading screen.",
   "fix_plan": [
-    "Import datetime in server/server.py and use datetime.datetime.fromisoformat for robust UTC expiration validation",
-    "Fix agy execution command in InteractivePTYAuthManager.start_login to remove erroneous -i flag",
-    "Prevent premature deletion of AUTH_TOKEN_FILE in start_login",
-    "Update index.html to disable open-link button and show loading state until auth_url is populated",
-    "Validate server.py, index.html, and debug_manifest.json with validate_code.py"
-  ],
-  "verification_test": "Verify /api/auth/status returns is_valid: True and logged_in: True for current ahanafy545 token"
+    "Modify server/server.py to execute the official agy wrapper /data/data/com.termux/files/usr/bin/agy which handles resolv.conf and sets glibc environment.",
+    "Explicitly set GODEBUG=netdns=cgo, SSL_CERT_FILE=/data/data/com.termux/files/usr/etc/tls/cert.pem, and remove LD_PRELOAD in server.py process environments.",
+    "Add exports for GODEBUG and SSL_CERT_FILE in launch_server.sh to guarantee parent and child process health.",
+    "Modify server/web/index.html to remove window.location.href and preventDefault() on OAuth link click, keeping the Companion App WebView stable on 127.0.0.1:7681 while launching Chrome via termux-open-url."
+  ]
 }

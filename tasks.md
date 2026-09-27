@@ -75,3 +75,10 @@
 - [x] Task 8: Add BROWSER=true defensive flag in server background CLI calls to eliminate unexpected browser popups while on the Android home screen.
 - [x] Task 9: Live server deployment and verification: verified `/api/auth/status` correctly recognizes active `ahanafy545@gmail.com` token (`is_valid: true`, `logged_in: true`).
 
+## Phase 12: توثيق ومصادقة بروتوكولات سياق النموذج (MCP Authentication & Token Pairing / Device Flow & Bearer Token) (Ready for Execution 🚀)
+- [ ] Task 1: دوال معالجة البروتوكول ومصادقة الأجهزة وفحص نبض الحياة (JSON-RPC initialize & ping) في `server/server.py`.
+- [ ] Task 2: نقاط النهاية REST API في `server/server.py` (`/api/mcp/auth/request_device`, `/api/mcp/auth/pair`, `/api/mcp/auth/test`) مع الحفظ الذري للتوكنات في `~/.gemini/config/mcp_config.json`.
+- [ ] Task 3: بناء نافذة الحوار المخصصة للوصولية `<dialog id="mcp-auth-dialog">` في `server/web/index.html` بدعم مسار رمز التحقق والربط (Device Flow) ومسار التوكن المباشر (Bearer / API Key).
+- [ ] Task 4: إضافة أزرار "🔐 توثيق / ربط" إلى بطاقات البروتوكولات المثبتة وبطاقات الكتالوج المعتمد.
+- [ ] Task 5: مزامنة التعديلات إلى أصول حزمة الأندرويد (`app/src/main/assets/server/`) ومجلد السيرفر النشط (`~/.antigravity-server/`).
+- [ ] Task 6: التحقق الآلي الصارم وخلو الأخطاء عبر `validate_code.py` واختبار الاتصال الحقيقي.
