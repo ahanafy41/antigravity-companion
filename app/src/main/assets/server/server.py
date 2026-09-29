@@ -31,6 +31,11 @@ import urllib.request
 import urllib.parse
 import urllib.error
 
+try:
+    import custom_agent
+except ImportError:
+    custom_agent = None
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -1251,6 +1256,57 @@ def handle_ai_stream(client_sock, body_bytes):
         "X-Accel-Buffering: no\r\n\r\n"
     ).encode("utf-8")
     client_sock.sendall(sse_header)
+
+    # Check if custom agent engine is active
+    custom_cfg = custom_agent.load_custom_agent_config() if custom_agent else {}
+    requested_engine = req_data.get("engine") or custom_cfg.get("engine_mode", "antigravity")
+    if requested_engine == "custom" and custom_agent:
+        client_connected = True
+        def safe_send_custom(payload_str):
+            nonlocal client_connected
+            if not client_connected:
+                return False
+            try:
+                client_sock.sendall(f"data: {payload_str}\n\n".encode("utf-8"))
+                return True
+            except Exception:
+                client_connected = False
+                return False
+
+        init_payload = json.dumps({
+            "type": "init",
+            "cwd": req_data.get("cwd") or HOME_DIR,
+            "conversation_id": conversation_id or f"custom-{int(time.time())}",
+            "engine": "custom",
+            "provider": custom_cfg.get("active_provider", "google"),
+            "model": req_data.get("model") or custom_cfg.get("selected_model", "gemini-flash-lite-latest")
+        }, ensure_ascii=False)
+        safe_send_custom(init_payload)
+
+        active_provider = custom_cfg.get("active_provider", "google")
+        history = req_data.get("history", [])
+        custom_model = req_data.get("model") or custom_cfg.get("selected_model", "gemini-flash-lite-latest")
+        work_dir = req_data.get("cwd") or HOME_DIR
+
+        if active_provider == "google":
+            api_key = custom_cfg.get("google_api_key") or custom_agent.DEFAULT_GOOGLE_KEY
+            custom_agent.run_gemini_agent_turn(prompt, history, custom_model, api_key, work_dir, safe_send_custom)
+        else:
+            # Match custom OpenAI-compatible provider
+            matched_prov = None
+            for p in custom_cfg.get("custom_providers", []):
+                if p.get("id") == active_provider:
+                    matched_prov = p
+                    break
+            if matched_prov:
+                base_url = matched_prov.get("base_url", "")
+                p_key = matched_prov.get("api_key", "")
+                custom_agent.run_openai_compatible_agent_turn(prompt, history, custom_model, base_url, p_key, work_dir, safe_send_custom)
+            else:
+                safe_send_custom(json.dumps({"type": "error", "message": f"المزود المخصص غير موجود: {active_provider}"}, ensure_ascii=False))
+
+        client_sock.close()
+        return
 
     raw_model = settings.get("model", "")
     selected_model = resolve_model_id(raw_model)
@@ -3698,6 +3754,53 @@ def handle_client(client_sock, backend_port, index_bytes):
 
         elif path.startswith("/api/skills/toggle"):
             handle_skill_toggle(client_sock, body_bytes)
+            client_sock.close()
+            return
+
+        elif path.startswith("/api/custom-agent/config"):
+            if not custom_agent:
+                send_json_response(client_sock, {"status": "error", "message": "custom_agent module unavailable"}, status_code=500)
+                client_sock.close()
+                return
+            if method == "GET":
+                cfg = custom_agent.load_custom_agent_config()
+                send_json_response(client_sock, {"status": "ok", "config": cfg})
+            elif method == "POST":
+                try:
+                    patch = json.loads(body_bytes.decode("utf-8", errors="ignore")) if body_bytes else {}
+                    cur_cfg = custom_agent.load_custom_agent_config()
+                    cur_cfg.update(patch)
+                    custom_agent.save_custom_agent_config(cur_cfg)
+                    send_json_response(client_sock, {"status": "ok", "config": cur_cfg})
+                except Exception as e:
+                    send_json_response(client_sock, {"status": "error", "message": str(e)}, status_code=500)
+            client_sock.close()
+            return
+
+        elif path.startswith("/api/custom-agent/models"):
+            if not custom_agent:
+                send_json_response(client_sock, [], status_code=200)
+                client_sock.close()
+                return
+            cfg = custom_agent.load_custom_agent_config()
+            act_prov = cfg.get("active_provider", "google")
+            if act_prov == "google":
+                models = custom_agent.DEFAULT_FLASH_LITE_MODELS
+            else:
+                prov_models = []
+                for p in cfg.get("custom_providers", []):
+                    if p.get("id") == act_prov:
+                        for m_name in p.get("models", []):
+                            prov_models.append({
+                                "id": m_name,
+                                "name": m_name,
+                                "provider": act_prov,
+                                "context_window": "Custom",
+                                "description": f"نموذج مخصص عبر مزود {p.get('name', act_prov)}"
+                            })
+                        break
+                models = prov_models if prov_models else custom_agent.DEFAULT_FLASH_LITE_MODELS
+            send_json_response(client_sock, {"status": "ok", "provider": act_prov, "models": models})
             client_sock.close()
             return
 

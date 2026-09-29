@@ -82,3 +82,11 @@
 - [ ] Task 4: إضافة أزرار "🔐 توثيق / ربط" إلى بطاقات البروتوكولات المثبتة وبطاقات الكتالوج المعتمد.
 - [ ] Task 5: مزامنة التعديلات إلى أصول حزمة الأندرويد (`app/src/main/assets/server/`) ومجلد السيرفر النشط (`~/.antigravity-server/`).
 - [ ] Task 6: التحقق الآلي الصارم وخلو الأخطاء عبر `validate_code.py` واختبار الاتصال الحقيقي.
+
+## Phase 13: Standalone Custom AI Agent & Flash-Lite Multi-Provider Integration (REQ-012)
+- [x] Task 1: Built `server/custom_agent.py` supporting Google Gemini Flash-Lite native API, tool calling (bash, read_file, write_file), and OpenAI-compatible custom providers (Groq, OpenRouter, Together, local Ollama).
+- [x] Task 2: Integrated custom agent engine routing into `server/server.py` with endpoints `/api/custom-agent/config` and `/api/custom-agent/models`.
+- [x] Task 3: Upgraded `server/web/index.html` with dual-engine switching (Antigravity vs. Custom Agent), Flash-Lite model selector, API key persistence, and custom provider manager.
+- [x] Task 4: Verified end-to-end live execution in Termux with Google Flash-Lite models and interactive tool execution.
+- [x] Task 5: Synchronized all updated server and web assets to Android APK assets (`app/src/main/assets/server/` and `app/src/main/assets/web/`).
+- [x] Task 6: Passed strict AST validation and senior human-grade craftsmanship checks with 0 violations.

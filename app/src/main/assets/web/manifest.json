@@ -1,0 +1,26 @@
+{
+  "name": "Antigravity",
+  "short_name": "Antigravity",
+  "description": "منصة تفاعلية للذكاء الاصطناعي والطرفية متوافقة بالكامل مع قارئات الشاشة",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090d13",
+  "theme_color": "#090d13",
+  "orientation": "portrait-primary",
+  "dir": "rtl",
+  "lang": "ar",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

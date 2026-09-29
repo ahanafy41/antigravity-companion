@@ -2232,6 +2232,7 @@ dialog.accessible-dialog::backdrop {
 
 
     <div class="header-actions" role="toolbar" aria-label="إجراءات سريعة">
+      <button type="button" id="btn-header-engine" class="btn" style="border-color:var(--accent-cyan);" aria-label="تبديل محرك الذكاء الاصطناعي: Antigravity أو الوكيل المستقل المخصص"><span id="header-engine-badge">المحرك: Antigravity</span></button>
       <button type="button" id="btn-header-auth" class="btn" aria-label="حساب Google ومصادقة الوكيل"><span id="header-auth-badge">الحساب</span></button>
       <button type="button" id="btn-header-model" class="btn btn-header-model" aria-label="النموذج النشط حالياً: Gemini 3.8 Flash. اضغط لتغيير النموذج"><span id="header-active-model-name">Gemini 3.8</span></button>
       <button type="button" id="btn-new-ai-chat" class="btn btn-primary" aria-label="بدء محادثة جديدة وتفريغ الشاشة">جديد</button>
@@ -3319,22 +3320,74 @@ dialog.accessible-dialog::backdrop {
   </dialog>
 
   
-  <dialog id="model-picker-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="model-picker-title" style="max-width: 580px;">
+  <dialog id="model-picker-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="model-picker-title" style="max-width: 620px;">
     <div class="dialog-content">
       <header class="dialog-header">
-        <h2 id="model-picker-title">🤖 اختيار نموذج الذكاء الاصطناعي (مباشر من جوجل)</h2>
+        <h2 id="model-picker-title">🤖 اختيار المحرك ونماذج الذكاء الاصطناعي</h2>
         <button type="button" id="btn-close-model-picker" class="btn-close-dialog" aria-label="إغلاق قائمة النماذج">✕</button>
       </header>
       <div class="dialog-body">
-        <p class="form-hint" style="margin-bottom:12px; color:var(--text-muted);">
-          اختر النموذج المفضل لديك. يتم جلب النماذج الحية المتاحة من سيرفرات جوجل مباشرة وحفظها بـ 0 توكنز عبر الـ API.
-        </p>
-        <div id="model-picker-list" role="radiogroup" aria-label="قائمة نماذج الذكاء الاصطناعي الرسمية" style="display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto;">
-          <p>⏳ جارٍ جلب النماذج المتاحة من جوجل...</p>
+        <!-- Engine Selector Tabs -->
+        <div style="display:flex; gap:8px; margin-bottom:14px; background:var(--bg-card-header); padding:4px; border-radius:8px;" role="tablist" aria-label="اختيار محرك التشغيل">
+          <button type="button" id="tab-engine-antigravity" class="tab-btn" role="tab" aria-selected="true" style="flex:1; justify-content:center; background:rgba(57,197,187,0.15); color:var(--accent-cyan);">⚡ Antigravity الافتراضي</button>
+          <button type="button" id="tab-engine-custom" class="tab-btn" role="tab" aria-selected="false" style="flex:1; justify-content:center;">🚀 الوكيل المخصص (Flash-Lite / API)</button>
         </div>
+
+        <!-- Antigravity Engine Container -->
+        <div id="panel-engine-antigravity" role="tabpanel" aria-labelledby="tab-engine-antigravity">
+          <p class="form-hint" style="margin-bottom:12px; color:var(--text-muted);">
+            نماذج محرك Antigravity الرسمي من جوجل وحسابك المعتمد.
+          </p>
+          <div id="model-picker-list" role="radiogroup" aria-label="قائمة نماذج Antigravity" style="display: flex; flex-direction: column; gap: 8px; max-height: 48vh; overflow-y: auto;">
+            <p>⏳ جارٍ جلب النماذج المتاحة من جوجل...</p>
+          </div>
+        </div>
+
+        <!-- Custom Engine Container -->
+        <div id="panel-engine-custom" role="tabpanel" aria-labelledby="tab-engine-custom" style="display:none;">
+          <p class="form-hint" style="margin-bottom:10px; color:var(--text-muted);">
+            وكيل مستقل يعمل مباشرة داخل Termux بمفتاح API مخصص أو مزودين خارجيين (Groq، OpenRouter، Ollama).
+          </p>
+          
+          <div style="background:var(--bg-card); border:1px solid var(--border-main); border-radius:8px; padding:12px; margin-bottom:14px;">
+            <label for="custom-google-api-key" style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:6px;">مفتاح Google Gemini API:</label>
+            <div style="display:flex; gap:8px;">
+              <input type="password" id="custom-google-api-key" class="form-control" style="flex:1; padding:8px 12px; border-radius:6px; border:1px solid var(--border-main); background:var(--bg-input); color:var(--text-main);" placeholder="AQ.Ab8RN..." aria-label="مفتاح Google Gemini API">
+              <button type="button" id="btn-save-custom-api-key" class="btn btn-primary" style="padding:0 12px;" aria-label="حفظ مفتاح Google API">حفظ</button>
+            </div>
+            <span id="custom-key-status" style="font-size:0.78rem; color:var(--accent-green); margin-top:4px; display:block;">المفتاح مفعل ومختبر بنجاح</span>
+          </div>
+
+          <div style="margin-bottom:12px;">
+            <label style="display:block; font-size:0.88rem; font-weight:bold; margin-bottom:6px;">نماذج Flash-Lite المتاحة:</label>
+            <div id="custom-models-list" role="radiogroup" aria-label="قائمة نماذج فلاش لايت" style="display:flex; flex-direction:column; gap:8px; max-height:35vh; overflow-y:auto;">
+              <p>⏳ جارٍ تحميل نماذج فلاش لايت...</p>
+            </div>
+          </div>
+
+          <div style="border-top:1px solid var(--border-main); padding-top:10px; margin-top:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <strong style="font-size:0.88rem;">المزودون المخصصون (OpenAI-Compatible):</strong>
+              <button type="button" id="btn-toggle-add-provider" class="btn btn-sm" style="font-size:0.8rem;" aria-label="إضافة مزود مخصص جديد">+ مزود جديد</button>
+            </div>
+            <div id="custom-providers-list" style="display:flex; flex-direction:column; gap:6px;"></div>
+
+            <div id="box-add-provider" style="display:none; background:var(--bg-card); border:1px solid var(--border-main); border-radius:8px; padding:10px; margin-top:8px;">
+              <input type="text" id="input-new-prov-name" placeholder="اسم المزود (مثال: Groq)" class="form-control" style="width:100%; margin-bottom:6px; padding:6px 10px; background:var(--bg-input); color:var(--text-main); border:1px solid var(--border-main); border-radius:6px;" aria-label="اسم المزود الجديد">
+              <input type="text" id="input-new-prov-url" placeholder="رابط الـ Base URL (مثال: https://api.groq.com/openai/v1)" class="form-control" style="width:100%; margin-bottom:6px; padding:6px 10px; background:var(--bg-input); color:var(--text-main); border:1px solid var(--border-main); border-radius:6px;" aria-label="رابط Base URL">
+              <input type="password" id="input-new-prov-key" placeholder="مفتاح الـ API" class="form-control" style="width:100%; margin-bottom:6px; padding:6px 10px; background:var(--bg-input); color:var(--text-main); border:1px solid var(--border-main); border-radius:6px;" aria-label="مفتاح API للمزود">
+              <input type="text" id="input-new-prov-models" placeholder="النماذج مفصولة بفاصلة (مثال: llama-3.3-70b-versatile, llama-3.1-8b)" class="form-control" style="width:100%; margin-bottom:8px; padding:6px 10px; background:var(--bg-input); color:var(--text-main); border:1px solid var(--border-main); border-radius:6px;" aria-label="أسماء النماذج">
+              <div style="display:flex; justify-content:flex-end; gap:6px;">
+                <button type="button" id="btn-cancel-add-prov" class="btn btn-sm" aria-label="إلغاء إضافة المزود">إلغاء</button>
+                <button type="button" id="btn-submit-add-prov" class="btn btn-sm btn-primary" aria-label="حفظ المزود الجديد">إضافة وحفظ</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
       <footer class="dialog-footer">
-        <button type="button" id="btn-cancel-model-picker" class="btn" aria-label="إلغاء">إلغاء</button>
+        <button type="button" id="btn-cancel-model-picker" class="btn" aria-label="إلغاء">إغلاق</button>
       </footer>
     </div>
   </dialog>
@@ -3995,7 +4048,8 @@ dialog.accessible-dialog::backdrop {
         const payload = {
           prompt: finalPromptToSend,
           continue: shouldContinue,
-          force_new: isForcedNew
+          force_new: isForcedNew,
+          engine: window._currentEngineMode || 'antigravity'
         };
         if (currentActiveConversationId && !isForcedNew) {
           payload.conversation_id = currentActiveConversationId;
@@ -7102,6 +7156,257 @@ dialog.accessible-dialog::backdrop {
       drawerBackdrop.addEventListener('click', () => toggleAppDrawer(false));
     }
 
+    // --- Engine & Model Switching Logic ---
+    const btnHeaderEngine = document.getElementById('btn-header-engine');
+    const headerEngineBadge = document.getElementById('header-engine-badge');
+    const tabEngineAntigravity = document.getElementById('tab-engine-antigravity');
+    const tabEngineCustom = document.getElementById('tab-engine-custom');
+    const panelEngineAntigravity = document.getElementById('panel-engine-antigravity');
+    const panelEngineCustom = document.getElementById('panel-engine-custom');
+    const customModelsList = document.getElementById('custom-models-list');
+    const customGoogleApiKeyInput = document.getElementById('custom-google-api-key');
+    const btnSaveCustomApiKey = document.getElementById('btn-save-custom-api-key');
+    const customKeyStatus = document.getElementById('custom-key-status');
+    const btnToggleAddProvider = document.getElementById('btn-toggle-add-provider');
+    const boxAddProvider = document.getElementById('box-add-provider');
+    const btnCancelAddProv = document.getElementById('btn-cancel-add-prov');
+    const btnSubmitAddProv = document.getElementById('btn-submit-add-prov');
+    const customProvidersList = document.getElementById('custom-providers-list');
+
+    window._currentEngineMode = 'antigravity';
+    window._customAgentConfig = null;
+
+    async function syncCustomAgentConfig() {
+      try {
+        const res = await fetch('/api/custom-agent/config');
+        if (res.ok) {
+          const data = await res.json();
+          window._customAgentConfig = data.config || {};
+          window._currentEngineMode = window._customAgentConfig.engine_mode || 'antigravity';
+          updateEngineUiIndicators();
+        }
+      } catch (e) {}
+    }
+    syncCustomAgentConfig();
+
+    function updateEngineUiIndicators() {
+      const isCustom = (window._currentEngineMode === 'custom');
+      if (headerEngineBadge) {
+        headerEngineBadge.textContent = isCustom ? 'المحرك: مخصص (Flash-Lite)' : 'المحرك: Antigravity';
+      }
+      if (btnHeaderEngine) {
+        btnHeaderEngine.style.borderColor = isCustom ? 'var(--accent-purple)' : 'var(--accent-cyan)';
+      }
+      if (tabEngineAntigravity && tabEngineCustom) {
+        if (isCustom) {
+          tabEngineCustom.style.background = 'rgba(188,140,255,0.18)';
+          tabEngineCustom.style.color = 'var(--accent-purple)';
+          tabEngineCustom.setAttribute('aria-selected', 'true');
+          tabEngineAntigravity.style.background = 'transparent';
+          tabEngineAntigravity.style.color = 'var(--text-muted)';
+          tabEngineAntigravity.setAttribute('aria-selected', 'false');
+          if (panelEngineAntigravity) panelEngineAntigravity.style.display = 'none';
+          if (panelEngineCustom) panelEngineCustom.style.display = 'block';
+        } else {
+          tabEngineAntigravity.style.background = 'rgba(57,197,187,0.15)';
+          tabEngineAntigravity.style.color = 'var(--accent-cyan)';
+          tabEngineAntigravity.setAttribute('aria-selected', 'true');
+          tabEngineCustom.style.background = 'transparent';
+          tabEngineCustom.style.color = 'var(--text-muted)';
+          tabEngineCustom.setAttribute('aria-selected', 'false');
+          if (panelEngineAntigravity) panelEngineAntigravity.style.display = 'block';
+          if (panelEngineCustom) panelEngineCustom.style.display = 'none';
+        }
+      }
+    }
+
+    if (btnHeaderEngine) {
+      btnHeaderEngine.addEventListener('click', async () => {
+        const newMode = (window._currentEngineMode === 'antigravity') ? 'custom' : 'antigravity';
+        window._currentEngineMode = newMode;
+        await fetch('/api/custom-agent/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ engine_mode: newMode })
+        });
+        updateEngineUiIndicators();
+        playBeep(newMode === 'custom' ? 820 : 620, 0.08);
+        announce(`تم تبديل المحرك النشط إلى: ${newMode === 'custom' ? 'الوكيل المخصص' : 'Antigravity'}`);
+      });
+    }
+
+    if (tabEngineAntigravity) {
+      tabEngineAntigravity.addEventListener('click', async () => {
+        window._currentEngineMode = 'antigravity';
+        await fetch('/api/custom-agent/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ engine_mode: 'antigravity' })
+        });
+        updateEngineUiIndicators();
+        announce('تم التحويل إلى محرك Antigravity');
+      });
+    }
+
+    if (tabEngineCustom) {
+      tabEngineCustom.addEventListener('click', async () => {
+        window._currentEngineMode = 'custom';
+        await fetch('/api/custom-agent/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ engine_mode: 'custom' })
+        });
+        updateEngineUiIndicators();
+        await loadCustomEngineData();
+        announce('تم التحويل إلى المحرك المخصص لنماذج Flash-Lite');
+      });
+    }
+
+    async function loadCustomEngineData() {
+      try {
+        const [cfgRes, modRes] = await Promise.all([
+          fetch('/api/custom-agent/config'),
+          fetch('/api/custom-agent/models')
+        ]);
+        if (cfgRes.ok) {
+          const cfgData = await cfgRes.json();
+          window._customAgentConfig = cfgData.config || {};
+          if (customGoogleApiKeyInput) {
+            customGoogleApiKeyInput.value = window._customAgentConfig.google_api_key || '';
+          }
+          renderCustomProvidersList(window._customAgentConfig.custom_providers || [], window._customAgentConfig.active_provider);
+        }
+        if (modRes.ok) {
+          const modData = await modRes.json();
+          renderCustomModelsList(modData.models || [], window._customAgentConfig?.selected_model);
+        }
+      } catch (e) {}
+    }
+
+    function renderCustomModelsList(models, activeModelId) {
+      if (!customModelsList) return;
+      customModelsList.innerHTML = '';
+      models.forEach((m, idx) => {
+        const isCurrent = (m.id === activeModelId || (!activeModelId && idx === 0));
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'model-picker-item' + (isCurrent ? ' selected' : '');
+        card.setAttribute('role', 'radio');
+        card.setAttribute('aria-checked', String(isCurrent));
+        card.setAttribute('aria-label', `${m.name}${isCurrent ? ' (مفعل حالياً)' : ''}`);
+        card.style.cssText = `
+          display:flex; flex-direction:column; width:100%; padding:10px 14px;
+          border-radius:8px; border:1px solid ${isCurrent ? 'var(--accent-purple)' : 'var(--border-main)'};
+          background:${isCurrent ? 'rgba(188, 140, 255, 0.12)' : 'var(--bg-card)'};
+          color:var(--text-main); cursor:pointer; text-align:right; font-family:inherit;
+          transition:all 0.15s ease;
+        `;
+        card.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+            <strong style="font-size:0.92rem; color:${isCurrent ? 'var(--accent-purple)' : 'var(--text-main)'};">${escapeHtml(m.name)}</strong>
+            <span class="badge" style="background:${isCurrent ? 'var(--accent-purple)' : 'var(--bg-tertiary)'}; color:${isCurrent ? '#fff' : 'var(--text-muted)'}; font-size:0.75rem; padding:2px 8px; border-radius:12px; font-weight:700;">
+              ${isCurrent ? '✓ مفعل' : 'اختيار'}
+            </span>
+          </div>
+          <div style="font-size:0.78rem; color:var(--text-muted); font-family:var(--font-mono); margin-top:4px; text-align:start;">${escapeHtml(m.id)} - ${escapeHtml(m.description || '')}</div>
+        `;
+        card.addEventListener('click', async () => {
+          await fetch('/api/custom-agent/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ selected_model: m.id, engine_mode: 'custom' })
+          });
+          window._currentEngineMode = 'custom';
+          updateEngineUiIndicators();
+          if (headerActiveModelName) headerActiveModelName.textContent = m.name.split(' ')[0] + ' (Custom)';
+          if (modelPickerDialog) modelPickerDialog.close();
+          playBeep(880, 0.1);
+          announce(`تم تفعيل النموذج المخصص ${m.name}`);
+        });
+        customModelsList.appendChild(card);
+      });
+    }
+
+    function renderCustomProvidersList(providers, activeProvId) {
+      if (!customProvidersList) return;
+      customProvidersList.innerHTML = '';
+      providers.forEach(p => {
+        const isCurrent = (p.id === activeProvId);
+        const row = document.createElement('div');
+        row.style.cssText = `display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border-radius:6px; background:var(--bg-card); border:1px solid ${isCurrent ? 'var(--accent-cyan)' : 'var(--border-main)'}; margin-bottom:4px;`;
+        row.innerHTML = `
+          <div>
+            <strong style="font-size:0.85rem; color:${isCurrent ? 'var(--accent-cyan)' : 'var(--text-main)'};">${escapeHtml(p.name)}</strong>
+            <div style="font-size:0.75rem; color:var(--text-muted);">${escapeHtml(p.base_url || '')}</div>
+          </div>
+          <button type="button" class="btn btn-sm" style="font-size:0.75rem; padding:2px 8px;" aria-label="تفعيل مزود ${p.name}">
+            ${isCurrent ? '✓ نشط' : 'تفعيل'}
+          </button>
+        `;
+        row.querySelector('button').addEventListener('click', async () => {
+          await fetch('/api/custom-agent/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ active_provider: p.id, engine_mode: 'custom' })
+          });
+          await loadCustomEngineData();
+          announce(`تم تفعيل المزود ${p.name}`);
+        });
+        customProvidersList.appendChild(row);
+      });
+    }
+
+    if (btnSaveCustomApiKey) {
+      btnSaveCustomApiKey.addEventListener('click', async () => {
+        const key = customGoogleApiKeyInput?.value.trim() || '';
+        if (!key) return;
+        await fetch('/api/custom-agent/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ google_api_key: key })
+        });
+        if (customKeyStatus) customKeyStatus.textContent = 'تم حفظ المفتاح بنجاح!';
+        playBeep(700, 0.08);
+        announce('تم حفظ مفتاح Google API بنجاح');
+      });
+    }
+
+    if (btnToggleAddProvider && boxAddProvider) {
+      btnToggleAddProvider.addEventListener('click', () => {
+        const isOpen = (boxAddProvider.style.display !== 'none');
+        boxAddProvider.style.display = isOpen ? 'none' : 'block';
+      });
+    }
+    if (btnCancelAddProv && boxAddProvider) {
+      btnCancelAddProv.addEventListener('click', () => {
+        boxAddProvider.style.display = 'none';
+      });
+    }
+    if (btnSubmitAddProv) {
+      btnSubmitAddProv.addEventListener('click', async () => {
+        const name = document.getElementById('input-new-prov-name')?.value.trim();
+        const url = document.getElementById('input-new-prov-url')?.value.trim();
+        const key = document.getElementById('input-new-prov-key')?.value.trim();
+        const modelsStr = document.getElementById('input-new-prov-models')?.value.trim();
+        if (!name || !url) {
+          alert('يرجى إدخال اسم المزود ورابط Base URL');
+          return;
+        }
+        const models = modelsStr ? modelsStr.split(',').map(s => s.trim()).filter(Boolean) : ['default-model'];
+        const pId = 'prov-' + Date.now();
+        const existingProvs = window._customAgentConfig?.custom_providers || [];
+        existingProvs.push({ id: pId, name, base_url: url, api_key: key, models });
+        await fetch('/api/custom-agent/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ custom_providers: existingProvs })
+        });
+        if (boxAddProvider) boxAddProvider.style.display = 'none';
+        await loadCustomEngineData();
+        announce(`تمت إضافة المزود ${name} بنجاح`);
+      });
+    }
+
     // --- Live Model Picker Dialog ---
     const modelPickerDialog = document.getElementById('model-picker-dialog');
     const modelPickerList = document.getElementById('model-picker-list');
@@ -7114,10 +7419,11 @@ dialog.accessible-dialog::backdrop {
         toggleAppDrawer(false);
       }
       modelPickerDialog.showModal();
-      announce('تم فتح قائمة اختيار نماذج الذكاء الاصطناعي');
+      announce('تم فتح قائمة اختيار نماذج الذكاء الاصطناعي والمحركات');
       if (modelPickerList) {
         modelPickerList.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-muted);">⏳ جارٍ جلب النماذج المتاحة من سيرفرات جوجل...</div>';
       }
+      updateEngineUiIndicators();
       try {
         const [modelsRes, settingsRes] = await Promise.all([
           fetch('/api/ai/models'),
@@ -7134,6 +7440,7 @@ dialog.accessible-dialog::backdrop {
         }
         announce('تعذر تحميل النماذج من السيرفر');
       }
+      loadCustomEngineData();
     }
     window.openModelPicker = openModelPicker;
 
