@@ -24,6 +24,8 @@ import androidx.core.content.ContextCompat;
 
 import com.google.gson.JsonObject;
 
+import java.io.File;
+import java.util.Locale;
 import java.util.logging.Logger;
 
 /**
@@ -38,6 +40,7 @@ public class MainActivity extends AppCompatActivity {
     private LinearLayout mBannerA11y;
     private TextView mTvStatus;
     private Button mBtnEnableA11y;
+    private AppUpdateManager mUpdateManager;
 
     public static final String LOCAL_URL = "http://127.0.0.1:7681";
     public static final String FALLBACK_ASSET_URL = "file:///android_asset/web/index.html";
@@ -57,7 +60,10 @@ public class MainActivity extends AppCompatActivity {
         // 3. Start WebSocket bridge if service already connected
         LocalAutomationServer.startServer();
 
-        // 4. Load initial web dashboard
+        // 4. Initialize OTA update manager
+        mUpdateManager = AppUpdateManager.getInstance(this);
+
+        // 5. Load initial web dashboard
         loadInitialPage();
     }
 
@@ -267,6 +273,114 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             });
+        }
+
+        @JavascriptInterface
+        public String getAppVersion() {
+            return mUpdateManager.getCurrentVersionName();
+        }
+
+        @JavascriptInterface
+        public boolean canInstallUnknownApps() {
+            return mUpdateManager.canInstallUnknownApps();
+        }
+
+        @JavascriptInterface
+        public void openInstallPermissionSettings() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    mUpdateManager.openInstallPermissionSettings(MainActivity.this);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void checkForUpdate() {
+            mUpdateManager.checkForUpdatesAsync(new AppUpdateManager.CheckUpdateCallback() {
+                @Override
+                public void onSuccess(final AppUpdateManager.UpdateInfo info) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (mWebView != null) {
+                                String js = "if (window.onUpdateCheckResult) { window.onUpdateCheckResult(" + info.toJsonObject().toString() + "); }";
+                                mWebView.evaluateJavascript(js, null);
+                            }
+                        }
+                    });
+                }
+
+                @Override
+                public void onError(final String error) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (mWebView != null) {
+                                JsonObject errObj = new JsonObject();
+                                errObj.addProperty("error", error);
+                                String js = "if (window.onUpdateCheckError) { window.onUpdateCheckError(" + errObj.toString() + "); }";
+                                mWebView.evaluateJavascript(js, null);
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void startUpdateDownload(final String downloadUrl) {
+            mUpdateManager.startDownloadAsync(downloadUrl, new AppUpdateManager.DownloadProgressListener() {
+                @Override
+                public void onProgress(final int percent, final long bytesDownloaded, final long totalBytes) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (mWebView != null) {
+                                String js = String.format(Locale.US,
+                                        "if (window.onUpdateProgress) { window.onUpdateProgress(%d, %d, %d); }",
+                                        percent, bytesDownloaded, totalBytes);
+                                mWebView.evaluateJavascript(js, null);
+                            }
+                        }
+                    });
+                }
+
+                @Override
+                public void onComplete(final File apkFile) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (mWebView != null) {
+                                String js = "if (window.onUpdateDownloadComplete) { window.onUpdateDownloadComplete(); }";
+                                mWebView.evaluateJavascript(js, null);
+                            }
+                            // Auto-trigger package installer on main thread
+                            mUpdateManager.installApk(apkFile);
+                        }
+                    });
+                }
+
+                @Override
+                public void onError(final String error) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (mWebView != null) {
+                                JsonObject errObj = new JsonObject();
+                                errObj.addProperty("error", error);
+                                String js = "if (window.onUpdateDownloadError) { window.onUpdateDownloadError(" + errObj.toString() + "); }";
+                                mWebView.evaluateJavascript(js, null);
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public boolean installDownloadedUpdate() {
+            return mUpdateManager.installDownloadedUpdate();
         }
     }
 }

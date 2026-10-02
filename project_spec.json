@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "project_name": "Antigravity Companion & Bridge",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "track": "Track C: Systems & Backend",
   "language": "Kotlin / Java",
   "frameworks": [
@@ -135,6 +135,20 @@
       "description": "إنشاء واعتماد مفتاح توقيع رقمي دائم وموحد (Permanent Android Release Keystore) لحزم الـ APK وتكوينه داخل Gradle و GitHub Actions CI/CD. يضمن هذا توقيع كافة التحديثات والإصدارات المستقبلية بنفس البصمة الرقمية الموثوقة (Consistent Signing Certificate)، مما يمكن المستخدمين من تثبيت التحديثات فوق الإصدار الحالي مباشرة (Seamless In-Place Update) دون أن يرفض نظام أندرويد التثبيت ودون الحاجة لحذف التطبيق وفقدان الإعدادات والصلاحيات.",
       "priority": "P0",
       "verification_criteria": "توليد ملف Keystore دائم وتضمينه في إعدادات signingConfigs داخل build.gradle، وتأكيد قدرة أندرويد على تثبيت الإصدار المحدث فوق الإصدار السابق بنجاح ودون خطأ تعارض التوقيع."
+    },
+    {
+      "id": "REQ-017",
+      "title": "Android In-App OTA Update Manager (FileProvider, REQUEST_INSTALL_PACKAGES, OkHttp streaming downloader, SemVer comparison)",
+      "description": "Implement AppUpdateManager and native update pipeline for seamless in-app over-the-air updates. Query GitHub Releases API (https://api.github.com/repos/ahanafy41/antigravity-companion/releases/latest) with SemVer comparison against BuildConfig.VERSION_NAME. Download APK using OkHttp streaming response with byte-level progress reporting and atomic file replacement in cache directory. Configure androidx.core.content.FileProvider with res/xml/file_paths.xml and declare android.permission.REQUEST_INSTALL_PACKAGES in AndroidManifest.xml. Launch Intent.ACTION_VIEW with MIME type application/vnd.android.package-archive, FLAG_GRANT_READ_URI_PERMISSION, and FLAG_ACTIVITY_NEW_TASK to invoke system PackageInstaller. Provide runtime permission verification via PackageManager.canRequestPackageInstalls() and redirect to Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES when required.",
+      "priority": "P0",
+      "verification_criteria": "UpdateManager detects new GitHub release, downloads APK with accurate 0-100% progress events, generates valid FileProvider content:// URI, and triggers system package installer without crashing or throwing FileUriExposedException."
+    },
+    {
+      "id": "REQ-018",
+      "title": "Accessible Update UI & AntigravityJsBridge (WAI-ARIA status, TalkBack narration, zero emoji, check for update button in drawer)",
+      "description": "Integrate OTA update controls into the companion WebView UI and AntigravityJsBridge. Expose checkForUpdate(), startUpdateDownload(url), canInstallUnknownApps(), openInstallPermissionSettings(), and getAppVersion() to JavaScript. Add a dedicated 'التحقق من التحديثات' (Check for Updates) button inside the navigation drawer (#antigravity-drawer). Implement an accessible update status dialog / container with role=\"status\", aria-live=\"polite\", and WAI-ARIA progressbar (role=\"progressbar\", aria-valuenow, aria-valuemin=\"0\", aria-valuemax=\"100\"). Provide clean, concise human-grade TalkBack and Jieshuo speech feedback announcing update availability, download progress milestones (25%, 50%, 75%, 100%), and installation prompts, strictly adhering to zero emoji clutter and WCAG 2.2 AAA accessibility standards.",
+      "priority": "P0",
+      "verification_criteria": "Check for updates button in drawer triggers native check, TalkBack announces update status and progress cleanly without emoji noise, progressbar updates ARIA attributes dynamically, and install flow launches smoothly from web UI."
     }
   ],
   "entry_points": {

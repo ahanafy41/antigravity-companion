@@ -42,6 +42,30 @@
       "format": "filesystem_schema",
       "description": "Antigravity CLI OAuth 2.0 Bearer Token, Refresh Token, and Identity Manifest Specification",
       "symbol_count": 2
+    },
+    {
+      "source_path": "https://developer.android.com/reference/androidx/core/content/FileProvider",
+      "format": "official_docs",
+      "description": "AndroidX FileProvider for secure file sharing via content:// URIs with Intent.FLAG_GRANT_READ_URI_PERMISSION",
+      "symbol_count": 2
+    },
+    {
+      "source_path": "https://developer.android.com/reference/android/provider/Settings#ACTION_MANAGE_UNKNOWN_APP_SOURCES",
+      "format": "official_docs",
+      "description": "Android Oreo+ (API 26+) package install permissions, canRequestPackageInstalls(), and Intent.ACTION_VIEW with MIME type application/vnd.android.package-archive",
+      "symbol_count": 3
+    },
+    {
+      "source_path": "https://square.github.io/okhttp/recipes/#streaming-response",
+      "format": "official_docs",
+      "description": "OkHttp response body streaming, byte counting, progress callbacks, and atomic file persistence",
+      "symbol_count": 3
+    },
+    {
+      "source_path": "https://docs.github.com/en/rest/releases/releases#get-the-latest-release",
+      "format": "official_docs",
+      "description": "GitHub Releases API endpoint /repos/{owner}/{repo}/releases/latest, tag_name SemVer comparison, and browser_download_url resolution",
+      "symbol_count": 3
     }
   ],
   "exported_namespaces": [
@@ -58,7 +82,11 @@
     "select",
     "fcntl",
     "termios",
-    "com.gemini.antigravity.auth"
+    "com.gemini.antigravity.auth",
+    "androidx.core.content",
+    "android.provider",
+    "android.content.pm",
+    "com.antigravity.companion.update"
   ],
   "symbols": [
     {
@@ -903,10 +931,369 @@
         ]
       },
       "error_codes_or_exceptions": []
+    },
+    {
+      "symbol_name": "getUriForFile",
+      "symbol_type": "method",
+      "namespace_or_module": "androidx.core.content.FileProvider",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "context",
+          "type": "android.content.Context",
+          "required": true,
+          "description": "Application or activity context"
+        },
+        {
+          "name": "authority",
+          "type": "java.lang.String",
+          "required": true,
+          "description": "FileProvider authority declared in AndroidManifest.xml (${applicationId}.fileprovider)"
+        },
+        {
+          "name": "file",
+          "type": "java.io.File",
+          "required": true,
+          "description": "Target APK file residing within configured provider paths"
+        }
+      ],
+      "return_type": "android.net.Uri",
+      "constraints_and_contracts": {
+        "requires": [
+          "File must exist within directory declared in res/xml/file_paths.xml",
+          "FileProvider authority declared in AndroidManifest.xml"
+        ],
+        "ensures": [
+          "Returns valid content:// URI with secure temporary access grants"
+        ],
+        "invariants": [
+          "Granting URI permission requires Intent.FLAG_GRANT_READ_URI_PERMISSION"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "IllegalArgumentException"
+      ]
+    },
+    {
+      "symbol_name": "ACTION_MANAGE_UNKNOWN_APP_SOURCES",
+      "symbol_type": "constant",
+      "namespace_or_module": "android.provider.Settings",
+      "is_async": false,
+      "parameters": [],
+      "return_type": "java.lang.String",
+      "constraints_and_contracts": {
+        "requires": [
+          "Android 8.0 (API Level 26) or higher"
+        ],
+        "ensures": [
+          "Launches system settings to grant package installation permission for specific application"
+        ],
+        "invariants": [
+          "Intent data must be set to Uri.parse(\"package:\" + getPackageName())"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "ActivityNotFoundException"
+      ]
+    },
+    {
+      "symbol_name": "canRequestPackageInstalls",
+      "symbol_type": "method",
+      "namespace_or_module": "android.content.pm.PackageManager",
+      "is_async": false,
+      "parameters": [],
+      "return_type": "boolean",
+      "constraints_and_contracts": {
+        "requires": [
+          "API Level >= 26"
+        ],
+        "ensures": [
+          "Returns true if application is permitted to install packages; false otherwise"
+        ],
+        "invariants": [
+          "Permission state reflects user setting under Settings > Install unknown apps"
+        ]
+      },
+      "error_codes_or_exceptions": []
+    },
+    {
+      "symbol_name": "ACTION_VIEW",
+      "symbol_type": "constant",
+      "namespace_or_module": "android.content.Intent",
+      "is_async": false,
+      "parameters": [],
+      "return_type": "java.lang.String",
+      "constraints_and_contracts": {
+        "requires": [
+          "Used in conjunction with setDataAndType(apkUri, \"application/vnd.android.package-archive\")"
+        ],
+        "ensures": [
+          "Dispatches intent to Android system PackageInstaller activity"
+        ],
+        "invariants": [
+          "Must include FLAG_ACTIVITY_NEW_TASK and FLAG_GRANT_READ_URI_PERMISSION"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "ActivityNotFoundException"
+      ]
+    },
+    {
+      "symbol_name": "byteStream",
+      "symbol_type": "method",
+      "namespace_or_module": "okhttp3.ResponseBody",
+      "is_async": false,
+      "parameters": [],
+      "return_type": "java.io.InputStream",
+      "constraints_and_contracts": {
+        "requires": [
+          "Successful HTTP response (status code 200..299)"
+        ],
+        "ensures": [
+          "Provides sequential stream of incoming bytes for chunked file writing"
+        ],
+        "invariants": [
+          "Stream must be consumed inside try-with-resources or closed in finally block"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "IOException"
+      ]
+    },
+    {
+      "symbol_name": "contentLength",
+      "symbol_type": "method",
+      "namespace_or_module": "okhttp3.ResponseBody",
+      "is_async": false,
+      "parameters": [],
+      "return_type": "long",
+      "constraints_and_contracts": {
+        "requires": [
+          "Server provides Content-Length header"
+        ],
+        "ensures": [
+          "Returns total byte size of download payload, or -1 if unknown/chunked"
+        ],
+        "invariants": [
+          "Used to calculate download percentage: (bytesRead * 100) / totalBytes"
+        ]
+      },
+      "error_codes_or_exceptions": []
+    },
+    {
+      "symbol_name": "AppUpdateManager",
+      "symbol_type": "class",
+      "namespace_or_module": "com.antigravity.companion.update",
+      "is_async": false,
+      "parameters": [],
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "Initialized with Android Context"
+        ],
+        "ensures": [
+          "Encapsulates GitHub release checking, OkHttp streaming download, SemVer comparison, and FileProvider intent launching"
+        ],
+        "invariants": [
+          "Downloads are written to context.getCacheDir()/updates/ with atomic .tmp file replacement"
+        ]
+      },
+      "error_codes_or_exceptions": []
+    },
+    {
+      "symbol_name": "checkForUpdate",
+      "symbol_type": "method",
+      "namespace_or_module": "com.antigravity.companion.update.AppUpdateManager",
+      "is_async": true,
+      "parameters": [
+        {
+          "name": "callback",
+          "type": "com.antigravity.companion.update.AppUpdateManager.UpdateCheckCallback",
+          "required": true,
+          "description": "Callback delivering UpdateInfo or error message on UI thread"
+        }
+      ],
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "Active Internet connection"
+        ],
+        "ensures": [
+          "Queries GitHub REST API /repos/ahanafy41/antigravity-companion/releases/latest, compares tag_name with current versionName"
+        ],
+        "invariants": [
+          "Does not block calling thread; executes on background thread pool and posts to main Looper"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "IOException",
+        "JSONException"
+      ]
+    },
+    {
+      "symbol_name": "downloadAndInstallUpdate",
+      "symbol_type": "method",
+      "namespace_or_module": "com.antigravity.companion.update.AppUpdateManager",
+      "is_async": true,
+      "parameters": [
+        {
+          "name": "downloadUrl",
+          "type": "java.lang.String",
+          "required": true,
+          "description": "Direct browser_download_url for APK asset from GitHub Release"
+        },
+        {
+          "name": "callback",
+          "type": "com.antigravity.companion.update.AppUpdateManager.UpdateDownloadCallback",
+          "required": true,
+          "description": "Callback receiving progress percentages (0-100), completion, and error states"
+        }
+      ],
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "Valid HTTPS download URL",
+          "Write access to app cache directory"
+        ],
+        "ensures": [
+          "Downloads APK via OkHttp stream, validates integrity, obtains FileProvider URI, and launches installer Intent"
+        ],
+        "invariants": [
+          "Atomic file write to antigravity-update.tmp then renamed to antigravity-update.apk"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "IOException",
+        "SecurityException",
+        "ActivityNotFoundException"
+      ]
+    },
+    {
+      "symbol_name": "isNewerVersion",
+      "symbol_type": "function",
+      "namespace_or_module": "com.antigravity.companion.update.AppUpdateManager",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "currentVersion",
+          "type": "java.lang.String",
+          "required": true,
+          "description": "Installed app version string (e.g. '1.1.0')"
+        },
+        {
+          "name": "remoteTag",
+          "type": "java.lang.String",
+          "required": true,
+          "description": "GitHub release tag string (e.g. 'v1.2.0' or '1.2.0')"
+        }
+      ],
+      "return_type": "boolean",
+      "constraints_and_contracts": {
+        "requires": [
+          "Versions formatted as SemVer major.minor.patch"
+        ],
+        "ensures": [
+          "Returns true if remote version is strictly greater than current version, false otherwise"
+        ],
+        "invariants": [
+          "Strips leading 'v' prefix before splitting numeric tokens"
+        ]
+      },
+      "error_codes_or_exceptions": [
+        "NumberFormatException"
+      ]
+    },
+    {
+      "symbol_name": "AntigravityJsBridge.checkForUpdate",
+      "symbol_type": "method",
+      "namespace_or_module": "com.antigravity.companion.MainActivity.AntigravityJsBridge",
+      "is_async": false,
+      "parameters": [],
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "Annotated with @JavascriptInterface",
+          "Called from WebView JavaScript"
+        ],
+        "ensures": [
+          "Dispatches asynchronous check to AppUpdateManager and notifies WebView via window.onUpdateCheckResult(json)"
+        ],
+        "invariants": [
+          "Thread-safe; executes on background thread and callbacks onto WebView UI thread"
+        ]
+      },
+      "error_codes_or_exceptions": []
+    },
+    {
+      "symbol_name": "AntigravityJsBridge.startUpdateDownload",
+      "symbol_type": "method",
+      "namespace_or_module": "com.antigravity.companion.MainActivity.AntigravityJsBridge",
+      "is_async": false,
+      "parameters": [
+        {
+          "name": "downloadUrl",
+          "type": "java.lang.String",
+          "required": true,
+          "description": "Target APK download URL"
+        }
+      ],
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "Annotated with @JavascriptInterface"
+        ],
+        "ensures": [
+          "Starts background streaming download, periodically calls window.onUpdateDownloadProgress(percent), and triggers install on completion"
+        ],
+        "invariants": [
+          "Prevents concurrent duplicate downloads"
+        ]
+      },
+      "error_codes_or_exceptions": []
+    },
+    {
+      "symbol_name": "AntigravityJsBridge.canInstallUnknownApps",
+      "symbol_type": "method",
+      "namespace_or_module": "com.antigravity.companion.MainActivity.AntigravityJsBridge",
+      "is_async": false,
+      "parameters": [],
+      "return_type": "boolean",
+      "constraints_and_contracts": {
+        "requires": [
+          "Annotated with @JavascriptInterface"
+        ],
+        "ensures": [
+          "Returns PackageManager.canRequestPackageInstalls() on API 26+, or true on older APIs"
+        ],
+        "invariants": [
+          "Non-blocking instant query"
+        ]
+      },
+      "error_codes_or_exceptions": []
+    },
+    {
+      "symbol_name": "AntigravityJsBridge.openInstallPermissionSettings",
+      "symbol_type": "method",
+      "namespace_or_module": "com.antigravity.companion.MainActivity.AntigravityJsBridge",
+      "is_async": false,
+      "parameters": [],
+      "return_type": "void",
+      "constraints_and_contracts": {
+        "requires": [
+          "Annotated with @JavascriptInterface"
+        ],
+        "ensures": [
+          "Opens system Settings screen for ACTION_MANAGE_UNKNOWN_APP_SOURCES targeting companion package"
+        ],
+        "invariants": [
+          "Runs on UI thread via Activity.startActivity"
+        ]
+      },
+      "error_codes_or_exceptions": []
     }
   ],
   "coverage_audit": {
-    "total_symbols_extracted": 34,
+    "total_symbols_extracted": 48,
     "verified_against_code": true,
     "implementation_status": "LOCKED_GROUNDED_2026"
   }

@@ -121,3 +121,15 @@
 - [x] Task 2: تكوين خيارات التوقيع الدائم (`signingConfigs.release`) داخل `app/build.gradle`.
 - [x] Task 3: تحديث مسار عمل البناء السحابي `.github/workflows/build-apk.yml` لاستخدام مفتاح التوقيع الدائم عند بناء وتوقيع حزم الـ Release APK.
 - [x] Task 4: التحقق العملي من إمكانية تثبيت تحديث جديد فوق الإصدار القديم مباشرة (In-Place Update) بدون طلب إلغاء التثبيت.
+
+## Phase 19: In-App OTA Update Engine (REQ-017 & REQ-018)
+- [x] Task 1: تصريح صلاحية `REQUEST_INSTALL_PACKAGES` وتكوين `FileProvider` داخل `AndroidManifest.xml` وتوفير ملف المسارات الآمنة `app/src/main/res/xml/file_paths.xml`.
+- [x] Task 2: إنشاء محرك التحديثات `AppUpdateManager.java` في حزمة `com.antigravity.companion` وتطبيق خوارزمية مقارنة الإصدارات الدلالية `isNewerVersion` (SemVer)، والاتصال بـ GitHub Releases API لجلب أحدث إصدار.
+- [x] Task 3: تنفيذ التنزيل المتدفق المباشر للـ APK عبر OkHttp Streaming (`byteStream`) وحساب نسب التقدم اللحظية (0-100%)، مع الحفظ الذري للملف في مجلد الكاش المؤقت.
+- [x] Task 4: إطلاق شاشة تثبيت الحزمة عبر `FileProvider.getUriForFile` مع `Intent.ACTION_VIEW` ورايات `FLAG_GRANT_READ_URI_PERMISSION` و `FLAG_ACTIVITY_NEW_TASK`، والتحقق من صلاحية التثبيت عبر `canRequestPackageInstalls()` والتوجيه لـ `Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES`.
+- [x] Task 5: ربط المحرك بـ `AntigravityJsBridge` في `MainActivity.java` وتصدير دوال التحكم للواجهة: `checkForUpdate`, `startUpdateDownload`, `canInstallUnknownApps`, `openInstallPermissionSettings`, `getAppVersion`.
+- [x] Task 6: إضافة زر "التحقق من التحديثات" داخل القائمة الجانبية (`#antigravity-drawer`) في `server/web/index.html`، وبطاقة حالة التحديث وشريط التقدم بمعايير WAI-ARIA (`role="status"`, `aria-live="polite"`, `role="progressbar"`) بدون أي رموز تعبيرية.
+- [x] Task 7: تفعيل السرد الصوتي المباشر لقارئات الشاشة (TalkBack و Jieshuo) مع إشعارات التقدم لمحطات التحميل (25%, 50%, 75%, 100%) وتنبيه بدء التثبيت.
+- [x] Task 8: مزامنة أصول الويب المحدثة إلى `app/src/main/assets/web/` و `app/src/main/assets/server/web/` و `/data/data/com.termux/files/home/.antigravity-server/web/`.
+- [x] Task 9: التحقق الآلي الصارم وخلو الملفات من أي أخطاء بنيوية عبر `validate_code.py`.
+

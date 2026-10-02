@@ -2279,6 +2279,10 @@ dialog.accessible-dialog::backdrop {
       <button type="button" id="btn-open-conversations" class="drawer-btn" aria-label="المحادثات السابقة">
         <span>المحادثات السابقة</span>
       </button>
+      <button type="button" id="btn-check-updates" class="drawer-btn" aria-label="التحقق من التحديثات">
+        <span>التحقق من التحديثات</span>
+        <span id="drawer-update-badge" class="badge-count" style="display:none; font-size:0.78rem;">تحديث متاح</span>
+      </button>
       <button type="button" id="btn-save-chat" class="drawer-btn" aria-label="تصدير المحادثة">
         <span>تصدير المحادثة</span>
       </button>
@@ -3537,6 +3541,60 @@ dialog.accessible-dialog::backdrop {
       </div>
       <footer class="dialog-footer">
         <button type="button" id="btn-dismiss-tasks-monitor" class="btn" aria-label="إغلاق">إغلاق</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <dialog id="update-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="update-dialog-title" style="max-width: 600px;">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <h2 id="update-dialog-title">تحديث التطبيق</h2>
+        <button type="button" id="btn-close-update-dialog" class="btn-close-dialog" aria-label="إغلاق">✕</button>
+      </header>
+      <div class="dialog-body">
+        <div id="update-status-announcer" class="sr-only" role="status" aria-live="polite"></div>
+
+        <div id="update-info-container" style="display: flex; flex-direction: column; gap: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-main); padding-bottom: 8px;">
+            <div>
+              <span style="color: var(--text-muted); font-size: 0.9rem;">الإصدار الحالي: </span>
+              <strong id="update-current-version">--</strong>
+            </div>
+            <div>
+              <span style="color: var(--text-muted); font-size: 0.9rem;">أحدث إصدار: </span>
+              <strong id="update-latest-version" style="color: var(--accent-cyan);">--</strong>
+            </div>
+          </div>
+
+          <div id="update-status-card" role="status" aria-live="polite" style="padding: 12px; border-radius: 8px; background-color: var(--bg-card-header); border: 1px solid var(--border-main);">
+            <p id="update-status-message" style="margin: 0; font-size: 0.95rem;">اضغط على فحص التحديثات للتحقق من وجود إصدار جديد.</p>
+          </div>
+
+          <div id="update-release-notes-container" style="display: none; max-height: 180px; overflow-y: auto; background-color: var(--bg-input); padding: 10px; border-radius: 6px; border: 1px solid var(--border-main);">
+            <h3 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 6px;">ملاحظات الإصدار</h3>
+            <div id="update-release-notes" style="font-size: 0.88rem; white-space: pre-wrap; word-break: break-word;"></div>
+          </div>
+
+          <div id="update-progress-container" style="display: none; flex-direction: column; gap: 6px;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.88rem;">
+              <span id="update-progress-label">جاري التنزيل...</span>
+              <span id="update-progress-percent" style="font-weight: 700; color: var(--accent-cyan);">0%</span>
+            </div>
+            <div style="background-color: var(--border-main); border-radius: 8px; height: 12px; overflow: hidden; width: 100%;">
+              <div id="update-progressbar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="تقدم تنزيل التحديث" style="background-color: var(--accent-cyan); height: 100%; width: 0%; transition: width 0.2s ease;"></div>
+            </div>
+          </div>
+
+          <div id="update-permission-box" style="display: none; padding: 10px; border-radius: 6px; background-color: #3b2812; border: 1px solid var(--accent-yellow); color: #ffd68a; font-size: 0.88rem;">
+            <span>يتطلب تثبيت التحديث السماح بتثبيت التطبيقات من مصادر غير معروفة.</span>
+            <button type="button" id="btn-open-install-permission" class="btn btn-sm" style="margin-top: 8px; display: block;" aria-label="فتح إعدادات إذن التثبيت">فتح إعدادات التثبيت</button>
+          </div>
+        </div>
+      </div>
+      <footer class="dialog-footer" style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" id="btn-update-check" class="btn" aria-label="فحص التحديثات الآن">فحص التحديثات</button>
+        <button type="button" id="btn-update-download" class="btn btn-primary" style="display: none;" aria-label="تنزيل وتثبيت التحديث">تنزيل وتثبيت</button>
+        <button type="button" id="btn-dismiss-update-dialog" class="btn" aria-label="إغلاق">إغلاق</button>
       </footer>
     </div>
   </dialog>
@@ -7727,6 +7785,258 @@ dialog.accessible-dialog::backdrop {
       await refreshTasksMonitor();
     }
     window.openTasksMonitor = openTasksMonitor;
+
+    // --- In-App OTA Update Controller ---
+    const updateDialog = document.getElementById('update-dialog');
+    const btnCheckUpdates = document.getElementById('btn-check-updates');
+    const btnCloseUpdateDialog = document.getElementById('btn-close-update-dialog');
+    const btnDismissUpdateDialog = document.getElementById('btn-dismiss-update-dialog');
+    const btnUpdateCheck = document.getElementById('btn-update-check');
+    const btnUpdateDownload = document.getElementById('btn-update-download');
+    const btnOpenInstallPermission = document.getElementById('btn-open-install-permission');
+    const updateCurrentVersion = document.getElementById('update-current-version');
+    const updateLatestVersion = document.getElementById('update-latest-version');
+    const updateStatusMessage = document.getElementById('update-status-message');
+    const updateReleaseNotesContainer = document.getElementById('update-release-notes-container');
+    const updateReleaseNotes = document.getElementById('update-release-notes');
+    const updateProgressContainer = document.getElementById('update-progress-container');
+    const updateProgressbar = document.getElementById('update-progressbar');
+    const updateProgressPercent = document.getElementById('update-progress-percent');
+    const updatePermissionBox = document.getElementById('update-permission-box');
+    const drawerUpdateBadge = document.getElementById('drawer-update-badge');
+
+    let currentUpdateDownloadUrl = '';
+    let lastAnnouncedProgressMilestone = 0;
+
+    function openUpdateDialog() {
+      if (!updateDialog) return;
+      if (drawerEl && drawerEl.classList.contains('open')) {
+        toggleAppDrawer(false);
+      }
+      updateDialog.showModal();
+      announce('تم فتح نافذة تحديث التطبيق');
+
+      const currentVer = (window.AntigravityBridge && typeof window.AntigravityBridge.getAppVersion === 'function')
+        ? window.AntigravityBridge.getAppVersion()
+        : '1.1.0';
+      if (updateCurrentVersion) {
+        updateCurrentVersion.textContent = currentVer;
+      }
+
+      checkAndShowInstallPermissionWarning();
+      triggerUpdateCheck();
+    }
+    window.openUpdateDialog = openUpdateDialog;
+
+    function checkAndShowInstallPermissionWarning() {
+      if (!updatePermissionBox) return;
+      if (window.AntigravityBridge && typeof window.AntigravityBridge.canInstallUnknownApps === 'function') {
+        const canInstall = window.AntigravityBridge.canInstallUnknownApps();
+        updatePermissionBox.style.display = canInstall ? 'none' : 'block';
+      } else {
+        updatePermissionBox.style.display = 'none';
+      }
+    }
+
+    function triggerUpdateCheck() {
+      if (btnUpdateCheck) btnUpdateCheck.disabled = true;
+      if (btnUpdateDownload) btnUpdateDownload.style.display = 'none';
+      if (updateProgressContainer) updateProgressContainer.style.display = 'none';
+      if (updateReleaseNotesContainer) updateReleaseNotesContainer.style.display = 'none';
+      if (updateStatusMessage) {
+        updateStatusMessage.textContent = 'جاري البحث عن تحديثات جديدة...';
+      }
+      announce('جاري البحث عن تحديثات جديدة');
+
+      if (window.AntigravityBridge && typeof window.AntigravityBridge.checkForUpdate === 'function') {
+        window.AntigravityBridge.checkForUpdate();
+      } else {
+        fetch('https://api.github.com/repos/ahanafy41/antigravity-companion/releases/latest')
+          .then(res => res.json())
+          .then(data => {
+            const tag = (data.tag_name || '').replace(/^v/i, '');
+            const curr = (updateCurrentVersion && updateCurrentVersion.textContent) || '1.1.0';
+            let downloadUrl = '';
+            if (data.assets && Array.isArray(data.assets)) {
+              const apkAsset = data.assets.find(a => (a.name || '').endsWith('.apk'));
+              if (apkAsset) downloadUrl = apkAsset.browser_download_url;
+            }
+            window.onUpdateCheckResult({
+              hasUpdate: tag !== '' && tag !== curr,
+              latestVersion: tag,
+              currentVersion: curr,
+              downloadUrl: downloadUrl,
+              releaseName: data.name || tag,
+              releaseNotes: data.body || '',
+              apkSize: 0
+            });
+          })
+          .catch(err => {
+            window.onUpdateCheckError({ error: err.message || 'خطأ في الاتصال' });
+          });
+      }
+    }
+
+    window.onUpdateCheckResult = function(info) {
+      if (btnUpdateCheck) btnUpdateCheck.disabled = false;
+      if (!info) return;
+
+      if (updateLatestVersion) {
+        updateLatestVersion.textContent = info.latestVersion || '--';
+      }
+
+      if (info.hasUpdate) {
+        if (drawerUpdateBadge) drawerUpdateBadge.style.display = 'inline-block';
+        currentUpdateDownloadUrl = info.downloadUrl || '';
+
+        if (updateStatusMessage) {
+          updateStatusMessage.textContent = 'يوجد تحديث جديد متاح: الإصدار ' + (info.latestVersion || '');
+        }
+
+        if (info.releaseNotes && updateReleaseNotes && updateReleaseNotesContainer) {
+          updateReleaseNotes.textContent = info.releaseNotes;
+          updateReleaseNotesContainer.style.display = 'block';
+        }
+
+        if (btnUpdateDownload) {
+          btnUpdateDownload.style.display = 'inline-block';
+        }
+
+        announce('تحديث جديد متاح. الإصدار ' + info.latestVersion + '. اضغط زر التنزيل والتثبيت للمتابعة.');
+      } else {
+        if (updateStatusMessage) {
+          updateStatusMessage.textContent = 'أنت تستخدم أحدث إصدار بالفعل (' + (info.currentVersion || '') + '). لا توجد تحديثات جديدة.';
+        }
+        announce('أنت تستخدم أحدث إصدار بالفعل. لا توجد تحديثات جديدة.');
+      }
+    };
+
+    window.onUpdateCheckError = function(err) {
+      if (btnUpdateCheck) btnUpdateCheck.disabled = false;
+      const msg = (err && err.error) ? err.error : 'فشل التحقق من التحديثات';
+      if (updateStatusMessage) {
+        updateStatusMessage.textContent = 'تعذر فحص التحديثات: ' + msg;
+      }
+      announce('تعذر فحص التحديثات. ' + msg);
+    };
+
+    function startDownloadingUpdate() {
+      if (!currentUpdateDownloadUrl) {
+        announce('رابط التنزيل غير متوفر');
+        return;
+      }
+
+      if (window.AntigravityBridge && typeof window.AntigravityBridge.canInstallUnknownApps === 'function') {
+        if (!window.AntigravityBridge.canInstallUnknownApps()) {
+          checkAndShowInstallPermissionWarning();
+          announce('يرجى السماح بتثبيت التطبيقات من الإعدادات قبل التثبيت');
+        }
+      }
+
+      if (btnUpdateDownload) btnUpdateDownload.style.display = 'none';
+      if (btnUpdateCheck) btnUpdateCheck.disabled = true;
+
+      if (updateProgressContainer) {
+        updateProgressContainer.style.display = 'flex';
+      }
+      if (updateProgressbar) {
+        updateProgressbar.setAttribute('aria-valuenow', '0');
+        updateProgressbar.style.width = '0%';
+      }
+      if (updateProgressPercent) {
+        updateProgressPercent.textContent = '0%';
+      }
+      if (updateStatusMessage) {
+        updateStatusMessage.textContent = 'جاري تنزيل ملف التحديث...';
+      }
+      lastAnnouncedProgressMilestone = 0;
+      announce('بدء تنزيل حزمة التحديث');
+
+      if (window.AntigravityBridge && typeof window.AntigravityBridge.startUpdateDownload === 'function') {
+        window.AntigravityBridge.startUpdateDownload(currentUpdateDownloadUrl);
+      } else {
+        let p = 0;
+        const iv = setInterval(() => {
+          p += 25;
+          window.onUpdateProgress(p, p * 100000, 4000000);
+          if (p >= 100) {
+            clearInterval(iv);
+            window.onUpdateDownloadComplete();
+          }
+        }, 600);
+      }
+    }
+
+    window.onUpdateProgress = function(percent, bytesDownloaded, totalBytes) {
+      const p = Math.max(0, Math.min(100, percent));
+      if (updateProgressbar) {
+        updateProgressbar.setAttribute('aria-valuenow', p.toString());
+        updateProgressbar.style.width = p + '%';
+      }
+      if (updateProgressPercent) {
+        updateProgressPercent.textContent = p + '%';
+      }
+
+      if (p >= 75 && lastAnnouncedProgressMilestone < 75) {
+        lastAnnouncedProgressMilestone = 75;
+        announce('اكتمل تنزيل 75 في المائة من التحديث');
+      } else if (p >= 50 && lastAnnouncedProgressMilestone < 50) {
+        lastAnnouncedProgressMilestone = 50;
+        announce('اكتمل تنزيل 50 في المائة من التحديث');
+      } else if (p >= 25 && lastAnnouncedProgressMilestone < 25) {
+        lastAnnouncedProgressMilestone = 25;
+        announce('اكتمل تنزيل 25 في المائة من التحديث');
+      }
+    };
+
+    window.onUpdateDownloadComplete = function() {
+      if (updateProgressbar) {
+        updateProgressbar.setAttribute('aria-valuenow', '100');
+        updateProgressbar.style.width = '100%';
+      }
+      if (updateProgressPercent) {
+        updateProgressPercent.textContent = '100%';
+      }
+      if (btnUpdateCheck) btnUpdateCheck.disabled = false;
+      if (updateStatusMessage) {
+        updateStatusMessage.textContent = 'اكتمل تنزيل التحديث بنسبة 100%. جاري تشغيل مثبت الحزم...';
+      }
+      announce('اكتمل تنزيل التحديث بنسبة 100 في المائة. جاري فتح مثبت الحزم لتثبيت الإصدار الجديد.');
+    };
+
+    window.onUpdateDownloadError = function(err) {
+      if (btnUpdateCheck) btnUpdateCheck.disabled = false;
+      if (btnUpdateDownload) btnUpdateDownload.style.display = 'inline-block';
+      const msg = (err && err.error) ? err.error : 'خطأ أثناء تنزيل التحديث';
+      if (updateStatusMessage) {
+        updateStatusMessage.textContent = 'فشل تنزيل التحديث: ' + msg;
+      }
+      announce('فشل تنزيل التحديث. ' + msg);
+    };
+
+    if (btnCheckUpdates) {
+      btnCheckUpdates.addEventListener('click', openUpdateDialog);
+    }
+    if (btnCloseUpdateDialog && updateDialog) {
+      btnCloseUpdateDialog.addEventListener('click', () => updateDialog.close());
+    }
+    if (btnDismissUpdateDialog && updateDialog) {
+      btnDismissUpdateDialog.addEventListener('click', () => updateDialog.close());
+    }
+    if (btnUpdateCheck) {
+      btnUpdateCheck.addEventListener('click', triggerUpdateCheck);
+    }
+    if (btnUpdateDownload) {
+      btnUpdateDownload.addEventListener('click', startDownloadingUpdate);
+    }
+    if (btnOpenInstallPermission) {
+      btnOpenInstallPermission.addEventListener('click', () => {
+        if (window.AntigravityBridge && typeof window.AntigravityBridge.openInstallPermissionSettings === 'function') {
+          window.AntigravityBridge.openInstallPermissionSettings();
+          announce('فتح إعدادات تثبيت التطبيقات');
+        }
+      });
+    }
 
     let isSyncingConversation = false;
 
