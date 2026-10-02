@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "project_name": "Antigravity Companion & Bridge",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "track": "Track C: Systems & Backend",
   "language": "Kotlin / Java",
   "frameworks": [
@@ -100,12 +100,47 @@
       "description": "Provide in-app OAuth 2.0 / 2.1 Device Authorization Grant (RFC 8628) and direct Bearer Token / API Key pairing for any MCP server. Support fetching user verification code/link, pasting authorization code/token to link the server, testing connection health, and persisting credentials atomically into ~/.gemini/config/mcp_config.json.",
       "priority": "P0",
       "verification_criteria": "Endpoints /api/mcp/auth/request_device, /api/mcp/auth/pair, and /api/mcp/auth/test return 200 with valid data, tokens are persisted atomically into mcp_config.json, and the accessible dialog renders screen-reader friendly controls with TalkBack/Jieshuo support."
+    },
+    {
+      "id": "REQ-012",
+      "title": "Human-Grade UI Label Conciseness & Screen Reader Optimization",
+      "description": "تنقيح وتلخيص كافة التسميات (Labels)، وأوصاف عناصر التحكم (ARIA descriptions / helper texts)، وعناوين البطاقات، وأزرار الواجهة في صفحة التطبيق (index.html). إزالة الحشو والرغي الطويل المصطنع ذي الطابع الآلي (AI-generated fluff & robotic phrasing)، واستبدالها بنصوص وتسميات بشرية، مباشرة، وموجزة تمنح مستخدم قارئ الشاشة (TalkBack / Jieshuo) تجربة سريعة وسلسة وتقلل العبء السمعي المعرفي بدون أي إخلال بدقة الوظيفة أو معايير WCAG 2.2 AAA.",
+      "priority": "P1",
+      "verification_criteria": "جميع التسميات والأوصاف في واجهة التطبيق أصبحت موجزة، صريحة، وطبيعية بشرية خالية من الحشو الآلي، مع اجتياز الفحص الآلي عبر validate_code.py."
+    },
+    {
+      "id": "REQ-013",
+      "title": "Accessible Focus & Keyboard Navigation for Slash (/) and Mention (@) Menus",
+      "description": "تحسين إمكانية الوصول لقوائم الإكمال التلقائي للأوامر السريعة (Slash Commands '/') وقائمة الإشارة والسياق (Mentions '@') في حقل الإدخال. إدارة تركيز قارئ الشاشة (TalkBack و Jieshuo) تلقائياً عند فتح القائمة، وتطبيق معايير W3C Combobox / Listbox (عبر aria-expanded, aria-controls, aria-activedescendant أو نقل التركيز المباشر)، وتوفير إمكانية التنقل السلس بالأسهم والسحب بين الأوامر وسماع اسم كل أمر ووظيفته بوضوح، واختياره بـ Enter أو إلغائه بـ Escape/Back، دون إجبار المستخدم على البحث بالتلمس اليدوي على الشاشة.",
+      "priority": "P0",
+      "verification_criteria": "بمجرد كتابة '/' أو '@' في حقل الإدخال يتم إشعار قارئ الشاشة صوتياً فوراً وينتقل التركيز تلقائياً أو يُدار بالأسهم مع قراءة العنصر النشط، ويعمل الاختيار والإلغاء بسلاسة دون الحاجة للمس الشاشة."
+    },
+    {
+      "id": "REQ-014",
+      "title": "Multi-Trigger Support for Slash Commands (/) and Mentions (@) within Single Prompt",
+      "description": "تمكين استدعاء واختيار أكثر من أمر سريع (Slash Command '/') أو إشارة سياق (Mention '@') داخل نفس الرسالة أو الطلب الواحد. معالجة القيد البرمجي الحالي في معالج الإدخال الذي يمنع انبثاق قائمة الاقتراحات بعد إدراج أول أمر أو عند كتابة الرمز في منتصف النص مسبوقاً بمسافة، وتطوير تتبع موضع المؤشر (Caret Tracking) ليسمح باختيار مهارات وأوامر متعددة في نفس الطلب بدون تعليق.",
+      "priority": "P1",
+      "verification_criteria": "إمكانية إدراج أمرين أو أكثر من أوامر السلاش أو الإشارات في نفس الرسالة مع فتح القائمة واختيار كل عنصر بنجاح في كل مرة يُكتب فيها الرمز."
+    },
+    {
+      "id": "REQ-015",
+      "title": "Model-Adaptive Reasoning Effort Filtering & Guard for Claude Models",
+      "description": "معالجة خطأ فشل تشغيل نماذج كلود (error: invalid model selection: --effort is not supported for model 'claude-sonnet-4-6'). تطبيق فحص دفاعي وتحقق ذكي في سيرفر الباك إند (server.py) والواجهة (index.html) للتحقق من توافق راية التفكير والاستدلال (--effort) مع النموذج المختار قبل تمريرها لـ agy CLI. استبعاد تمرير --effort تلقائياً لنماذج Anthropic Claude والنماذج غير الداعمة للتفكير الممتد، مع تحديث واجهة المستخدم لتعطيل قائمة الـ effort أو إخفائها بوضوح صوتي عند اختيار هذه النماذج.",
+      "priority": "P0",
+      "verification_criteria": "تشغيل نماذج Claude بنجاح دون أي خطأ invalid model selection، مع استبعاد راية --effort برمجياً للنماذج غير الداعمة وتعطيلها في الواجهة."
+    },
+    {
+      "id": "REQ-016",
+      "title": "Permanent Release Keystore & In-Place Seamless APK Update Pipeline",
+      "description": "إنشاء واعتماد مفتاح توقيع رقمي دائم وموحد (Permanent Android Release Keystore) لحزم الـ APK وتكوينه داخل Gradle و GitHub Actions CI/CD. يضمن هذا توقيع كافة التحديثات والإصدارات المستقبلية بنفس البصمة الرقمية الموثوقة (Consistent Signing Certificate)، مما يمكن المستخدمين من تثبيت التحديثات فوق الإصدار الحالي مباشرة (Seamless In-Place Update) دون أن يرفض نظام أندرويد التثبيت ودون الحاجة لحذف التطبيق وفقدان الإعدادات والصلاحيات.",
+      "priority": "P0",
+      "verification_criteria": "توليد ملف Keystore دائم وتضمينه في إعدادات signingConfigs داخل build.gradle، وتأكيد قدرة أندرويد على تثبيت الإصدار المحدث فوق الإصدار السابق بنجاح ودون خطأ تعارض التوقيع."
     }
   ],
   "entry_points": {
     "run": "./gradlew installDebug && adb shell am start -n com.antigravity.companion/.MainActivity",
     "test": "./gradlew testDebugUnitTest",
     "doctor": "adb shell am broadcast -a com.antigravity.companion.ACTION_DOCTOR",
-    "build": "./gradlew assembleDebug"
+    "build": "./gradlew assembleRelease"
   }
 }

@@ -90,3 +90,34 @@
 - [x] Task 4: Verified end-to-end live execution in Termux with Google Flash-Lite models and interactive tool execution.
 - [x] Task 5: Synchronized all updated server and web assets to Android APK assets (`app/src/main/assets/server/` and `app/src/main/assets/web/`).
 - [x] Task 6: Passed strict AST validation and senior human-grade craftsmanship checks with 0 violations.
+
+## Phase 14: Human-Grade UI Label Conciseness & Screen Reader Optimization (REQ-012)
+- [x] Task 1: مراجعة واستخراج كافة النصوص والتسميات الطويلة أو المكتوبة بأسلوب آلي مفرط (Robotic AI Fluff) في `server/web/index.html`.
+- [x] Task 2: إعادة صياغة التسميات ومساعدات القراءة (Helper texts & ARIA labels) بأسلوب بشري، مباشر، وموجز يقلل الإرهاق السمعي لمستخدمي TalkBack و Jieshuo.
+- [x] Task 3: مزامنة التعديلات إلى مجلد أصول تطبيق الأندرويد (`app/src/main/assets/web/`) والسيرفر النشط (`~/.antigravity-server/web/`).
+- [x] Task 4: التحقق الآلي الصارم عبر `validate_code.py` والتأكد من سلامة الواجهة بنسبة 100%.
+
+## Phase 15: Accessible Focus & Keyboard Navigation for Slash (/) and Mention (@) Menus (REQ-013)
+- [x] Task 1: فحص دورة حياة ومكونات قائمة الأوامر `/` وقائمة السياق `@` في `server/web/index.html`.
+- [x] Task 2: تطبيق إدارة التركيز الحية وإتاحة التنقل الكامل بالأسهم والسحب مع تنبيهات `aria-live` و `aria-activedescendant`.
+- [x] Task 3: دعم الاختيار بـ Enter والإلغاء بـ Escape/Back مع إعادة التركيز بدقة لحقل الإدخال.
+- [x] Task 4: مزامنة التعديلات إلى مجلد أصول تطبيق الأندرويد والسيرفر النشط.
+- [x] Task 5: التحقق العملي والاختبار الآلي بنسبة 100% لضمان عدم الاعتماد على التلمس اليدوي.
+
+## Phase 16: Multi-Trigger Support for Slash Commands (/) and Mentions (@) within Single Prompt (REQ-014)
+- [x] Task 1: فحص منطق رصد الكلمات المفتاحية (`handleInput` / Caret Position Regex) في `server/web/index.html`.
+- [x] Task 2: معالجة قيد الفتح لمرة واحدة وتمكين انبثاق القائمة عند كتابة `/` أو `@` في أي موضع بالرسالة مسبوقاً بمسافة.
+- [x] Task 3: دعم إدراج وسحب أكثر من أمر أو مهارة متتالية داخل نفس الحقل مع الحفاظ على سلامة النص السابق.
+- [x] Task 4: مزامنة التحديثات واختبار استدعاء متعدد للأوامر والمهارات بنجاح.
+
+## Phase 17: Model-Adaptive Reasoning Effort Filtering & Guard for Claude Models (REQ-015)
+- [x] Task 1: فحص منطق بناء أوامر CLI (`PersistentAISessionManager.start_session`) في `server/server.py`.
+- [x] Task 2: إضافة مصفوفة تحقق دفاعية (Model Capabilities Whitelist) للنماذج الداعمة لخاصية `--effort`، وتجريد الراية تلقائياً عند تشغيل نماذج Claude أو أي نموذج غير داعم.
+- [x] Task 3: تحديث `server/web/index.html` لتعطيل قائمة الـ effort أو إخفائها مع تقديم إشعار صوتي لمستخدم TalkBack/Jieshuo بأن التفكير غير مدعوم لهذا النموذج.
+- [x] Task 4: مزامنة التعديلات واختبار تشغيل نموذج `claude-sonnet-4-6` والتأكد من انطلاق الجلسة بنجاح دون أي خطأ.
+
+## Phase 18: Permanent Release Keystore & In-Place Seamless APK Update Pipeline (REQ-016)
+- [x] Task 1: توليد مفتاح توقيع دائم (`antigravity-release-key.jks`) بمعايير أمان موثوقة (RSA 4096 / SHA-256).
+- [x] Task 2: تكوين خيارات التوقيع الدائم (`signingConfigs.release`) داخل `app/build.gradle`.
+- [x] Task 3: تحديث مسار عمل البناء السحابي `.github/workflows/build-apk.yml` لاستخدام مفتاح التوقيع الدائم عند بناء وتوقيع حزم الـ Release APK.
+- [x] Task 4: التحقق العملي من إمكانية تثبيت تحديث جديد فوق الإصدار القديم مباشرة (In-Place Update) بدون طلب إلغاء التثبيت.

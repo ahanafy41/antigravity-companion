@@ -1,35 +1,33 @@
 {
-  "issue_id": "AUTH-OAUTH-WEBVIEW-HANG",
-  "severity": "CRITICAL",
+  "issue_id": "FEATURE-REMOVAL-CUSTOM-AGENT",
+  "severity": "HIGH",
   "environment": {
     "os": "Android / Linux Termux aarch64",
-    "runtime": "Python 3.11 / Termux glibc",
+    "runtime": "Python 3.11 / Web HTML5",
     "dependencies": [
-      "agy.va39",
-      "glibc-repo",
-      "resolv-conf",
-      "termux-tools"
+      "server.py",
+      "custom_agent.py",
+      "index.html"
     ]
   },
-  "reproduction_command": "curl -X POST http://127.0.0.1:7681/api/auth/start",
   "symptoms": [
-    "Infinite hang on loading OAuth URL when starting auth from Companion App web UI",
-    "Go netdns resolver failure: lookup play.googleapis.com on [::1]:53 connection refused due to missing GODEBUG=netdns=cgo",
-    "Direct execution of agy.va39 bypassing the official C wrapper /data/data/com.termux/files/usr/bin/agy",
-    "WebView navigation via window.location.href to Google Accounts OAuth URL causes blank/blocked 403 disallowed_useragent and kicks user out of Companion App"
+    "وجود ميزة الوكيل المخصص غير الضرورية تزيد من تعقيد الواجهة وتشتت تجربة المستخدم",
+    "اعتماد السيرفر على ملف custom_agent.py منفصل ونقاط نهاية زائدة /api/custom-agent/*",
+    "ازدواجية محركات الذكاء الاصطناعي في الهيدر وقائمة اختيار النماذج"
   ],
-  "diagnostic_branch": "Branch B: Concurrency / Lifecycle",
+  "diagnostic_branch": "Branch A: API Contract Mismatch",
   "exact_location_pinpoint": {
     "file_path": "server/server.py",
-    "line_number": 298,
-    "symbol_or_ast_node": "InteractivePTYAuthManager.start_login",
-    "offending_snippet": "cmd = [glibc_ld, \"--library-path\", glibc_lib, agy_payload]"
+    "line_number": 1261,
+    "symbol_or_ast_node": "handle_ai_stream.custom_agent_branch",
+    "offending_snippet": "if requested_engine == 'custom' and custom_agent:"
   },
-  "hypothesis": "Two distinct defects compound to break login in the web interface: (1) In server.py, start_login directly executes agy.va39 with ld-linux-aarch64.so.1 bypassing the official C wrapper /data/data/com.termux/files/usr/bin/agy and omitting GODEBUG=netdns=cgo and SSL_CERT_FILE. Without this, Go binaries in Termux glibc fail DNS queries on [::1]:53 because Android lacks /etc/resolv.conf, preventing agy from contacting Google to generate the OAuth URL. (2) In index.html, clicking the login link navigates the embedded Android WebView via window.location.href instead of delegating strictly to the system browser via termux-open-url (am start). Google explicitly blocks OAuth inside embedded WebViews (RFC 8252), causing the app view to freeze or show a blank loading screen.",
+  "hypothesis": "ميزة الوكيل المخصص أصبحت زائدة وتسبب تعقيداً في واجهة المستخدم (Web UI) وفي خادم الباك إند (server.py) مع الاعتماد على ملف custom_agent.py المنفصل ونقاط نهاية غير مستخدمة (/api/custom-agent/*). إزالة الميزة بالكامل ستجعل النظام أحادي النواة يعتمد كلياً ونظيفاً على محرك Antigravity الرسمي.",
   "fix_plan": [
-    "Modify server/server.py to execute the official agy wrapper /data/data/com.termux/files/usr/bin/agy which handles resolv.conf and sets glibc environment.",
-    "Explicitly set GODEBUG=netdns=cgo, SSL_CERT_FILE=/data/data/com.termux/files/usr/etc/tls/cert.pem, and remove LD_PRELOAD in server.py process environments.",
-    "Add exports for GODEBUG and SSL_CERT_FILE in launch_server.sh to guarantee parent and child process health.",
-    "Modify server/web/index.html to remove window.location.href and preventDefault() on OAuth link click, keeping the Companion App WebView stable on 127.0.0.1:7681 while launching Chrome via termux-open-url."
-  ]
+    "حذف ملف server/custom_agent.py وملف app/src/main/assets/server/custom_agent.py نهائياً.",
+    "تعديل server/server.py ونسخته في assets لإزالة استيراد custom_agent، وحذف تفريعة custom_agent في handle_ai_stream، وحذف نقاط النهاية /api/custom-agent/config و /api/custom-agent/models.",
+    "تعديل server/web/index.html ونسخته في assets لإزالة زر تبديل المحرك من الهيدر (#btn-header-engine)، وتبويب ولوحة الوكيل المخصص (#panel-engine-custom و #tab-engine-custom)، وكافة كود الجافاسكريبت والـ CSS المتعلق بالوكيل المخصص.",
+    "مزامنة التعديلات النظيفة مع بيئة الخادم المشغلة في ~/.antigravity-server/."
+  ],
+  "verification_test": "python3 /data/data/com.termux/files/home/.gemini/config/skills/universal-software-agency/scripts/validate_code.py server/server.py"
 }

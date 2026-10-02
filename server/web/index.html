@@ -737,15 +737,6 @@ button:focus-visible, input:focus-visible, a:focus-visible {
 /* ==========================================================================
    Dual-Engine Architecture, Steps Tracker & File Explorer Styles
    ========================================================================== */
-.engine-mode-tabs {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background-color: var(--bg-card-header);
-  padding: 4px;
-  border-radius: 10px;
-  border: 1px solid var(--border-main);
-}
 
 .tab-btn {
   background: transparent;
@@ -1473,6 +1464,11 @@ dialog.accessible-dialog::backdrop {
   border: 1px solid transparent;
   text-align: right;
   direction: rtl;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  width: 100%;
 }
 .slash-menu-item:hover, .slash-menu-item.selected, .slash-menu-item:focus {
   background: rgba(0, 240, 255, 0.14);
@@ -1556,6 +1552,11 @@ dialog.accessible-dialog::backdrop {
   border: 1px solid transparent;
   text-align: right;
   direction: rtl;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  width: 100%;
 }
 .at-menu-item:hover, .at-menu-item.selected, .at-menu-item:focus {
   background: rgba(188, 140, 255, 0.15);
@@ -2151,15 +2152,7 @@ dialog.accessible-dialog::backdrop {
     width: 100%;
     justify-content: space-between;
   }
-  .engine-mode-tabs {
-    width: 100%;
-  }
-  .engine-mode-tabs .tab-btn {
-    flex: 1 1 0;
-    text-align: center;
-    padding: 7px 4px;
-    font-size: 0.82rem;
-  }
+
   .header-actions {
     width: 100%;
     display: flex;
@@ -2222,7 +2215,7 @@ dialog.accessible-dialog::backdrop {
   
   <header class="app-header" role="banner">
     <div class="brand-section">
-      <button type="button" id="btn-toggle-drawer" class="btn btn-drawer-toggle" aria-label="القائمة الرئيسية والإعدادات" aria-haspopup="dialog" aria-expanded="false"><span class="drawer-icon" aria-hidden="true">☰</span> <span class="drawer-label">القائمة</span></button>
+      <button type="button" id="btn-toggle-drawer" class="btn btn-drawer-toggle" aria-label="القائمة" aria-haspopup="dialog" aria-expanded="false"><span class="drawer-icon" aria-hidden="true">☰</span> <span class="drawer-label">القائمة</span></button>
       <span class="brand-name" style="font-size: 1.05rem;">Antigravity</span>
       <div class="status-badge" id="status-badge" role="status" aria-label="حالة الخادم">
         <span class="status-dot" id="status-dot" aria-hidden="true"></span>
@@ -2231,12 +2224,11 @@ dialog.accessible-dialog::backdrop {
     </div>
 
 
-    <div class="header-actions" role="toolbar" aria-label="إجراءات سريعة">
-      <button type="button" id="btn-header-engine" class="btn" style="border-color:var(--accent-cyan);" aria-label="تبديل محرك الذكاء الاصطناعي: Antigravity أو الوكيل المستقل المخصص"><span id="header-engine-badge">المحرك: Antigravity</span></button>
-      <button type="button" id="btn-header-auth" class="btn" aria-label="حساب Google ومصادقة الوكيل"><span id="header-auth-badge">الحساب</span></button>
-      <button type="button" id="btn-header-model" class="btn btn-header-model" aria-label="النموذج النشط حالياً: Gemini 3.8 Flash. اضغط لتغيير النموذج"><span id="header-active-model-name">Gemini 3.8</span></button>
-      <button type="button" id="btn-new-ai-chat" class="btn btn-primary" aria-label="بدء محادثة جديدة وتفريغ الشاشة">جديد</button>
-      <button type="button" id="btn-toggle-tones" class="btn" style="display:none;" aria-label="تبديل النغمات التفاعلية">أصوات</button>
+    <div class="header-actions" role="toolbar" aria-label="الإجراءات">
+      <button type="button" id="btn-header-auth" class="btn" aria-label="الحساب"><span id="header-auth-badge">الحساب</span></button>
+      <button type="button" id="btn-header-model" class="btn btn-header-model" aria-label="تغيير النموذج"><span id="header-active-model-name">Gemini 3.8</span></button>
+      <button type="button" id="btn-new-ai-chat" class="btn btn-primary" aria-label="محادثة جديدة">جديد</button>
+      <button type="button" id="btn-toggle-tones" class="btn" style="display:none;" aria-label="الأصوات">أصوات</button>
     </div>
   </header>
 
@@ -2244,75 +2236,79 @@ dialog.accessible-dialog::backdrop {
   <div id="drawer-backdrop" class="drawer-backdrop" aria-hidden="true"></div>
 
   
-  <nav id="antigravity-drawer" class="antigravity-drawer" role="dialog" aria-modal="true" aria-label="درج التطبيقات والقوائم الرئيسية" aria-hidden="true" inert>
+  <nav id="antigravity-drawer" class="antigravity-drawer" role="dialog" aria-modal="true" aria-label="القائمة" aria-hidden="true" inert>
     <div class="drawer-header">
       <div class="drawer-header-title">
-        <h2>قائمة الخيارات والأدوات</h2>
+        <h2>القائمة</h2>
       </div>
-      <button type="button" id="btn-close-drawer" class="btn-close-drawer" aria-label="إغلاق القائمة">✕</button>
+      <button type="button" id="btn-close-drawer" class="btn-close-drawer" aria-label="إغلاق">✕</button>
     </div>
-    <div class="drawer-body" role="menu" aria-label="قائمة الخيارات والأدوات">
-      <button type="button" id="btn-drawer-change-model" class="drawer-btn" aria-label="النموذج النشط ومستوى التفكير">
-        <span>النموذج ومستوى التفكير</span>
+    <div class="drawer-body" role="menu" aria-label="الخيارات">
+      <button type="button" id="btn-drawer-change-model" class="drawer-btn" aria-label="النموذج والتفكير">
+        <span>النموذج والتفكير</span>
         <strong id="drawer-active-model-name" class="badge-count" style="font-size:0.78rem;">Gemini 3.8</strong>
       </button>
-      <button type="button" id="btn-open-auth-wizard" class="drawer-btn" aria-label="حساب Google ومصادقة الوكيل">
-        <span>حساب Google والمصادقة</span>
+      <button type="button" id="btn-open-auth-wizard" class="drawer-btn" aria-label="حساب Google">
+        <span>حساب Google</span>
         <strong id="drawer-auth-badge" class="badge-count" style="font-size:0.78rem;">فحص...</strong>
       </button>
-      <button type="button" id="btn-open-settings" class="drawer-btn" aria-label="إعدادات الوكيل وسياسات الأمان">
-        <span>إعدادات الوكيل والأمان</span>
+      <button type="button" id="btn-open-settings" class="drawer-btn" aria-label="الإعدادات والأمان">
+        <span>الإعدادات والأمان</span>
       </button>
-      <button type="button" id="btn-open-quota" class="drawer-btn" aria-label="حصة ونسب استهلاك النماذج المتبقية">
-        <span>حصة واستهلاك النماذج</span>
+      <button type="button" id="btn-open-quota" class="drawer-btn" aria-label="استهلاك النماذج">
+        <span>استهلاك النماذج</span>
       </button>
-      <button type="button" id="btn-open-subagents" class="drawer-btn" aria-label="غرفة عمليات الوكلاء وفرق العمل">
-        <span>فريق الوكلاء الموزعين</span>
+      <button type="button" id="btn-open-subagents" class="drawer-btn" aria-label="فريق الوكلاء">
+        <span>فريق الوكلاء</span>
         <span id="val-subagents-count-drawer" class="badge-count">0</span>
       </button>
-      <button type="button" id="btn-open-tasks" class="drawer-btn" aria-label="عرض ومراقبة المهام المجدولة والمؤقتات">
-        <span>المؤقتات ومهام الخلفية</span>
+      <button type="button" id="btn-open-tasks" class="drawer-btn" aria-label="المهام والمؤقتات">
+        <span>المهام والمؤقتات</span>
         <span id="val-tasks-count-drawer" class="badge-count">0</span>
       </button>
-      <button type="button" id="btn-open-skills" class="drawer-btn" aria-label="إدارة وتفعيل مهارات الوكيل">
-        <span>مهارات الوكيل (Skills)</span>
+      <button type="button" id="btn-open-skills" class="drawer-btn" aria-label="المهارات">
+        <span>المهارات</span>
       </button>
-      <button type="button" id="btn-open-mcp" class="drawer-btn" aria-label="إدارة وتثبيت بروتوكولات MCP">
+      <button type="button" id="btn-open-plugins" class="drawer-btn" aria-label="الإضافات">
+        <span>الإضافات</span>
+        <span id="val-plugins-count-drawer" class="badge-count">1</span>
+      </button>
+      <button type="button" id="btn-open-mcp" class="drawer-btn" aria-label="بروتوكولات MCP">
         <span>بروتوكولات MCP</span>
       </button>
-      <button type="button" id="btn-open-conversations" class="drawer-btn" aria-label="أرشيف وسجل المحادثات السابقة">
-        <span>سجل المحادثات</span>
+      <button type="button" id="btn-open-conversations" class="drawer-btn" aria-label="المحادثات السابقة">
+        <span>المحادثات السابقة</span>
       </button>
-      <button type="button" id="btn-save-chat" class="drawer-btn" aria-label="حفظ وتصدير المحادثة بتنسيق Markdown">
-        <span>حفظ وتصدير الشات</span>
+      <button type="button" id="btn-save-chat" class="drawer-btn" aria-label="تصدير المحادثة">
+        <span>تصدير المحادثة</span>
       </button>
-      <button type="button" id="btn-clear-chat" class="drawer-btn btn-danger" aria-label="مسح شاشة الشات وتصفير الجلسة">
-        <span>مسح وتصفير الجلسة</span>
+      <button type="button" id="btn-clear-chat" class="drawer-btn btn-danger" aria-label="مسح المحادثة">
+        <span>مسح المحادثة</span>
       </button>
     </div>
   </nav>
 
 
   
-  <section id="ai-studio-viewport" class="ai-studio-viewport" role="region" aria-label="أستوديو الذكاء الاصطناعي المتوافق">
+  <section id="ai-studio-viewport" class="ai-studio-viewport" role="region" aria-label="منطقة المحادثة">
     
-    <div id="ai-system-bar" class="ai-system-bar sr-only" role="status" aria-label="شريط استهلاك الذكاء الاصطناعي والموارد" aria-hidden="true">
-      <div class="system-stat-item ai-stat-highlight" id="stat-ai-quota-google" title="حصة نماذج Google المتبقية">
+    <div id="ai-system-bar" class="ai-system-bar sr-only" role="status" aria-label="شريط الموارد" aria-hidden="true">
+      <div class="system-stat-item ai-stat-highlight" id="stat-ai-quota-google" title="حصة Google">
         <span class="stat-icon" aria-hidden="true">🌐</span>
         <span class="stat-label">Google:</span>
         <span class="stat-val" id="val-quota-google">--%</span>
       </div>
-      <div class="system-stat-item ai-stat-highlight" id="stat-ai-quota-claude" title="حصة نماذج Claude و GPT المتبقية">
+      <div class="system-stat-item ai-stat-highlight" id="stat-ai-quota-claude" title="حصة Claude و GPT">
         <span class="stat-icon" aria-hidden="true">🤖</span>
         <span class="stat-label">Claude/GPT:</span>
         <span class="stat-val" id="val-quota-claude">--%</span>
       </div>
-      <div class="system-stat-item" id="stat-ai-tokens" title="استهلاك التوكنز">
+      <div class="system-stat-item" id="stat-ai-tokens" title="التوكنز المستهلكة">
         <span class="stat-icon" aria-hidden="true">⚡</span>
         <span class="stat-label">التوكنز:</span>
         <span class="stat-val" id="val-ai-tokens">0</span>
       </div>
-      <div class="system-stat-item" id="stat-subagents" title="الوكلاء الفرعيون في الجلسة">
+      <div class="system-stat-item" id="stat-subagents" title="الوكلاء">
         <span class="stat-icon" aria-hidden="true">👥</span>
         <span class="stat-label">فريق العمل:</span>
         <span class="stat-val" id="val-subagents-count">0</span>
@@ -2322,33 +2318,33 @@ dialog.accessible-dialog::backdrop {
         <span class="stat-label">المحادثة:</span>
         <span class="stat-val" id="val-session-title">تلقائية (نشطة)</span>
       </div>
-      <button type="button" id="btn-open-quota-inline" class="btn-stat-refresh" aria-label="عرض تفاصيل حصص النماذج المتبقية">📊 الحصص</button>
-      <button type="button" id="btn-refresh-stats" class="btn-stat-refresh" aria-label="تحديث بيانات استهلاك الذكاء الاصطناعي">🔄 تحديث</button>
+      <button type="button" id="btn-open-quota-inline" class="btn-stat-refresh" aria-label="الحصص">📊 الحصص</button>
+      <button type="button" id="btn-refresh-stats" class="btn-stat-refresh" aria-label="تحديث الحصص">🔄 تحديث</button>
     </div>
 
-    <div id="ai-chat-feed" class="ai-chat-feed" role="region" aria-label="سجل المحادثة مع الذكاء الاصطناعي"></div>
+    <div id="ai-chat-feed" class="ai-chat-feed" role="region" aria-label="الرسائل"></div>
 
 
     
     <div id="subagent-focus-banner" style="display:none; background:#102230; border:1px solid var(--accent-cyan); border-radius:8px; padding:6px 12px; margin:0 14px 6px 14px; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;" role="status" aria-live="polite">
       <div style="display:flex; align-items:center; gap:8px;">
         <span style="font-size:0.88rem; color:var(--text-main);">
-          أنت الآن توجه رسالتك مباشرة إلى: <strong id="focus-agent-name" style="color:var(--accent-cyan);">الوكيل الفرعي</strong>
+          توجه الرسالة إلى: <strong id="focus-agent-name" style="color:var(--accent-cyan);">الوكيل</strong>
         </span>
       </div>
-      <button type="button" id="btn-cancel-agent-focus" class="btn btn-sm" style="background:#221520; color:var(--accent-red); border-color:var(--accent-red); padding:2px 8px; font-size:0.8rem;" aria-label="إلغاء التوجيه للوكيل الفرعي والعودة للمحادثة العامة">العودة للوكيل العام</button>
+      <button type="button" id="btn-cancel-agent-focus" class="btn btn-sm" style="background:#221520; color:var(--accent-red); border-color:var(--accent-red); padding:2px 8px; font-size:0.8rem;" aria-label="إلغاء التوجيه">العودة للعام</button>
     </div>
 
     
     <div id="ai-interactive-prompt-slot" style="margin: 0 14px 10px 14px;"></div>
 
     
-    <footer class="ai-input-section" role="region" aria-label="حقل إرسال المهام للوكيل الذكي">
+    <footer class="ai-input-section" role="region" aria-label="كتابة رسالة">
       <form id="ai-chat-form" class="ai-chat-form" style="display:flex; align-items:center; gap:8px;">
-        <textarea id="ai-prompt-input" class="ai-prompt-input" rows="1" placeholder="اكتب سؤالك أو أمرك للوكيل هنا..." aria-label="حقل إدخال الأوامر والأسئلة للوكيل الذكي"></textarea>
-        <button type="button" id="btn-open-files-bottom" class="btn" style="background:var(--bg-card); border:1px solid var(--border-main); color:var(--accent-cyan); min-height:44px; padding:0 12px; font-weight:700;" aria-label="استعراض ملفات المشروع وإنشاء مشروع جديد">ملفات</button>
-        <button type="submit" id="btn-ai-send" class="btn btn-send-ai" aria-label="إرسال الطلب أو السؤال">إرسال</button>
-        <button type="button" id="btn-ai-abort" class="btn btn-abort-ai" style="background: #3d1b24; border: 1px solid var(--accent-red); color: var(--accent-red); display: none; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px;" aria-label="إيقاف المهمة الجارية">إيقاف</button>
+        <textarea id="ai-prompt-input" class="ai-prompt-input" rows="1" placeholder="اكتب رسالتك هنا..." aria-label="اكتب رسالتك"></textarea>
+        <button type="button" id="btn-open-files-bottom" class="btn" style="background:var(--bg-card); border:1px solid var(--border-main); color:var(--accent-cyan); min-height:44px; padding:0 12px; font-weight:700;" aria-label="الملفات">ملفات</button>
+        <button type="submit" id="btn-ai-send" class="btn btn-send-ai" aria-label="إرسال">إرسال</button>
+        <button type="button" id="btn-ai-abort" class="btn btn-abort-ai" style="background: #3d1b24; border: 1px solid var(--accent-red); color: var(--accent-red); display: none; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px;" aria-label="إيقاف">إيقاف</button>
       </form>
     </footer>
   </section>
@@ -2421,12 +2417,14 @@ dialog.accessible-dialog::backdrop {
     };
     window.syncInstalledMcpGlobally();
 
-    // محرك الإكمال التلقائي والنافذة المنبثقة لقائمة أوامر السلاش والمهارات
+    // محرك الإكمال التلقائي والنافذة المنبثقة لقائمة أوامر السلاش والمهارات (Accessible & Multi-Trigger)
     window.attachSlashAutocomplete = function(inputElem, onSelectCallback) {
       if (!inputElem) return;
       let popup = null;
       let selectedIdx = 0;
       let currentFiltered = [];
+      let currentSlashIndex = -1;
+      let autoFocusTimer = null;
 
       function announceSlash(txt) {
         const ann = document.getElementById('sr-announcer');
@@ -2437,15 +2435,52 @@ dialog.accessible-dialog::backdrop {
       }
 
       function closePopup() {
+        if (autoFocusTimer) {
+          clearTimeout(autoFocusTimer);
+          autoFocusTimer = null;
+        }
         if (popup && popup.parentNode) {
           popup.parentNode.removeChild(popup);
         }
         popup = null;
         selectedIdx = 0;
         currentFiltered = [];
+        currentSlashIndex = -1;
         inputElem.removeAttribute('aria-expanded');
         inputElem.removeAttribute('aria-controls');
         inputElem.removeAttribute('aria-activedescendant');
+      }
+
+      function selectItem(item) {
+        if (!item) return;
+        const val = inputElem.value;
+        const cursor = (typeof inputElem.selectionStart === 'number') ? inputElem.selectionStart : val.length;
+        const textBefore = val.slice(0, cursor);
+        const slashIdx = (currentSlashIndex >= 0 && currentSlashIndex < cursor) ? currentSlashIndex : textBefore.lastIndexOf('/');
+
+        if (slashIdx !== -1) {
+          const prefix = val.slice(0, slashIdx);
+          let textAfter = val.slice(cursor);
+          if (textAfter.startsWith(' ')) {
+            textAfter = textAfter.slice(1);
+          }
+          const insertText = item.cmd + ' ';
+          inputElem.value = prefix + insertText + textAfter;
+          const newPos = prefix.length + insertText.length;
+          if (typeof inputElem.setSelectionRange === 'function') {
+            inputElem.setSelectionRange(newPos, newPos);
+          }
+        } else {
+          inputElem.value = item.cmd + ' ' + val;
+        }
+
+        closePopup();
+        announceSlash(`تم اختيار أمر ${item.cmd}`);
+        inputElem.focus();
+        inputElem.dispatchEvent(new Event('input', { bubbles: true }));
+        if (typeof onSelectCallback === 'function') {
+          onSelectCallback(item);
+        }
       }
 
       function renderItems() {
@@ -2466,12 +2501,14 @@ dialog.accessible-dialog::backdrop {
           const isSelected = (idx === selectedIdx);
           const isSkill = item.source === 'skill' || item.cmd.startsWith('/universal') || item.cmd.startsWith('/task') || item.cmd.startsWith('/study') || item.cmd.startsWith('/jieshuo');
           const isHelper = item.source === 'helper' || item.cmd.startsWith('@');
-          const row = document.createElement('div');
+          const row = document.createElement('button');
+          row.type = 'button';
           row.className = 'slash-menu-item' + (isSelected ? ' selected' : '');
           row.id = 'slash-opt-' + idx;
           row.setAttribute('role', 'option');
           row.setAttribute('aria-selected', String(isSelected));
-          row.setAttribute('tabindex', '-1');
+          row.setAttribute('tabindex', '0');
+          row.setAttribute('aria-label', `${item.cmd}، ${item.desc}${isSkill ? '، مهارة' : ''}`);
 
           let icon = '⚡';
           if (isSkill) icon = '🧠';
@@ -2490,42 +2527,89 @@ dialog.accessible-dialog::backdrop {
             ${isSelected ? '<span class="option-badge" style="background:var(--accent-cyan); color:#000; font-size:0.75rem; font-weight:bold; padding:2px 6px; border-radius:4px;">Enter ↵</span>' : ''}
           `;
 
-          row.addEventListener('mousedown', (e) => {
+          row.addEventListener('click', (e) => {
             e.preventDefault();
             selectItem(item);
           });
+
+          row.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              const nextIdx = (idx + 1) % currentFiltered.length;
+              selectedIdx = nextIdx;
+              const nextEl = listContainer.querySelector('#slash-opt-' + nextIdx);
+              if (nextEl) nextEl.focus();
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              if (idx === 0) {
+                inputElem.focus();
+              } else {
+                const prevIdx = (idx - 1 + currentFiltered.length) % currentFiltered.length;
+                selectedIdx = prevIdx;
+                const prevEl = listContainer.querySelector('#slash-opt-' + prevIdx);
+                if (prevEl) prevEl.focus();
+              }
+            } else if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              selectItem(item);
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              closePopup();
+              announceSlash('تم إغلاق قائمة الأوامر');
+              inputElem.focus();
+            }
+          });
+
+          row.addEventListener('focus', () => {
+            selectedIdx = idx;
+            inputElem.setAttribute('aria-activedescendant', row.id);
+          });
+
           listContainer.appendChild(row);
 
           if (isSelected) {
             inputElem.setAttribute('aria-activedescendant', row.id);
-            row.scrollIntoView({ block: 'nearest' });
           }
         });
-
-        const active = currentFiltered[selectedIdx];
-        if (active) {
-          announceSlash(`${active.cmd} - ${active.desc}`);
-        }
       }
 
-      function selectItem(item) {
-        if (!item) return;
-        inputElem.value = item.cmd + ' ';
-        closePopup();
-        announceSlash(`تم اختيار ${item.cmd}`);
-        inputElem.focus();
-        if (typeof onSelectCallback === 'function') {
-          onSelectCallback(item);
+      function getSlashQuery() {
+        const val = inputElem.value;
+        const cursor = (typeof inputElem.selectionStart === 'number') ? inputElem.selectionStart : val.length;
+        const textBefore = val.slice(0, cursor);
+        const slashIdx = textBefore.lastIndexOf('/');
+        if (slashIdx === -1) return null;
+        if (slashIdx > 0) {
+          const prevChar = textBefore.charAt(slashIdx - 1);
+          if (!/\s/.test(prevChar)) return null;
         }
+        const query = textBefore.slice(slashIdx + 1);
+        if (/\s/.test(query)) return null;
+        return { query, slashIndex: slashIdx, cursor: cursor };
       }
 
-      function openOrUpdatePopup(query) {
-        const q = query.toLowerCase().trim();
+      function checkAndOpenPopup(options = {}) {
+        if (document.getElementById('at-autocomplete-popup')) {
+          closePopup();
+          return;
+        }
+
+        const res = getSlashQuery();
+        if (!res) {
+          closePopup();
+          return;
+        }
+
+        currentSlashIndex = res.slashIndex;
+        const q = res.query.toLowerCase().trim();
+
         currentFiltered = window.WELL_KNOWN_SLASH_COMMANDS.filter(c => {
-          if (!q || q === '/') return true;
+          if (!q) return true;
           const searchKey = q.startsWith('/') ? q : ('/' + q);
           return c.cmd.toLowerCase().includes(searchKey) || c.desc.toLowerCase().includes(q.replace(/^\//, ''));
         });
+
+        const isNewPopup = !popup;
 
         if (!popup) {
           const existingAt = document.getElementById('at-autocomplete-popup');
@@ -2534,62 +2618,74 @@ dialog.accessible-dialog::backdrop {
           popup = document.createElement('div');
           popup.className = 'slash-menu-popup';
           popup.id = 'slash-autocomplete-popup';
-          popup.setAttribute('role', 'listbox');
-          popup.setAttribute('aria-label', 'قائمة أوامر السلاش والمهارات المتاحة');
+          popup.setAttribute('role', 'dialog');
+          popup.setAttribute('aria-label', 'قائمة أوامر السلاش والمهارات');
 
           popup.innerHTML = `
-            <div class="slash-menu-header">
-              <span>⚡ قائمة أوامر السلاش والمهارات (${currentFiltered.length})</span>
-              <span style="font-size:0.75rem; color:var(--text-muted);">↑↓ للتنقل | Enter للاختيار | Esc للإغلاق</span>
+            <div class="slash-menu-header" style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-weight:700;">⚡ أوامر السلاش والمهارات (${currentFiltered.length})</span>
+              <button type="button" id="btn-close-slash-popup" class="btn btn-sm" aria-label="إغلاق قائمة الأوامر والعودة لحقل الكتابة" style="background:transparent; border:1px solid var(--border-main); color:var(--text-muted); border-radius:4px; padding:2px 8px; font-size:0.75rem; cursor:pointer;">إلغاء ✕</button>
             </div>
-            <div class="slash-items-list" role="presentation"></div>
+            <div class="slash-items-list" role="listbox" aria-label="الخيارات المتاحة"></div>
           `;
 
           const parentBox = inputElem.closest('.ai-input-section') || inputElem.closest('.bottom-input-section') || inputElem.parentElement;
           parentBox.appendChild(popup);
           inputElem.setAttribute('aria-expanded', 'true');
           inputElem.setAttribute('aria-controls', popup.id);
+
+          const btnClose = popup.querySelector('#btn-close-slash-popup');
+          if (btnClose) {
+            btnClose.addEventListener('click', () => {
+              closePopup();
+              announceSlash('تم إغلاق قائمة الأوامر');
+              inputElem.focus();
+            });
+          }
         }
 
         const countSpan = popup.querySelector('.slash-menu-header span');
         if (countSpan) {
-          countSpan.textContent = `⚡ قائمة أوامر السلاش والمهارات (${currentFiltered.length})`;
+          countSpan.textContent = `⚡ أوامر السلاش والمهارات (${currentFiltered.length})`;
         }
         selectedIdx = 0;
         renderItems();
+
+        if (isNewPopup) {
+          announceSlash(`قائمة أوامر السلاش مفتوحة، ${currentFiltered.length} خيار. اضغط السهم لأسفل أو اسحب للتنقل.`);
+          if (autoFocusTimer) clearTimeout(autoFocusTimer);
+          autoFocusTimer = setTimeout(() => {
+            if (popup && document.activeElement === inputElem) {
+              const firstOpt = popup.querySelector('.slash-menu-item');
+              if (firstOpt) firstOpt.focus();
+            }
+          }, 140);
+        } else if (options.immediateFocus) {
+          const firstOpt = popup.querySelector('.slash-menu-item');
+          if (firstOpt) firstOpt.focus();
+        }
       }
 
-      inputElem.addEventListener('input', function() {
-        const val = this.value;
-        if (val.startsWith('/')) {
-          openOrUpdatePopup(val);
-        } else {
-          closePopup();
+      inputElem.addEventListener('input', () => checkAndOpenPopup());
+      inputElem.addEventListener('click', () => checkAndOpenPopup());
+      inputElem.addEventListener('keyup', function(e) {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
+          checkAndOpenPopup();
         }
       });
 
       inputElem.addEventListener('keydown', function(e) {
         if (!popup) {
-          if (e.key === '/' && !this.value) {
-            setTimeout(() => {
-              if (this.value.startsWith('/')) openOrUpdatePopup(this.value);
-            }, 10);
+          if (e.key === '/') {
+            setTimeout(() => checkAndOpenPopup({ immediateFocus: false }), 20);
           }
           return;
         }
 
         if (e.key === 'ArrowDown') {
           e.preventDefault();
-          if (currentFiltered.length > 0) {
-            selectedIdx = (selectedIdx + 1) % currentFiltered.length;
-            renderItems();
-          }
-        } else if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          if (currentFiltered.length > 0) {
-            selectedIdx = (selectedIdx - 1 + currentFiltered.length) % currentFiltered.length;
-            renderItems();
-          }
+          const firstOpt = popup.querySelector('.slash-menu-item');
+          if (firstOpt) firstOpt.focus();
         } else if (e.key === 'Enter' || e.key === 'Tab') {
           if (currentFiltered.length > 0) {
             e.preventDefault();
@@ -2604,17 +2700,22 @@ dialog.accessible-dialog::backdrop {
       });
 
       inputElem.addEventListener('blur', function() {
-        setTimeout(closePopup, 200);
+        setTimeout(() => {
+          if (popup && !popup.contains(document.activeElement)) {
+            closePopup();
+          }
+        }, 220);
       });
     };
 
-    // محرك الإكمال التلقائي واستدعاء بروتوكولات MCP بعلامة الات (@)
+    // محرك الإكمال التلقائي واستدعاء بروتوكولات MCP بعلامة الات (@) (Accessible & Multi-Trigger)
     window.attachAtAutocomplete = function(inputElem, onSelectCallback) {
       if (!inputElem) return;
       let popup = null;
       let selectedIdx = 0;
       let currentFiltered = [];
       let currentAtIndex = -1;
+      let autoFocusTimer = null;
 
       function safeEscape(s) {
         return (s || '').toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -2629,6 +2730,10 @@ dialog.accessible-dialog::backdrop {
       }
 
       function closePopup() {
+        if (autoFocusTimer) {
+          clearTimeout(autoFocusTimer);
+          autoFocusTimer = null;
+        }
         if (popup && popup.parentNode) {
           popup.parentNode.removeChild(popup);
         }
@@ -2690,12 +2795,14 @@ dialog.accessible-dialog::backdrop {
 
         currentFiltered.forEach((item, idx) => {
           const isSelected = (idx === selectedIdx);
-          const row = document.createElement('div');
+          const row = document.createElement('button');
+          row.type = 'button';
           row.className = 'at-menu-item' + (isSelected ? ' selected' : '');
           row.id = 'at-opt-' + idx;
           row.setAttribute('role', 'option');
           row.setAttribute('aria-selected', String(isSelected));
-          row.setAttribute('tabindex', '-1');
+          row.setAttribute('tabindex', '0');
+          row.setAttribute('aria-label', `@${item.name}، ${item.enabled ? 'مفعل' : 'معطل'}، ${item.desc || item.title || ''}`);
 
           const statusHtml = item.enabled
             ? '<span class="at-item-status-badge" style="background:rgba(63,185,80,0.2); color:var(--accent-green);">🟢 مفعل</span>'
@@ -2714,22 +2821,51 @@ dialog.accessible-dialog::backdrop {
             ${isSelected ? '<span class="option-badge" style="background:var(--accent-purple); color:#000; font-size:0.75rem; font-weight:bold; padding:2px 6px; border-radius:4px;">Enter ↵</span>' : ''}
           `;
 
-          row.addEventListener('mousedown', (e) => {
+          row.addEventListener('click', (e) => {
             e.preventDefault();
             selectItem(item);
           });
+
+          row.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              const nextIdx = (idx + 1) % currentFiltered.length;
+              selectedIdx = nextIdx;
+              const nextEl = listContainer.querySelector('#at-opt-' + nextIdx);
+              if (nextEl) nextEl.focus();
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              if (idx === 0) {
+                inputElem.focus();
+              } else {
+                const prevIdx = (idx - 1 + currentFiltered.length) % currentFiltered.length;
+                selectedIdx = prevIdx;
+                const prevEl = listContainer.querySelector('#at-opt-' + prevIdx);
+                if (prevEl) prevEl.focus();
+              }
+            } else if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              selectItem(item);
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopImmediatePropagation();
+              closePopup();
+              announceAt('تم إغلاق قائمة بروتوكولات MCP');
+              inputElem.focus();
+            }
+          });
+
+          row.addEventListener('focus', () => {
+            selectedIdx = idx;
+            inputElem.setAttribute('aria-activedescendant', row.id);
+          });
+
           listContainer.appendChild(row);
 
           if (isSelected) {
             inputElem.setAttribute('aria-activedescendant', row.id);
-            row.scrollIntoView({ block: 'nearest' });
           }
         });
-
-        const active = currentFiltered[selectedIdx];
-        if (active) {
-          announceAt(`@${active.name} (${active.enabled ? 'مفعل' : 'معطل'}) - ${active.desc}`);
-        }
       }
 
       function getAtQuery() {
@@ -2744,11 +2880,10 @@ dialog.accessible-dialog::backdrop {
         }
         const query = textBefore.slice(atIdx + 1);
         if (/\s/.test(query)) return null;
-        return { query, atIndex: atIdx };
+        return { query, atIndex: atIdx, cursor };
       }
 
-      function checkAndOpenPopup() {
-        // If slash popup is open, do not conflict
+      function checkAndOpenPopup(options = {}) {
         if (document.getElementById('slash-autocomplete-popup')) {
           closePopup();
           return;
@@ -2763,11 +2898,10 @@ dialog.accessible-dialog::backdrop {
         currentAtIndex = res.atIndex;
         const q = res.query.toLowerCase().trim();
 
-        // If list is empty, trigger background sync
         if (!window.INSTALLED_MCP_SERVERS || window.INSTALLED_MCP_SERVERS.length === 0) {
           if (typeof window.syncInstalledMcpGlobally === 'function') {
             window.syncInstalledMcpGlobally().then(() => {
-              if (popup) checkAndOpenPopup();
+              if (popup) checkAndOpenPopup(options);
             });
           }
         }
@@ -2782,6 +2916,8 @@ dialog.accessible-dialog::backdrop {
           return n.includes(q) || t.includes(q) || d.includes(q);
         });
 
+        const isNewPopup = !popup;
+
         if (!popup) {
           const slashPop = document.getElementById('slash-autocomplete-popup');
           if (slashPop && slashPop.parentNode) slashPop.parentNode.removeChild(slashPop);
@@ -2789,33 +2925,56 @@ dialog.accessible-dialog::backdrop {
           popup = document.createElement('div');
           popup.className = 'at-menu-popup';
           popup.id = 'at-autocomplete-popup';
-          popup.setAttribute('role', 'listbox');
-          popup.setAttribute('aria-label', 'قائمة استدعاء بروتوكولات MCP المتاحة');
+          popup.setAttribute('role', 'dialog');
+          popup.setAttribute('aria-label', 'قائمة استدعاء بروتوكولات MCP');
 
           popup.innerHTML = `
-            <div class="at-menu-header">
-              <span>🔌 استدعاء بروتوكولات MCP (@) (${currentFiltered.length})</span>
-              <span style="font-size:0.75rem; color:var(--text-muted);">↑↓ للتنقل | Enter للاختيار | Esc للإغلاق</span>
+            <div class="at-menu-header" style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-weight:700;">🔌 بروتوكولات MCP (@) (${currentFiltered.length})</span>
+              <button type="button" id="btn-close-at-popup" class="btn btn-sm" aria-label="إغلاق قائمة البروتوكولات والعودة لحقل الكتابة" style="background:transparent; border:1px solid var(--border-main); color:var(--text-muted); border-radius:4px; padding:2px 8px; font-size:0.75rem; cursor:pointer;">إلغاء ✕</button>
             </div>
-            <div class="at-items-list" role="presentation"></div>
+            <div class="at-items-list" role="listbox" aria-label="بروتوكولات MCP المتاحة"></div>
           `;
 
           const parentBox = inputElem.closest('.ai-input-section') || inputElem.closest('.bottom-input-section') || inputElem.parentElement;
           parentBox.appendChild(popup);
           inputElem.setAttribute('aria-expanded', 'true');
           inputElem.setAttribute('aria-controls', popup.id);
+
+          const btnClose = popup.querySelector('#btn-close-at-popup');
+          if (btnClose) {
+            btnClose.addEventListener('click', () => {
+              closePopup();
+              announceAt('تم إغلاق قائمة بروتوكولات MCP');
+              inputElem.focus();
+            });
+          }
         }
 
         const countSpan = popup.querySelector('.at-menu-header span');
         if (countSpan) {
-          countSpan.textContent = `🔌 استدعاء بروتوكولات MCP (@) (${currentFiltered.length})`;
+          countSpan.textContent = `🔌 بروتوكولات MCP (@) (${currentFiltered.length})`;
         }
         selectedIdx = 0;
         renderItems();
+
+        if (isNewPopup) {
+          announceAt(`قائمة بروتوكولات MCP مفتوحة، ${currentFiltered.length} بروتوكول متاح. اضغط السهم لأسفل أو اسحب للتنقل.`);
+          if (autoFocusTimer) clearTimeout(autoFocusTimer);
+          autoFocusTimer = setTimeout(() => {
+            if (popup && document.activeElement === inputElem) {
+              const firstOpt = popup.querySelector('.at-menu-item');
+              if (firstOpt) firstOpt.focus();
+            }
+          }, 140);
+        } else if (options.immediateFocus) {
+          const firstOpt = popup.querySelector('.at-menu-item');
+          if (firstOpt) firstOpt.focus();
+        }
       }
 
-      inputElem.addEventListener('input', checkAndOpenPopup);
-      inputElem.addEventListener('click', checkAndOpenPopup);
+      inputElem.addEventListener('input', () => checkAndOpenPopup());
+      inputElem.addEventListener('click', () => checkAndOpenPopup());
       inputElem.addEventListener('keyup', function(e) {
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') {
           checkAndOpenPopup();
@@ -2825,23 +2984,15 @@ dialog.accessible-dialog::backdrop {
       inputElem.addEventListener('keydown', function(e) {
         if (!popup) {
           if (e.key === '@') {
-            setTimeout(checkAndOpenPopup, 10);
+            setTimeout(() => checkAndOpenPopup({ immediateFocus: false }), 20);
           }
           return;
         }
 
         if (e.key === 'ArrowDown') {
           e.preventDefault();
-          if (currentFiltered.length > 0) {
-            selectedIdx = (selectedIdx + 1) % currentFiltered.length;
-            renderItems();
-          }
-        } else if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          if (currentFiltered.length > 0) {
-            selectedIdx = (selectedIdx - 1 + currentFiltered.length) % currentFiltered.length;
-            renderItems();
-          }
+          const firstOpt = popup.querySelector('.at-menu-item');
+          if (firstOpt) firstOpt.focus();
         } else if (e.key === 'Enter' || e.key === 'Tab') {
           if (currentFiltered.length > 0) {
             e.preventDefault();
@@ -2853,11 +3004,16 @@ dialog.accessible-dialog::backdrop {
           e.stopImmediatePropagation();
           closePopup();
           announceAt('تم إغلاق قائمة بروتوكولات MCP');
+          inputElem.focus();
         }
       });
 
       inputElem.addEventListener('blur', function() {
-        setTimeout(closePopup, 200);
+        setTimeout(() => {
+          if (popup && !popup.contains(document.activeElement)) {
+            closePopup();
+          }
+        }, 220);
       });
     };
   </script>
@@ -2869,20 +3025,20 @@ dialog.accessible-dialog::backdrop {
   <dialog id="files-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="files-title">
     <div class="dialog-content">
       <header class="dialog-header">
-        <h2 id="files-title">📁 مستعرض ملفات المشروع المباشر</h2>
-        <button type="button" id="btn-close-files-top" class="btn-close-dialog" aria-label="إغلاق مستعرض الملفات">✕</button>
+        <h2 id="files-title">ملفات المشروع</h2>
+        <button type="button" id="btn-close-files-top" class="btn-close-dialog" aria-label="إغلاق">✕</button>
       </header>
       <div class="dialog-body">
         <div id="files-list-container">
-          <p>⏳ جارٍ قراءة ملفات المجلد...</p>
+          <p>جاري قراءة الملفات...</p>
         </div>
         <div id="file-viewer-container" style="display: none;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
             <strong id="file-viewer-title" style="color: var(--accent-cyan);"></strong>
             <div style="display: flex; gap: 6px;">
-              <button type="button" id="btn-send-file-to-prompt" class="btn btn-primary btn-sm" aria-label="إرسال مسار هذا الملف لحقل محادثة الوكيل">🤖 أرسل للوكيل</button>
-              <button type="button" id="btn-copy-file-path" class="btn btn-sm" aria-label="نسخ المسار الكامل لهذا الملف">📋 نسخ المسار</button>
-              <button type="button" id="btn-back-to-files" class="btn btn-sm" aria-label="الرجوع لقائمة الملفات">↩ رجوع</button>
+              <button type="button" id="btn-send-file-to-prompt" class="btn btn-primary btn-sm" aria-label="إرسال المسار للدردشة">أرسل للمحادثة</button>
+              <button type="button" id="btn-copy-file-path" class="btn btn-sm" aria-label="نسخ المسار">نسخ المسار</button>
+              <button type="button" id="btn-back-to-files" class="btn btn-sm" aria-label="رجوع">رجوع</button>
             </div>
           </div>
           <pre id="file-viewer-content" class="file-viewer-content" tabindex="0"></pre>
@@ -2898,22 +3054,22 @@ dialog.accessible-dialog::backdrop {
   <dialog id="quota-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="quota-dialog-title" style="max-width: 650px;">
     <div class="dialog-content">
       <header class="dialog-header">
-        <h2 id="quota-dialog-title">📊 حصص ونسب استهلاك النماذج (Antigravity Quota)</h2>
-        <button type="button" id="btn-close-quota-top" class="btn-close-dialog" aria-label="إغلاق نافذة الحصص">✕</button>
+        <h2 id="quota-dialog-title">حصص النماذج</h2>
+        <button type="button" id="btn-close-quota-top" class="btn-close-dialog" aria-label="إغلاق">✕</button>
       </header>
       <div class="dialog-body">
         <p class="form-hint" style="margin-bottom: 14px; color: var(--text-muted);">
-          الحصص الرسمية المتبقية لحسابك مباشرة من محرك Antigravity، مع تواريخ وتوقيت التجديد القادم لكل فئة نماذج.
+          الحصص المتبقية ومواعيد التجديد لكل نموذج.
         </p>
-        <div id="quota-cards-container" role="list" aria-label="قائمة حصص النماذج المتاحة" style="display: flex; flex-direction: column; gap: 12px; max-height: 60vh; overflow-y: auto;">
-          <div style="text-align: center; color: var(--text-muted); padding: 20px;">جاري جلب الحصص المباشرة من الخادم...</div>
+        <div id="quota-cards-container" role="list" aria-label="الحصص" style="display: flex; flex-direction: column; gap: 12px; max-height: 60vh; overflow-y: auto;">
+          <div style="text-align: center; color: var(--text-muted); padding: 20px;">جاري تحميل الحصص...</div>
         </div>
         <div style="margin-top: 14px; background: rgba(0,240,255,0.05); border: 1px solid rgba(0,240,255,0.2); border-radius: 8px; padding: 10px 14px; font-size: 0.85rem; color: var(--text-muted);">
-          ℹ️ <strong>ملاحظة:</strong> تتجدد سعة الـ 5 ساعات تلقائياً كل 5 ساعات بصورة متدرجة، بينما يتجدد الحد الأسبوعي في الموعد الموضح أعلاه.
+          <strong>ملاحظة:</strong> تتجدد الحصص كل 5 ساعات، والحد الأسبوعي في الموعد الموضح.
         </div>
       </div>
       <footer class="dialog-footer">
-        <button type="button" id="btn-force-refresh-quota" class="btn btn-primary" aria-label="تحديث فوري للحصة من الخادم">🔄 تحديث فوري</button>
+        <button type="button" id="btn-force-refresh-quota" class="btn btn-primary" aria-label="تحديث الحصص">تحديث</button>
         <button type="button" id="btn-close-quota" class="btn" aria-label="إغلاق">إغلاق</button>
       </footer>
     </div>
@@ -2923,8 +3079,8 @@ dialog.accessible-dialog::backdrop {
   <dialog id="auth-wizard-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-wizard-title" style="max-width: 600px;">
     <div class="dialog-content">
       <header class="dialog-header">
-        <h2 id="auth-wizard-title">حساب Google ومصادقة الوكيل</h2>
-        <button type="button" id="btn-close-auth-wizard-top" class="btn-close-dialog" aria-label="إغلاق نافذة المصادقة">✕</button>
+        <h2 id="auth-wizard-title">حساب Google</h2>
+        <button type="button" id="btn-close-auth-wizard-top" class="btn-close-dialog" aria-label="إغلاق">✕</button>
       </header>
       <div class="dialog-body">
         <!-- Live Status Card -->
@@ -2939,13 +3095,13 @@ dialog.accessible-dialog::backdrop {
         <!-- Wizard Step 1: Start Login -->
         <div id="auth-step-idle" class="auth-step-container">
           <p style="font-size: 0.95rem; line-height: 1.5; margin-bottom: 14px;">
-            لتشغيل الوكيل الذكي والاستفادة من النماذج المتقدمة، يمكنك تسجيل الدخول بحساب Google المعتمد بسهولة بضغطة زر واحدة بدون أوامر Terminal.
+            سجّل الدخول بحساب Google لتشغيل نماذج Antigravity.
           </p>
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button type="button" id="btn-start-auth-wizard" class="btn btn-primary" aria-label="بدء تسجيل الدخول بحساب Google">
+            <button type="button" id="btn-start-auth-wizard" class="btn btn-primary" aria-label="تسجيل الدخول">
               تسجيل الدخول بحساب Google
             </button>
-            <button type="button" id="btn-auth-logout" class="btn btn-danger" style="display: none;" aria-label="تسجيل الخروج ومسح الجلسة">
+            <button type="button" id="btn-auth-logout" class="btn btn-danger" style="display: none;" aria-label="تسجيل الخروج">
               تسجيل الخروج
             </button>
           </div>
@@ -3060,19 +3216,19 @@ dialog.accessible-dialog::backdrop {
   <dialog id="conversations-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="conversations-dialog-title" style="max-width: 620px;">
     <div class="dialog-content">
       <header class="dialog-header">
-        <h2 id="conversations-dialog-title">💬 أرشيف وسجل المحادثات</h2>
-        <button type="button" id="btn-close-conversations-top" class="btn-close-dialog" aria-label="إغلاق نافذة المحادثات">✕</button>
+        <h2 id="conversations-dialog-title">المحادثات السابقة</h2>
+        <button type="button" id="btn-close-conversations-top" class="btn-close-dialog" aria-label="إغلاق">✕</button>
       </header>
       <div class="dialog-body">
         <p class="form-hint" style="margin-bottom: 12px; color: var(--text-muted);">
-          اختر أي محادثة سابقة لقراءتها أو استئناف العمل ومواصلة الحوار مع الوكيل بنفس السياق والذاكرة.
+          اختر محادثة لاستئناف الحوار.
         </p>
-        <div id="conversations-list-container" role="list" aria-label="قائمة المحادثات السابقة" style="display: flex; flex-direction: column; gap: 10px; max-height: 55vh; overflow-y: auto;">
+        <div id="conversations-list-container" role="list" aria-label="المحادثات" style="display: flex; flex-direction: column; gap: 10px; max-height: 55vh; overflow-y: auto;">
           <div style="text-align: center; color: var(--text-muted); padding: 20px;">جاري تحميل المحادثات...</div>
         </div>
       </div>
       <footer class="dialog-footer">
-        <button type="button" id="btn-close-conversations" class="btn" aria-label="إغلاق نافذة المحادثات">إغلاق</button>
+        <button type="button" id="btn-close-conversations" class="btn" aria-label="إغلاق">إغلاق</button>
       </footer>
     </div>
   </dialog>
@@ -3081,19 +3237,40 @@ dialog.accessible-dialog::backdrop {
   <dialog id="skills-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="skills-dialog-title" style="max-width: 600px;">
     <div class="dialog-content">
       <header class="dialog-header">
-        <h2 id="skills-dialog-title">🧩 إدارة مهارات الوكيل (Agent Skills)</h2>
-        <button type="button" id="btn-close-skills-top" class="btn-close-dialog" aria-label="إغلاق نافذة المهارات">✕</button>
+        <h2 id="skills-dialog-title">المهارات</h2>
+        <button type="button" id="btn-close-skills-top" class="btn-close-dialog" aria-label="إغلاق">✕</button>
       </header>
       <div class="dialog-body">
         <p class="form-hint" style="margin-bottom: 12px; color: var(--text-muted);">
-          يمكنك تفعيل أو تعطيل أي مهارة بنقرة واحدة. عند تعطيل المهارة لا يقرؤها الوكيل، وعند تفعيلها تتاح فوراً لجميع المحادثات.
+          تفعيل وتعطيل المهارات.
         </p>
-        <div id="skills-list-container" role="list" aria-label="قائمة المهارات المثبتة" style="display: flex; flex-direction: column; gap: 10px; max-height: 55vh; overflow-y: auto;">
+        <div id="skills-list-container" role="list" aria-label="المهارات" style="display: flex; flex-direction: column; gap: 10px; max-height: 55vh; overflow-y: auto;">
           <div style="text-align: center; color: var(--text-muted); padding: 20px;">جاري تحميل المهارات...</div>
         </div>
       </div>
       <footer class="dialog-footer">
-        <button type="button" id="btn-close-skills" class="btn" aria-label="إغلاق نافذة المهارات">إغلاق</button>
+        <button type="button" id="btn-close-skills" class="btn" aria-label="إغلاق">إغلاق</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <!-- PLUGINS MANAGER DIALOG -->
+  <dialog id="plugins-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="plugins-dialog-title" style="max-width: 600px;">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <h2 id="plugins-dialog-title">الإضافات</h2>
+        <button type="button" id="btn-close-plugins-top" class="btn-close-dialog" aria-label="إغلاق">✕</button>
+      </header>
+      <div class="dialog-body">
+        <p class="form-hint" style="margin-bottom: 12px; color: var(--text-muted);">
+          تفعيل وتعطيل الإضافات.
+        </p>
+        <div id="plugins-list-container" role="list" aria-label="الإضافات" style="display: flex; flex-direction: column; gap: 10px; max-height: 55vh; overflow-y: auto;">
+          <div style="text-align: center; color: var(--text-muted); padding: 20px;">جاري فحص الإضافات...</div>
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" id="btn-close-plugins" class="btn" aria-label="إغلاق">إغلاق</button>
       </footer>
     </div>
   </dialog>
@@ -3296,25 +3473,25 @@ dialog.accessible-dialog::backdrop {
   <dialog id="subagents-dialog" class="accessible-dialog" aria-labelledby="subagents-dialog-title" aria-modal="true">
     <div class="dialog-content" role="document">
       <header class="dialog-header">
-        <h2 id="subagents-dialog-title">👥 غرفة عمليات الوكلاء وفرق العمل (Subagents)</h2>
-        <button type="button" id="btn-close-subagents-top" class="btn-close" aria-label="إغلاق غرفة عمليات الوكلاء">✕</button>
+        <h2 id="subagents-dialog-title">فريق الوكلاء</h2>
+        <button type="button" id="btn-close-subagents-top" class="btn-close" aria-label="إغلاق">✕</button>
       </header>
       <div class="dialog-body">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
           <p class="form-hint" style="margin:0; color:var(--text-muted);">
-            تتبع مباشر للوكلاء الموزعين، أدوارهم، حالتهم اللحظية، وإمكانية محادثة كل وكيل مباشرة أو إنشاء وكيل مخصص.
+            متابعة حالة الوكلاء والتواصل معهم.
           </p>
           <div style="display:flex; gap:6px; align-items:center;">
-            <button type="button" id="btn-quick-create-subagent" class="btn btn-sm" style="background:#173238; color:var(--accent-cyan); border-color:var(--accent-cyan); padding:4px 10px; font-size:0.85rem;" aria-label="إنشاء وتعيين وكيل فرعي مخصص">➕ إنشاء وكيل مخصص</button>
-            <button type="button" id="btn-clear-subagents" class="btn btn-sm" style="background:#2d1a20; color:var(--accent-red); border-color:var(--accent-red); padding:4px 10px; font-size:0.85rem;" aria-label="تفريغ سجل الوكلاء">🗑️ مسح السجل</button>
+            <button type="button" id="btn-quick-create-subagent" class="btn btn-sm" style="background:#173238; color:var(--accent-cyan); border-color:var(--accent-cyan); padding:4px 10px; font-size:0.85rem;" aria-label="إنشاء وكيل">➕ إنشاء وكيل</button>
+            <button type="button" id="btn-clear-subagents" class="btn btn-sm" style="background:#2d1a20; color:var(--accent-red); border-color:var(--accent-red); padding:4px 10px; font-size:0.85rem;" aria-label="مسح الوكلاء">🗑️ مسح</button>
           </div>
         </div>
-        <div id="subagents-team-container" role="list" aria-label="سجل الوكلاء وفرق العمل" style="display: flex; flex-direction: column; gap: 12px; max-height: 55vh; overflow-y: auto;">
-          <div style="text-align: center; color: var(--text-muted); padding: 25px;">لم يتم استدعاء وكلاء فرعيين في هذه الجلسة بعد. عند إطلاق أي وكيل فرعي ستظهر تفاصيله ومهامه هنا فوراً.</div>
+        <div id="subagents-team-container" role="list" aria-label="الوكلاء" style="display: flex; flex-direction: column; gap: 12px; max-height: 55vh; overflow-y: auto;">
+          <div style="text-align: center; color: var(--text-muted); padding: 25px;">لا يوجد وكلاء نشطون حالياً.</div>
         </div>
       </div>
       <footer class="dialog-footer">
-        <button type="button" id="btn-close-subagents" class="btn" aria-label="إغلاق غرفة العمليات">إغلاق</button>
+        <button type="button" id="btn-close-subagents" class="btn" aria-label="إغلاق">إغلاق</button>
       </footer>
     </div>
   </dialog>
@@ -3323,71 +3500,19 @@ dialog.accessible-dialog::backdrop {
   <dialog id="model-picker-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="model-picker-title" style="max-width: 620px;">
     <div class="dialog-content">
       <header class="dialog-header">
-        <h2 id="model-picker-title">🤖 اختيار المحرك ونماذج الذكاء الاصطناعي</h2>
-        <button type="button" id="btn-close-model-picker" class="btn-close-dialog" aria-label="إغلاق قائمة النماذج">✕</button>
+        <h2 id="model-picker-title">اختيار النموذج</h2>
+        <button type="button" id="btn-close-model-picker" class="btn-close-dialog" aria-label="إغلاق">✕</button>
       </header>
       <div class="dialog-body">
-        <!-- Engine Selector Tabs -->
-        <div style="display:flex; gap:8px; margin-bottom:14px; background:var(--bg-card-header); padding:4px; border-radius:8px;" role="tablist" aria-label="اختيار محرك التشغيل">
-          <button type="button" id="tab-engine-antigravity" class="tab-btn" role="tab" aria-selected="true" style="flex:1; justify-content:center; background:rgba(57,197,187,0.15); color:var(--accent-cyan);">⚡ Antigravity الافتراضي</button>
-          <button type="button" id="tab-engine-custom" class="tab-btn" role="tab" aria-selected="false" style="flex:1; justify-content:center;">🚀 الوكيل المخصص (Flash-Lite / API)</button>
+        <p class="form-hint" style="margin-bottom:12px; color:var(--text-muted);">
+          نماذج Antigravity المتاحة.
+        </p>
+        <div id="model-picker-list" role="radiogroup" aria-label="النماذج" style="display: flex; flex-direction: column; gap: 8px; max-height: 48vh; overflow-y: auto;">
+          <p>جاري تحميل النماذج...</p>
         </div>
-
-        <!-- Antigravity Engine Container -->
-        <div id="panel-engine-antigravity" role="tabpanel" aria-labelledby="tab-engine-antigravity">
-          <p class="form-hint" style="margin-bottom:12px; color:var(--text-muted);">
-            نماذج محرك Antigravity الرسمي من جوجل وحسابك المعتمد.
-          </p>
-          <div id="model-picker-list" role="radiogroup" aria-label="قائمة نماذج Antigravity" style="display: flex; flex-direction: column; gap: 8px; max-height: 48vh; overflow-y: auto;">
-            <p>⏳ جارٍ جلب النماذج المتاحة من جوجل...</p>
-          </div>
-        </div>
-
-        <!-- Custom Engine Container -->
-        <div id="panel-engine-custom" role="tabpanel" aria-labelledby="tab-engine-custom" style="display:none;">
-          <p class="form-hint" style="margin-bottom:10px; color:var(--text-muted);">
-            وكيل مستقل يعمل مباشرة داخل Termux بمفتاح API مخصص أو مزودين خارجيين (Groq، OpenRouter، Ollama).
-          </p>
-          
-          <div style="background:var(--bg-card); border:1px solid var(--border-main); border-radius:8px; padding:12px; margin-bottom:14px;">
-            <label for="custom-google-api-key" style="display:block; font-size:0.85rem; font-weight:bold; margin-bottom:6px;">مفتاح Google Gemini API:</label>
-            <div style="display:flex; gap:8px;">
-              <input type="password" id="custom-google-api-key" class="form-control" style="flex:1; padding:8px 12px; border-radius:6px; border:1px solid var(--border-main); background:var(--bg-input); color:var(--text-main);" placeholder="AQ.Ab8RN..." aria-label="مفتاح Google Gemini API">
-              <button type="button" id="btn-save-custom-api-key" class="btn btn-primary" style="padding:0 12px;" aria-label="حفظ مفتاح Google API">حفظ</button>
-            </div>
-            <span id="custom-key-status" style="font-size:0.78rem; color:var(--accent-green); margin-top:4px; display:block;">المفتاح مفعل ومختبر بنجاح</span>
-          </div>
-
-          <div style="margin-bottom:12px;">
-            <label style="display:block; font-size:0.88rem; font-weight:bold; margin-bottom:6px;">نماذج Flash-Lite المتاحة:</label>
-            <div id="custom-models-list" role="radiogroup" aria-label="قائمة نماذج فلاش لايت" style="display:flex; flex-direction:column; gap:8px; max-height:35vh; overflow-y:auto;">
-              <p>⏳ جارٍ تحميل نماذج فلاش لايت...</p>
-            </div>
-          </div>
-
-          <div style="border-top:1px solid var(--border-main); padding-top:10px; margin-top:10px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-              <strong style="font-size:0.88rem;">المزودون المخصصون (OpenAI-Compatible):</strong>
-              <button type="button" id="btn-toggle-add-provider" class="btn btn-sm" style="font-size:0.8rem;" aria-label="إضافة مزود مخصص جديد">+ مزود جديد</button>
-            </div>
-            <div id="custom-providers-list" style="display:flex; flex-direction:column; gap:6px;"></div>
-
-            <div id="box-add-provider" style="display:none; background:var(--bg-card); border:1px solid var(--border-main); border-radius:8px; padding:10px; margin-top:8px;">
-              <input type="text" id="input-new-prov-name" placeholder="اسم المزود (مثال: Groq)" class="form-control" style="width:100%; margin-bottom:6px; padding:6px 10px; background:var(--bg-input); color:var(--text-main); border:1px solid var(--border-main); border-radius:6px;" aria-label="اسم المزود الجديد">
-              <input type="text" id="input-new-prov-url" placeholder="رابط الـ Base URL (مثال: https://api.groq.com/openai/v1)" class="form-control" style="width:100%; margin-bottom:6px; padding:6px 10px; background:var(--bg-input); color:var(--text-main); border:1px solid var(--border-main); border-radius:6px;" aria-label="رابط Base URL">
-              <input type="password" id="input-new-prov-key" placeholder="مفتاح الـ API" class="form-control" style="width:100%; margin-bottom:6px; padding:6px 10px; background:var(--bg-input); color:var(--text-main); border:1px solid var(--border-main); border-radius:6px;" aria-label="مفتاح API للمزود">
-              <input type="text" id="input-new-prov-models" placeholder="النماذج مفصولة بفاصلة (مثال: llama-3.3-70b-versatile, llama-3.1-8b)" class="form-control" style="width:100%; margin-bottom:8px; padding:6px 10px; background:var(--bg-input); color:var(--text-main); border:1px solid var(--border-main); border-radius:6px;" aria-label="أسماء النماذج">
-              <div style="display:flex; justify-content:flex-end; gap:6px;">
-                <button type="button" id="btn-cancel-add-prov" class="btn btn-sm" aria-label="إلغاء إضافة المزود">إلغاء</button>
-                <button type="button" id="btn-submit-add-prov" class="btn btn-sm btn-primary" aria-label="حفظ المزود الجديد">إضافة وحفظ</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
       </div>
       <footer class="dialog-footer">
-        <button type="button" id="btn-cancel-model-picker" class="btn" aria-label="إلغاء">إغلاق</button>
+        <button type="button" id="btn-cancel-model-picker" class="btn" aria-label="إغلاق">إغلاق</button>
       </footer>
     </div>
   </dialog>
@@ -3396,18 +3521,18 @@ dialog.accessible-dialog::backdrop {
   <dialog id="tasks-monitor-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="tasks-monitor-title" style="max-width: 620px;">
     <div class="dialog-content">
       <header class="dialog-header">
-        <h2 id="tasks-monitor-title">⏰ المهام والمؤقتات المجدولة في الخلفية</h2>
-        <button type="button" id="btn-close-tasks-monitor" class="btn-close-dialog" aria-label="إغلاق قائمة المهام المجدولة">✕</button>
+        <h2 id="tasks-monitor-title">المهام والمؤقتات</h2>
+        <button type="button" id="btn-close-tasks-monitor" class="btn-close-dialog" aria-label="إغلاق">✕</button>
       </header>
       <div class="dialog-body">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
           <p class="form-hint" style="margin:0; color:var(--text-muted);">
-            متابعة المؤقتات التنازلية ومهام Cron التي تعمل في الخلفية دون مقاطعة الجلسة.
+            متابعة المؤقتات والمهام المجدولة في الخلفية.
           </p>
-          <button type="button" id="btn-refresh-tasks-monitor" class="btn btn-sm" aria-label="تحديث قائمة المهام">🔄 تحديث</button>
+          <button type="button" id="btn-refresh-tasks-monitor" class="btn btn-sm" aria-label="تحديث">🔄 تحديث</button>
         </div>
-        <div id="tasks-monitor-list" role="list" aria-label="سجل المهام المجدولة" style="display: flex; flex-direction: column; gap: 10px; max-height: 55vh; overflow-y: auto;">
-          <p>⏳ جارٍ جلب المهام المجدولة...</p>
+        <div id="tasks-monitor-list" role="list" aria-label="المهام" style="display: flex; flex-direction: column; gap: 10px; max-height: 55vh; overflow-y: auto;">
+          <p>جاري تحميل المهام...</p>
         </div>
       </div>
       <footer class="dialog-footer">
@@ -4048,8 +4173,7 @@ dialog.accessible-dialog::backdrop {
         const payload = {
           prompt: finalPromptToSend,
           continue: shouldContinue,
-          force_new: isForcedNew,
-          engine: window._currentEngineMode || 'antigravity'
+          force_new: isForcedNew
         };
         if (currentActiveConversationId && !isForcedNew) {
           payload.conversation_id = currentActiveConversationId;
@@ -4683,26 +4807,39 @@ dialog.accessible-dialog::backdrop {
         return [
           {
             section: 'general',
-            legend: '🤖 Core Model Configuration',
+            legend: 'إعدادات النموذج',
             fields: [
               {
                 id: 'field-model',
                 key: 'model',
                 type: 'select_models',
-                label: 'Active AI Model',
-                hint: 'Antigravity core model used for reasoning, code generation, and terminal actions.',
+                label: 'النموذج النشط',
+                hint: 'نموذج الذكاء الاصطناعي المستخدم للجلسة.',
                 default: 'Gemini 3.8 Flash (Medium)'
+              },
+              {
+                id: 'field-mode',
+                key: 'mode',
+                type: 'select',
+                label: 'نمط التنفيذ',
+                hint: 'تنفيذ الأوامر مباشرة أو تخطيط مسبق.',
+                options: [
+                  { value: 'accept-edits', label: 'تنفيذ مباشر (accept-edits)' },
+                  { value: 'plan', label: 'تخطيط مسبق (plan)' }
+                ],
+                default: 'accept-edits'
               },
               {
                 id: 'field-effort',
                 key: 'effort',
                 type: 'select',
-                label: 'Reasoning Effort',
-                hint: 'Controls reasoning depth (--effort flag) for high-complexity planning vs fast responses.',
+                label: 'مستوى التفكير',
+                hint: 'عمق التفكير للنماذج الداعمة.',
                 options: [
-                  { value: 'medium', label: 'Balanced (Medium) - Recommended Default' },
-                  { value: 'low', label: 'Fast & Low (Low) - Routine scripts & quick answers' },
-                  { value: 'high', label: 'Deep Reasoning (High) - Architecture & hard debugging' }
+                  { value: 'medium', label: 'متوسط (افتراضي)' },
+                  { value: 'low', label: 'منخفض (إجابات سريعة)' },
+                  { value: 'high', label: 'عميق (مهام معقدة)' },
+                  { value: 'max', label: 'أقصى عمق' }
                 ],
                 default: 'medium'
               }
@@ -4710,23 +4847,41 @@ dialog.accessible-dialog::backdrop {
           },
           {
             section: 'sandbox_permissions',
-            legend: '🛡️ Sandbox & Permissions Center',
+            legend: 'الأمان والصلاحيات',
             fields: [
               {
                 id: 'field-autopilot',
                 key: 'autopilot',
                 type: 'switch',
-                label: 'Autopilot Mode',
-                hint: 'Execute authorized tools seamlessly without stopping for step-by-step confirmation cards.',
+                label: 'الطيار الآلي',
+                hint: 'تشغيل الأدوات المعتمدة بدون طلب تأكيد لكل خطوة.',
                 colorBorder: 'var(--accent-cyan)',
+                default: true
+              },
+              {
+                id: 'field-sandbox',
+                key: 'sandbox',
+                type: 'switch',
+                label: 'عزل الطرفية (Sandbox)',
+                hint: 'تشغيل الأوامر داخل بيئة معزولة.',
+                colorBorder: 'var(--accent-red)',
+                default: false
+              },
+              {
+                id: 'field-allow-non-workspace',
+                key: 'allowNonWorkspaceAccess',
+                type: 'switch',
+                label: 'الوصول خارج المجلد',
+                hint: 'السماح بفحص الملفات خارج مجلد العمل الحالي.',
+                colorBorder: 'var(--accent-purple)',
                 default: true
               },
               {
                 id: 'field-perm-commands',
                 key: 'allow_commands',
                 type: 'switch',
-                label: 'Terminal Commands (run_command)',
-                hint: 'Permit execution of Termux shell commands, compilers, and test suites.',
+                label: 'تشغيل الأوامر (Terminal)',
+                hint: 'السماح بتنفيذ أوامر التيرمنال.',
                 colorBorder: 'var(--accent-green)',
                 default: true
               },
@@ -4734,8 +4889,8 @@ dialog.accessible-dialog::backdrop {
                 id: 'field-perm-file-write',
                 key: 'allow_write',
                 type: 'switch',
-                label: 'File Modifications (write_to_file, replace)',
-                hint: 'Permit creating, editing, and overwriting files inside the project tree.',
+                label: 'تعديل الملفات',
+                hint: 'السماح بإنشاء وتعديل الملفات.',
                 colorBorder: '#58a6ff',
                 default: true
               },
@@ -4743,8 +4898,8 @@ dialog.accessible-dialog::backdrop {
                 id: 'field-perm-web-access',
                 key: 'allow_web',
                 type: 'switch',
-                label: 'Web Access & Research (search_web, fetch)',
-                hint: 'Permit web queries, documentation fetches, and live internet lookups.',
+                label: 'تصفح الويب',
+                hint: 'السماح بالبحث وقراءة صفحات الإنترنت.',
                 colorBorder: 'var(--accent-cyan)',
                 default: true
               },
@@ -4752,8 +4907,8 @@ dialog.accessible-dialog::backdrop {
                 id: 'field-perm-subagents',
                 key: 'allow_subagent',
                 type: 'switch',
-                label: 'Subagents & Parallel Delegation',
-                hint: 'Permit spawning background subagents for parallel exploration tasks.',
+                label: 'الوكلاء الفرعيون',
+                hint: 'السماح بتشغيل وكلاء في الخلفية.',
                 colorBorder: 'var(--accent-purple)',
                 default: true
               },
@@ -4761,65 +4916,75 @@ dialog.accessible-dialog::backdrop {
                 id: 'field-perm-schedule',
                 key: 'allow_schedule',
                 type: 'switch',
-                label: 'Timers & Recurring Tasks (schedule, cron)',
-                hint: 'Permit scheduling timers or recurring background tasks.',
+                label: 'المؤقتات والمهام المجدولة',
+                hint: 'السماح بجدولة المؤقتات ومهام الخلفية.',
                 colorBorder: 'var(--accent-red)',
                 default: false
+              },
+              {
+                id: 'field-whitelist-rules',
+                type: 'whitelist_manager',
+                label: 'الأوامر المصرح بها دائماً'
               }
             ]
           },
           {
             section: 'trusted_workspaces',
-            legend: '📂 Trusted Workspaces (Allowed Root Dirs)',
+            legend: 'مجلدات العمل الموثوقة',
             fields: [
               {
                 id: 'field-trusted-workspaces',
                 key: 'trustedWorkspaces',
                 type: 'array_chips',
-                label: 'Trusted Workspaces',
-                hint: 'Absolute directories where the AI is authorized to view and execute commands.',
+                label: 'مجلدات العمل',
+                hint: 'المسارات المصرح للوكيل بالعمل داخلها.',
                 default: ['/data/data/com.termux/files/home']
               }
             ]
           },
           {
             section: 'accessibility_feedback',
-            legend: '🗣️ Accessibility & Feedback (TalkBack / NVDA)',
+            legend: 'إمكانية الوصول والتنبيهات',
             fields: [
               {
                 id: 'field-voice-speech',
                 key: 'speech_enabled',
                 type: 'switch',
-                label: 'Built-in Browser Speech Synthesis',
-                hint: 'Speak AI responses aloud. ⚠️ Keep OFF if you already use TalkBack or Jieshuo.',
+                label: 'النطق الصوتي الداخلي',
+                hint: 'قراءة الردود صوتياً (يُفضل إيقافه لمستخدمي TalkBack أو Jieshuo).',
                 default: false
               },
               {
                 id: 'field-voice-tones',
                 key: 'tones_enabled',
                 type: 'switch',
-                label: 'Interactive Earcons & Sound Cues',
-                hint: 'Play audio cues on tool execution start, completion, and success.',
+                label: 'نغمات التنبيه التفاعلية',
+                hint: 'تشغيل نغمة صوتية عند بدء وانتهاء تنفيذ الأوامر.',
                 default: true
               },
               {
                 id: 'field-voice-haptic',
                 key: 'haptic_enabled',
                 type: 'switch',
-                label: 'Haptic Vibration Feedback',
-                hint: 'Provide physical confirmation pulses for actions on supported mobile hardware.',
+                label: 'الاهتزاز اللمسي',
+                hint: 'اهتزاز خفيف لتأكيد الإجراءات.',
                 default: true
               }
             ]
           },
           {
             section: 'system_resources',
-            legend: '⚡ Live Model Quota & Context Metrics',
+            legend: 'استهلاك النظام والتحديثات',
             fields: [
               {
                 id: 'field-quota-metric',
                 type: 'resource_summary',
-                label: 'System Resource Monitor'
+                label: 'استهلاك الموارد'
+              },
+              {
+                id: 'field-system-update',
+                type: 'system_update',
+                label: 'تحديث Antigravity CLI'
               }
             ]
           }
@@ -4867,7 +5032,10 @@ dialog.accessible-dialog::backdrop {
           allow_write: raw.allow_write !== undefined ? !!raw.allow_write : (perms.includes('file_write') || perms.includes('write_file(*)')),
           allow_web: raw.allow_web !== undefined ? !!raw.allow_web : (perms.includes('web_access') || perms.includes('read_url(*)')),
           allow_subagent: raw.allow_subagent !== undefined ? !!raw.allow_subagent : (perms.includes('subagents') || perms.includes('invoke_subagent(*)')),
-          allow_schedule: raw.allow_schedule !== undefined ? !!raw.allow_schedule : (perms.includes('schedule') || perms.includes('schedule(*)')),
+          mode: raw.mode || 'accept-edits',
+          sandbox: !!raw.sandbox,
+          allowNonWorkspaceAccess: raw.allowNonWorkspaceAccess !== undefined ? !!raw.allowNonWorkspaceAccess : true,
+          whitelist: Array.isArray(raw.whitelist) ? [...raw.whitelist] : [],
           speech_enabled: !!raw.speech_enabled,
           tones_enabled: raw.tones_enabled !== undefined ? !!raw.tones_enabled : true,
           haptic_enabled: raw.haptic_enabled !== undefined ? !!raw.haptic_enabled : true,
@@ -5157,6 +5325,130 @@ dialog.accessible-dialog::backdrop {
           return container;
         }
 
+        if (f.type === 'whitelist_manager') {
+          container.className = 'form-group';
+          const label = document.createElement('label');
+          label.className = 'form-label';
+          label.textContent = f.label || 'Auto-Approved Commands Whitelist';
+
+          const hint = document.createElement('p');
+          hint.className = 'form-hint';
+          hint.textContent = 'أوامر التيرمنال المصرح بها دائماً دون الحاجة لطلب إذن. يمكنك حذف أي أمر لإعادة طلب الإذن قبل تنفيذه.';
+
+          const listContainer = document.createElement('div');
+          listContainer.style.cssText = 'display:flex; flex-direction:column; gap:6px; margin-top:8px;';
+
+          const renderWhitelist = () => {
+            listContainer.innerHTML = '';
+            const rules = this.state.whitelist || [];
+            if (rules.length === 0) {
+              listContainer.innerHTML = '<div style="font-size:0.82rem; color:var(--text-muted); padding:8px; background:rgba(255,255,255,0.02); border-radius:6px;">لا توجد أوامر مخصصة مصرح بها دائماً حالياً.</div>';
+              return;
+            }
+            rules.forEach(ruleStr => {
+              const row = document.createElement('div');
+              row.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; background:var(--bg-card); border:1px solid var(--border-main); border-radius:6px;';
+              
+              const codeSpan = document.createElement('code');
+              codeSpan.style.cssText = 'font-size:0.8rem; color:var(--accent-cyan); word-break:break-all; font-family:var(--font-mono);';
+              codeSpan.textContent = ruleStr;
+
+              const delBtn = document.createElement('button');
+              delBtn.type = 'button';
+              delBtn.className = 'btn-icon-sm';
+              delBtn.style.cssText = 'background:rgba(255, 123, 114, 0.15); color:var(--accent-red); border:1px solid var(--accent-red); border-radius:4px; padding:2px 8px; font-size:0.75rem; cursor:pointer; flex-shrink:0;';
+              delBtn.setAttribute('aria-label', `حذف التصريح الدائم للأمر ${ruleStr}`);
+              delBtn.textContent = '❌ حذف';
+              delBtn.onclick = async () => {
+                try {
+                  delBtn.disabled = true;
+                  const res = await fetch('/api/ai/permissions/whitelist/remove', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ rule: ruleStr })
+                  });
+                  if (res.ok) {
+                    const data = await res.json();
+                    this.state.whitelist = data.whitelist || [];
+                    renderWhitelist();
+                    announce(`تم حذف التصريح الدائم للأمر ${ruleStr}`);
+                  }
+                } catch (e) {
+                  console.error(e);
+                }
+              };
+
+              row.appendChild(codeSpan);
+              row.appendChild(delBtn);
+              listContainer.appendChild(row);
+            });
+          };
+
+          renderWhitelist();
+          container.appendChild(label);
+          container.appendChild(hint);
+          container.appendChild(listContainer);
+          return container;
+        }
+
+        if (f.type === 'system_update') {
+          container.className = 'form-group';
+          container.style.cssText = 'background:rgba(255,255,255,0.02); border:1px solid var(--border-main); border-radius:8px; padding:12px; margin-top:10px;';
+          container.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <span style="font-weight:700; color:var(--accent-green); font-size:0.92rem;">🚀 Antigravity CLI Version & System Update</span>
+              <span id="dyn-cli-ver-badge" class="badge" style="background:var(--bg-tertiary); font-family:var(--font-mono); font-size:0.78rem;">فحص...</span>
+            </div>
+            <p class="form-hint" style="margin-bottom:10px;">يمكنك التحقق من وجود إصدار أحدث لأداة Antigravity CLI وتحديثها في الخلفية بضغطة واحدة.</p>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <button type="button" id="btn-dyn-update-cli" class="btn btn-primary" style="font-size:0.82rem; padding:6px 14px;" aria-label="تحديث Antigravity CLI إلى أحدث إصدار">
+                🔄 تحديث Antigravity CLI الآن
+              </button>
+              <span id="dyn-update-status" style="font-size:0.8rem; color:var(--text-muted);" role="status" aria-live="polite"></span>
+            </div>
+          `;
+
+          setTimeout(async () => {
+            const verBadge = container.querySelector('#dyn-cli-ver-badge');
+            const btnUpdate = container.querySelector('#btn-dyn-update-cli');
+            const statusSpan = container.querySelector('#dyn-update-status');
+            try {
+              const res = await fetch('/api/system/version');
+              if (res.ok) {
+                const vData = await res.json();
+                if (verBadge) verBadge.textContent = vData.version || 'v1.x';
+              }
+            } catch (e) {}
+
+            if (btnUpdate) {
+              btnUpdate.onclick = async () => {
+                if (btnUpdate.disabled) return;
+                btnUpdate.disabled = true;
+                if (statusSpan) statusSpan.textContent = '⏳ جاري تنزيل وتثبيت التحديث...';
+                announce('جاري تنزيل وتثبيت تحديث Antigravity CLI في الخلفية');
+                try {
+                  const uRes = await fetch('/api/system/update', { method: 'POST' });
+                  const uData = await uRes.json();
+                  if (uRes.ok && uData.status === 'ok') {
+                    if (statusSpan) statusSpan.textContent = '✓ تم التحديث بنجاح! يرجى إعادة تشغيل الجلسة.';
+                    announce('تم تحديث Antigravity CLI بنجاح');
+                  } else {
+                    if (statusSpan) statusSpan.textContent = 'الإصدار الحالي هو الأحدث، أو تعذر الاتصال بالسيرفر.';
+                    announce(statusSpan.textContent);
+                  }
+                } catch (err) {
+                  if (statusSpan) statusSpan.textContent = 'تعذر إجراء التحديث.';
+                  announce('تعذر إجراء التحديث');
+                } finally {
+                  btnUpdate.disabled = false;
+                }
+              };
+            }
+          }, 0);
+
+          return container;
+        }
+
         return null;
       }
 
@@ -5186,6 +5478,9 @@ dialog.accessible-dialog::backdrop {
         const payload = {
           model: this.state.model,
           effort: this.state.effort,
+          mode: this.state.mode || 'accept-edits',
+          sandbox: !!this.state.sandbox,
+          allowNonWorkspaceAccess: this.state.allowNonWorkspaceAccess !== undefined ? !!this.state.allowNonWorkspaceAccess : true,
           autopilot: !!this.state.autopilot,
           safe_mode: !this.state.autopilot,
           allow_commands: !!this.state.allow_commands,
@@ -6136,6 +6431,122 @@ dialog.accessible-dialog::backdrop {
     }
 
     // ==========================================
+    // PLUGINS MANAGER CONTROLLER
+    // ==========================================
+    const pluginsDialog = document.getElementById('plugins-dialog');
+    const btnOpenPlugins = document.getElementById('btn-open-plugins');
+    const btnClosePlugins = document.getElementById('btn-close-plugins');
+    const btnClosePluginsTop = document.getElementById('btn-close-plugins-top');
+    const pluginsListContainer = document.getElementById('plugins-list-container');
+    const valPluginsCountDrawer = document.getElementById('val-plugins-count-drawer');
+
+    async function loadPluginsList() {
+      if (!pluginsListContainer) return;
+      pluginsListContainer.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:20px;">جاري فحص الإضافات...</div>';
+      try {
+        const res = await fetch('/api/plugins/list');
+        const data = await res.json();
+        const plugins = data.plugins || [];
+        if (valPluginsCountDrawer) valPluginsCountDrawer.textContent = String(plugins.length);
+        if (plugins.length === 0) {
+          pluginsListContainer.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:20px;">لا توجد إضافات مثبتة في ~/.gemini/config/plugins</div>';
+          return;
+        }
+
+        pluginsListContainer.innerHTML = '';
+        plugins.forEach(plugin => {
+          const card = document.createElement('div');
+          card.style.cssText = 'background:var(--bg-card); border:1px solid ' + (plugin.enabled ? 'var(--accent-purple)' : 'var(--border-main)') + '; border-radius:8px; padding:12px 14px; display:flex; align-items:center; justify-content:space-between; gap:12px;';
+          card.setAttribute('role', 'listitem');
+
+          const infoDiv = document.createElement('div');
+          infoDiv.style.cssText = 'flex:1; min-width:0;';
+
+          const titleRow = document.createElement('div');
+          titleRow.style.cssText = 'display:flex; align-items:center; gap:8px; margin-bottom:4px;';
+
+          const title = document.createElement('strong');
+          title.style.cssText = 'font-size:0.95rem; color:' + (plugin.enabled ? 'var(--accent-purple)' : 'var(--text-muted)') + ';';
+          title.textContent = plugin.name;
+
+          const badge = document.createElement('span');
+          badge.className = 'badge';
+          badge.style.cssText = 'font-size:0.75rem; padding:2px 8px; border-radius:12px; background:' + (plugin.enabled ? 'rgba(188, 140, 255, 0.15)' : 'var(--bg-tertiary)') + '; color:' + (plugin.enabled ? 'var(--accent-purple)' : 'var(--text-muted)') + '; font-weight:700;';
+          badge.textContent = plugin.enabled ? 'مفعلة' : 'معطلة';
+
+          titleRow.appendChild(title);
+          titleRow.appendChild(badge);
+
+          const desc = document.createElement('div');
+          desc.style.cssText = 'font-size:0.82rem; color:var(--text-muted); line-height:1.4;';
+          desc.textContent = plugin.description || 'إضافة مخصصة لـ Antigravity';
+
+          infoDiv.appendChild(titleRow);
+          infoDiv.appendChild(desc);
+
+          const toggleBtn = document.createElement('button');
+          toggleBtn.type = 'button';
+          toggleBtn.className = 'btn btn-sm ' + (plugin.enabled ? 'btn-secondary' : 'btn-primary');
+          toggleBtn.style.cssText = 'min-width:85px; font-weight:700; flex-shrink:0;';
+          toggleBtn.textContent = plugin.enabled ? '🚫 تعطيل' : '✅ تفعيل';
+          toggleBtn.setAttribute('aria-label', (plugin.enabled ? 'تعطيل إضافة ' : 'تفعيل إضافة ') + plugin.name);
+
+          toggleBtn.addEventListener('click', async () => {
+            const nextState = !plugin.enabled;
+            toggleBtn.disabled = true;
+            toggleBtn.textContent = '⏳ جاري...';
+            try {
+              const toggleRes = await fetch('/api/plugins/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: plugin.id, enabled: nextState })
+              });
+              if (toggleRes.ok) {
+                if (typeof playSuccessChime === 'function') playSuccessChime();
+                const actMsg = nextState ? 'تم تفعيل إضافة ' : 'تم تعطيل إضافة ';
+                announce(actMsg + plugin.name);
+                await loadPluginsList();
+              } else {
+                playBeep(400, 0.2);
+                announce('تعذر تعديل الإضافة من الخادم');
+                toggleBtn.disabled = false;
+                toggleBtn.textContent = plugin.enabled ? '🚫 تعطيل' : '✅ تفعيل';
+              }
+            } catch (err) {
+              playBeep(400, 0.2);
+              announce('حدث خطأ في الاتصال أثناء تعديل الإضافة');
+              toggleBtn.disabled = false;
+              toggleBtn.textContent = plugin.enabled ? '🚫 تعطيل' : '✅ تفعيل';
+            }
+          });
+
+          card.appendChild(infoDiv);
+          card.appendChild(toggleBtn);
+          pluginsListContainer.appendChild(card);
+        });
+      } catch (e) {
+        console.error('Failed to load plugins list:', e);
+        pluginsListContainer.innerHTML = '<div style="color:var(--accent-red); padding:10px;">تعذر تحميل قائمة الإضافات</div>';
+        announce('تعذر تحميل قائمة الإضافات');
+      }
+    }
+
+    if (btnOpenPlugins && pluginsDialog) {
+      btnOpenPlugins.addEventListener('click', async () => {
+        pluginsDialog.showModal();
+        announce('تم فتح نافذة إدارة إضافات Antigravity');
+        await loadPluginsList();
+      });
+    }
+
+    if (btnClosePlugins && pluginsDialog) {
+      btnClosePlugins.addEventListener('click', () => pluginsDialog.close());
+    }
+    if (btnClosePluginsTop && pluginsDialog) {
+      btnClosePluginsTop.addEventListener('click', () => pluginsDialog.close());
+    }
+
+    // ==========================================
     // MCP (MODEL CONTEXT PROTOCOL) CONTROLLER
     // ==========================================
     async function loadMcpServers() {
@@ -7054,6 +7465,7 @@ dialog.accessible-dialog::backdrop {
     // ==============================================================================
     function syncActiveModelDisplay(modelName) {
       if (!modelName) return;
+      window._currentActiveModel = modelName;
       let displayName = modelName;
       if (Array.isArray(window._cachedModels)) {
         const found = window._cachedModels.find(m => m.id === modelName || m.name === modelName);
@@ -7067,13 +7479,36 @@ dialog.accessible-dialog::backdrop {
       if (btnHModel) {
         btnHModel.setAttribute('aria-label', `النموذج النشط حالياً: ${displayName}. اضغط لتغيير النموذج`);
       }
+
+      // Check if Claude model (fixed effort)
+      const isClaude = (modelName || '').toLowerCase().includes('claude');
+      const effortGroup = document.querySelector('.drawer-effort-group');
+      if (effortGroup) {
+        if (isClaude) {
+          effortGroup.setAttribute('aria-label', 'مستوى التفكير: مدمج وتلقائي لنموذج كلود');
+        } else {
+          effortGroup.setAttribute('aria-label', 'مستوى التفكير');
+        }
+      }
+      document.querySelectorAll('.btn-effort').forEach(b => {
+        if (isClaude) {
+          b.setAttribute('aria-disabled', 'true');
+          b.style.opacity = '0.5';
+          b.style.cursor = 'not-allowed';
+        } else {
+          b.removeAttribute('aria-disabled');
+          b.style.opacity = '1';
+          b.style.cursor = 'pointer';
+        }
+      });
     }
     window.syncActiveModelDisplay = syncActiveModelDisplay;
 
     function syncReasoningEffortDisplay(effort) {
       if (!effort) return;
+      const isClaude = (window._currentActiveModel || '').toLowerCase().includes('claude');
       document.querySelectorAll('.btn-effort').forEach(b => {
-        const isActive = (b.getAttribute('data-effort') === effort);
+        const isActive = !isClaude && (b.getAttribute('data-effort') === effort);
         b.classList.toggle('active', isActive);
         b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
       });
@@ -7156,256 +7591,6 @@ dialog.accessible-dialog::backdrop {
       drawerBackdrop.addEventListener('click', () => toggleAppDrawer(false));
     }
 
-    // --- Engine & Model Switching Logic ---
-    const btnHeaderEngine = document.getElementById('btn-header-engine');
-    const headerEngineBadge = document.getElementById('header-engine-badge');
-    const tabEngineAntigravity = document.getElementById('tab-engine-antigravity');
-    const tabEngineCustom = document.getElementById('tab-engine-custom');
-    const panelEngineAntigravity = document.getElementById('panel-engine-antigravity');
-    const panelEngineCustom = document.getElementById('panel-engine-custom');
-    const customModelsList = document.getElementById('custom-models-list');
-    const customGoogleApiKeyInput = document.getElementById('custom-google-api-key');
-    const btnSaveCustomApiKey = document.getElementById('btn-save-custom-api-key');
-    const customKeyStatus = document.getElementById('custom-key-status');
-    const btnToggleAddProvider = document.getElementById('btn-toggle-add-provider');
-    const boxAddProvider = document.getElementById('box-add-provider');
-    const btnCancelAddProv = document.getElementById('btn-cancel-add-prov');
-    const btnSubmitAddProv = document.getElementById('btn-submit-add-prov');
-    const customProvidersList = document.getElementById('custom-providers-list');
-
-    window._currentEngineMode = 'antigravity';
-    window._customAgentConfig = null;
-
-    async function syncCustomAgentConfig() {
-      try {
-        const res = await fetch('/api/custom-agent/config');
-        if (res.ok) {
-          const data = await res.json();
-          window._customAgentConfig = data.config || {};
-          window._currentEngineMode = window._customAgentConfig.engine_mode || 'antigravity';
-          updateEngineUiIndicators();
-        }
-      } catch (e) {}
-    }
-    syncCustomAgentConfig();
-
-    function updateEngineUiIndicators() {
-      const isCustom = (window._currentEngineMode === 'custom');
-      if (headerEngineBadge) {
-        headerEngineBadge.textContent = isCustom ? 'المحرك: مخصص (Flash-Lite)' : 'المحرك: Antigravity';
-      }
-      if (btnHeaderEngine) {
-        btnHeaderEngine.style.borderColor = isCustom ? 'var(--accent-purple)' : 'var(--accent-cyan)';
-      }
-      if (tabEngineAntigravity && tabEngineCustom) {
-        if (isCustom) {
-          tabEngineCustom.style.background = 'rgba(188,140,255,0.18)';
-          tabEngineCustom.style.color = 'var(--accent-purple)';
-          tabEngineCustom.setAttribute('aria-selected', 'true');
-          tabEngineAntigravity.style.background = 'transparent';
-          tabEngineAntigravity.style.color = 'var(--text-muted)';
-          tabEngineAntigravity.setAttribute('aria-selected', 'false');
-          if (panelEngineAntigravity) panelEngineAntigravity.style.display = 'none';
-          if (panelEngineCustom) panelEngineCustom.style.display = 'block';
-        } else {
-          tabEngineAntigravity.style.background = 'rgba(57,197,187,0.15)';
-          tabEngineAntigravity.style.color = 'var(--accent-cyan)';
-          tabEngineAntigravity.setAttribute('aria-selected', 'true');
-          tabEngineCustom.style.background = 'transparent';
-          tabEngineCustom.style.color = 'var(--text-muted)';
-          tabEngineCustom.setAttribute('aria-selected', 'false');
-          if (panelEngineAntigravity) panelEngineAntigravity.style.display = 'block';
-          if (panelEngineCustom) panelEngineCustom.style.display = 'none';
-        }
-      }
-    }
-
-    if (btnHeaderEngine) {
-      btnHeaderEngine.addEventListener('click', async () => {
-        const newMode = (window._currentEngineMode === 'antigravity') ? 'custom' : 'antigravity';
-        window._currentEngineMode = newMode;
-        await fetch('/api/custom-agent/config', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ engine_mode: newMode })
-        });
-        updateEngineUiIndicators();
-        playBeep(newMode === 'custom' ? 820 : 620, 0.08);
-        announce(`تم تبديل المحرك النشط إلى: ${newMode === 'custom' ? 'الوكيل المخصص' : 'Antigravity'}`);
-      });
-    }
-
-    if (tabEngineAntigravity) {
-      tabEngineAntigravity.addEventListener('click', async () => {
-        window._currentEngineMode = 'antigravity';
-        await fetch('/api/custom-agent/config', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ engine_mode: 'antigravity' })
-        });
-        updateEngineUiIndicators();
-        announce('تم التحويل إلى محرك Antigravity');
-      });
-    }
-
-    if (tabEngineCustom) {
-      tabEngineCustom.addEventListener('click', async () => {
-        window._currentEngineMode = 'custom';
-        await fetch('/api/custom-agent/config', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ engine_mode: 'custom' })
-        });
-        updateEngineUiIndicators();
-        await loadCustomEngineData();
-        announce('تم التحويل إلى المحرك المخصص لنماذج Flash-Lite');
-      });
-    }
-
-    async function loadCustomEngineData() {
-      try {
-        const [cfgRes, modRes] = await Promise.all([
-          fetch('/api/custom-agent/config'),
-          fetch('/api/custom-agent/models')
-        ]);
-        if (cfgRes.ok) {
-          const cfgData = await cfgRes.json();
-          window._customAgentConfig = cfgData.config || {};
-          if (customGoogleApiKeyInput) {
-            customGoogleApiKeyInput.value = window._customAgentConfig.google_api_key || '';
-          }
-          renderCustomProvidersList(window._customAgentConfig.custom_providers || [], window._customAgentConfig.active_provider);
-        }
-        if (modRes.ok) {
-          const modData = await modRes.json();
-          renderCustomModelsList(modData.models || [], window._customAgentConfig?.selected_model);
-        }
-      } catch (e) {}
-    }
-
-    function renderCustomModelsList(models, activeModelId) {
-      if (!customModelsList) return;
-      customModelsList.innerHTML = '';
-      models.forEach((m, idx) => {
-        const isCurrent = (m.id === activeModelId || (!activeModelId && idx === 0));
-        const card = document.createElement('button');
-        card.type = 'button';
-        card.className = 'model-picker-item' + (isCurrent ? ' selected' : '');
-        card.setAttribute('role', 'radio');
-        card.setAttribute('aria-checked', String(isCurrent));
-        card.setAttribute('aria-label', `${m.name}${isCurrent ? ' (مفعل حالياً)' : ''}`);
-        card.style.cssText = `
-          display:flex; flex-direction:column; width:100%; padding:10px 14px;
-          border-radius:8px; border:1px solid ${isCurrent ? 'var(--accent-purple)' : 'var(--border-main)'};
-          background:${isCurrent ? 'rgba(188, 140, 255, 0.12)' : 'var(--bg-card)'};
-          color:var(--text-main); cursor:pointer; text-align:right; font-family:inherit;
-          transition:all 0.15s ease;
-        `;
-        card.innerHTML = `
-          <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-            <strong style="font-size:0.92rem; color:${isCurrent ? 'var(--accent-purple)' : 'var(--text-main)'};">${escapeHtml(m.name)}</strong>
-            <span class="badge" style="background:${isCurrent ? 'var(--accent-purple)' : 'var(--bg-tertiary)'}; color:${isCurrent ? '#fff' : 'var(--text-muted)'}; font-size:0.75rem; padding:2px 8px; border-radius:12px; font-weight:700;">
-              ${isCurrent ? '✓ مفعل' : 'اختيار'}
-            </span>
-          </div>
-          <div style="font-size:0.78rem; color:var(--text-muted); font-family:var(--font-mono); margin-top:4px; text-align:start;">${escapeHtml(m.id)} - ${escapeHtml(m.description || '')}</div>
-        `;
-        card.addEventListener('click', async () => {
-          await fetch('/api/custom-agent/config', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ selected_model: m.id, engine_mode: 'custom' })
-          });
-          window._currentEngineMode = 'custom';
-          updateEngineUiIndicators();
-          if (headerActiveModelName) headerActiveModelName.textContent = m.name.split(' ')[0] + ' (Custom)';
-          if (modelPickerDialog) modelPickerDialog.close();
-          playBeep(880, 0.1);
-          announce(`تم تفعيل النموذج المخصص ${m.name}`);
-        });
-        customModelsList.appendChild(card);
-      });
-    }
-
-    function renderCustomProvidersList(providers, activeProvId) {
-      if (!customProvidersList) return;
-      customProvidersList.innerHTML = '';
-      providers.forEach(p => {
-        const isCurrent = (p.id === activeProvId);
-        const row = document.createElement('div');
-        row.style.cssText = `display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border-radius:6px; background:var(--bg-card); border:1px solid ${isCurrent ? 'var(--accent-cyan)' : 'var(--border-main)'}; margin-bottom:4px;`;
-        row.innerHTML = `
-          <div>
-            <strong style="font-size:0.85rem; color:${isCurrent ? 'var(--accent-cyan)' : 'var(--text-main)'};">${escapeHtml(p.name)}</strong>
-            <div style="font-size:0.75rem; color:var(--text-muted);">${escapeHtml(p.base_url || '')}</div>
-          </div>
-          <button type="button" class="btn btn-sm" style="font-size:0.75rem; padding:2px 8px;" aria-label="تفعيل مزود ${p.name}">
-            ${isCurrent ? '✓ نشط' : 'تفعيل'}
-          </button>
-        `;
-        row.querySelector('button').addEventListener('click', async () => {
-          await fetch('/api/custom-agent/config', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ active_provider: p.id, engine_mode: 'custom' })
-          });
-          await loadCustomEngineData();
-          announce(`تم تفعيل المزود ${p.name}`);
-        });
-        customProvidersList.appendChild(row);
-      });
-    }
-
-    if (btnSaveCustomApiKey) {
-      btnSaveCustomApiKey.addEventListener('click', async () => {
-        const key = customGoogleApiKeyInput?.value.trim() || '';
-        if (!key) return;
-        await fetch('/api/custom-agent/config', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ google_api_key: key })
-        });
-        if (customKeyStatus) customKeyStatus.textContent = 'تم حفظ المفتاح بنجاح!';
-        playBeep(700, 0.08);
-        announce('تم حفظ مفتاح Google API بنجاح');
-      });
-    }
-
-    if (btnToggleAddProvider && boxAddProvider) {
-      btnToggleAddProvider.addEventListener('click', () => {
-        const isOpen = (boxAddProvider.style.display !== 'none');
-        boxAddProvider.style.display = isOpen ? 'none' : 'block';
-      });
-    }
-    if (btnCancelAddProv && boxAddProvider) {
-      btnCancelAddProv.addEventListener('click', () => {
-        boxAddProvider.style.display = 'none';
-      });
-    }
-    if (btnSubmitAddProv) {
-      btnSubmitAddProv.addEventListener('click', async () => {
-        const name = document.getElementById('input-new-prov-name')?.value.trim();
-        const url = document.getElementById('input-new-prov-url')?.value.trim();
-        const key = document.getElementById('input-new-prov-key')?.value.trim();
-        const modelsStr = document.getElementById('input-new-prov-models')?.value.trim();
-        if (!name || !url) {
-          alert('يرجى إدخال اسم المزود ورابط Base URL');
-          return;
-        }
-        const models = modelsStr ? modelsStr.split(',').map(s => s.trim()).filter(Boolean) : ['default-model'];
-        const pId = 'prov-' + Date.now();
-        const existingProvs = window._customAgentConfig?.custom_providers || [];
-        existingProvs.push({ id: pId, name, base_url: url, api_key: key, models });
-        await fetch('/api/custom-agent/config', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ custom_providers: existingProvs })
-        });
-        if (boxAddProvider) boxAddProvider.style.display = 'none';
-        await loadCustomEngineData();
-        announce(`تمت إضافة المزود ${name} بنجاح`);
-      });
-    }
 
     // --- Live Model Picker Dialog ---
     const modelPickerDialog = document.getElementById('model-picker-dialog');
@@ -7419,11 +7604,10 @@ dialog.accessible-dialog::backdrop {
         toggleAppDrawer(false);
       }
       modelPickerDialog.showModal();
-      announce('تم فتح قائمة اختيار نماذج الذكاء الاصطناعي والمحركات');
+      announce('تم فتح قائمة اختيار نماذج الذكاء الاصطناعي');
       if (modelPickerList) {
         modelPickerList.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-muted);">⏳ جارٍ جلب النماذج المتاحة من سيرفرات جوجل...</div>';
       }
-      updateEngineUiIndicators();
       try {
         const [modelsRes, settingsRes] = await Promise.all([
           fetch('/api/ai/models'),
@@ -7440,7 +7624,6 @@ dialog.accessible-dialog::backdrop {
         }
         announce('تعذر تحميل النماذج من السيرفر');
       }
-      loadCustomEngineData();
     }
     window.openModelPicker = openModelPicker;
 
@@ -7793,6 +7976,11 @@ dialog.accessible-dialog::backdrop {
     const drawerEffortButtons = document.querySelectorAll('.btn-effort');
     drawerEffortButtons.forEach(btn => {
       btn.addEventListener('click', async () => {
+        if (window._currentActiveModel && window._currentActiveModel.toLowerCase().includes('claude')) {
+          announce('مستوى التفكير مدمج وتلقائي لنموذج كلود ولا يتطلب تعديلاً');
+          playBeep(440, 0.1);
+          return;
+        }
         const effort = btn.getAttribute('data-effort');
         if (!effort) return;
         try {

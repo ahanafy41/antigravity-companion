@@ -31,10 +31,6 @@ import urllib.request
 import urllib.parse
 import urllib.error
 
-try:
-    import custom_agent
-except ImportError:
-    custom_agent = None
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,12 +47,26 @@ INDEX_FILE = os.path.join(BASE_DIR, "web", "index.html")
 STOCK_FILE = os.path.join(BASE_DIR, "ttyd_stock.html")
 SETTINGS_FILE = os.path.expanduser("~/.gemini/antigravity-cli/settings.json")
 WEB_SETTINGS_FILE = os.path.expanduser("~/.gemini/antigravity-cli/web_settings.json")
+CONFIG_FILE = os.path.expanduser("~/.gemini/config/config.json")
+PLUGINS_DIR = os.path.expanduser("~/.gemini/config/plugins")
 BRAIN_DIR = os.path.expanduser("~/.gemini/antigravity-cli/brain")
 HOME_DIR = os.path.expanduser("~")
 
 ttyd_process = None
 active_ai_process = None
 ai_process_lock = threading.Lock()
+
+def is_effort_supported_for_model(model_name: str) -> bool:
+    if not model_name:
+        return False
+    m = model_name.lower().strip()
+    if "claude" in m:
+        return False
+    if "thinking" in m:
+        return False
+    if any(m.endswith(suffix) for suffix in ["-low", "-medium", "-high", "-max"]):
+        return False
+    return True
 
 class PersistentAISessionManager:
     def __init__(self):
@@ -68,23 +78,33 @@ class PersistentAISessionManager:
         self.model = ""
         self.effort = ""
         self.cwd = ""
+        self.mode = "accept-edits"
+        self.sandbox = False
 
-    def get_or_create(self, conversation_id, model, effort, cwd, force_new=False):
+    def get_or_create(self, conversation_id, model, effort, cwd, force_new=False, mode=None, sandbox=False):
         with self.lock:
             if force_new:
                 self._terminate_locked()
             elif self.proc and self.proc.poll() is None:
                 match_conv = (not conversation_id) or (self.conversation_id == conversation_id)
                 match_model = (not model) or (self.model == model)
-                if match_conv and match_model:
+                match_effort = (not effort) or (self.effort == effort)
+                target_mode = mode if mode in ["accept-edits", "plan"] else self.mode
+                match_mode = (mode is None) or (self.mode == target_mode)
+                match_sandbox = (self.sandbox == bool(sandbox))
+                if match_conv and match_model and match_effort and match_mode and match_sandbox:
                     return self.proc, self.line_queue, False
                 self._terminate_locked()
 
             cmd = ["agy", "--input-format", "stream-json", "--output-format", "stream-json", "--dangerously-skip-permissions"]
             if model:
                 cmd.extend(["--model", model])
-            if effort and "thinking" not in model:
+            if effort and is_effort_supported_for_model(model):
                 cmd.extend(["--effort", effort])
+            if mode and mode in ["accept-edits", "plan"]:
+                cmd.extend(["--mode", mode])
+            if sandbox:
+                cmd.append("--sandbox")
             if conversation_id:
                 cmd.extend(["--conversation", conversation_id])
 
@@ -136,6 +156,8 @@ class PersistentAISessionManager:
             self.model = model
             self.effort = effort
             self.cwd = cwd or HOME_DIR
+            self.mode = mode if mode in ["accept-edits", "plan"] else "accept-edits"
+            self.sandbox = bool(sandbox)
             return self.proc, self.line_queue, True
 
     def _terminate_locked(self):
@@ -156,6 +178,8 @@ class PersistentAISessionManager:
             self.proc = None
             self.line_queue = None
             self.conversation_id = ""
+            self.mode = "accept-edits"
+            self.sandbox = False
 
     def terminate(self):
         with self.lock:
@@ -614,6 +638,21 @@ def is_category_allowed(allow_list, category):
         return "schedule" in allow_list or "schedule(*)" in allow_list
     return category in allow_list
 
+GENERIC_PERMISSION_WILDCARDS = {
+    "command(*)", "write_file(*)", "read_url(*)", "invoke_subagent(*)", "schedule(*)",
+    "*", "command", "file_write", "web_access", "subagents", "schedule"
+}
+
+def is_generic_permission_wildcard(rule_str):
+    if not isinstance(rule_str, str):
+        return True
+    r = rule_str.strip()
+    if r in GENERIC_PERMISSION_WILDCARDS:
+        return True
+    if re.match(r'^[a-zA-Z_]+\(\s*\*\s*\)$', r):
+        return True
+    return False
+
 def format_human_permission_question(tool_name, params):
     if not isinstance(params, dict):
         params = {}
@@ -1001,6 +1040,9 @@ def load_settings():
     default_settings = {
         "model": "gemini-3.8-flash-medium",
         "effort": "medium",
+        "mode": "accept-edits",
+        "sandbox": False,
+        "allowNonWorkspaceAccess": True,
         "permissions": {
             "allow": ["command(*)", "write_file(*)", "read_url(*)"]
         },
@@ -1018,7 +1060,8 @@ def load_settings():
             HOME_DIR,
             os.path.join(HOME_DIR, "termux-accessible-web"),
             os.path.join(HOME_DIR, "downloads")
-        ]
+        ],
+        "whitelist": []
     }
     cfg = dict(default_settings)
 
@@ -1040,6 +1083,12 @@ def load_settings():
                         cfg["tones_enabled"] = bool(data["tones_enabled"])
                     if "haptic_enabled" in data:
                         cfg["haptic_enabled"] = bool(data["haptic_enabled"])
+                    if "allowNonWorkspaceAccess" in data:
+                        cfg["allowNonWorkspaceAccess"] = bool(data["allowNonWorkspaceAccess"])
+                    if "mode" in data and data["mode"] in ["accept-edits", "plan"]:
+                        cfg["mode"] = data["mode"]
+                    if "sandbox" in data:
+                        cfg["sandbox"] = bool(data["sandbox"])
                     if "trustedWorkspaces" in data and isinstance(data["trustedWorkspaces"], list):
                         cfg["trustedWorkspaces"] = data["trustedWorkspaces"]
                     if "permissions" in data and isinstance(data["permissions"], dict):
@@ -1055,7 +1104,7 @@ def load_settings():
             with open(WEB_SETTINGS_FILE, "r", encoding="utf-8") as f:
                 web_data = json.load(f)
                 if isinstance(web_data, dict):
-                    for k in ["safe_mode", "autopilot", "allow_commands", "allow_write", "allow_web", "allow_subagent", "allow_schedule", "speech_enabled", "tones_enabled", "haptic_enabled", "trustedWorkspaces", "model", "effort"]:
+                    for k in ["safe_mode", "autopilot", "allow_commands", "allow_write", "allow_web", "allow_subagent", "allow_schedule", "speech_enabled", "tones_enabled", "haptic_enabled", "trustedWorkspaces", "model", "effort", "mode", "sandbox", "allowNonWorkspaceAccess"]:
                         if k in web_data:
                             cfg[k] = web_data[k]
         except Exception as e:
@@ -1078,8 +1127,13 @@ def load_settings():
     cfg["safe_mode"] = is_safe
     cfg["autopilot"] = not is_safe
 
-    # Reconstruct strict active allow list from granular toggles
-    active_allow = []
+    # Extract non-wildcard custom whitelist rules from existing permissions
+    raw_perms = cfg.get("permissions", {}).get("allow", [])
+    custom_whitelist = [r for r in raw_perms if isinstance(r, str) and not is_generic_permission_wildcard(r)]
+    cfg["whitelist"] = custom_whitelist
+
+    # Reconstruct strict active allow list from granular toggles + preserve custom whitelist
+    active_allow = list(custom_whitelist)
     if cfg.get("allow_commands", True):
         active_allow.extend(["command", "command(*)"])
     if cfg.get("allow_write", True):
@@ -1092,7 +1146,6 @@ def load_settings():
         active_allow.extend(["schedule", "schedule(*)"])
     cfg["permissions"] = {"allow": active_allow}
 
-
     return cfg
 
 def save_settings(data):
@@ -1100,10 +1153,17 @@ def save_settings(data):
         os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
         os.makedirs(os.path.dirname(WEB_SETTINGS_FILE), exist_ok=True)
 
+        target_mode = data.get("mode", "accept-edits")
+        if target_mode not in ["accept-edits", "plan"]:
+            target_mode = "accept-edits"
+
         # 1. Extract and save dedicated web_settings.json
         web_data = {
             "model": data.get("model", "gemini-3.8-flash-medium"),
             "effort": data.get("effort", "medium"),
+            "mode": target_mode,
+            "sandbox": bool(data.get("sandbox", False)),
+            "allowNonWorkspaceAccess": bool(data.get("allowNonWorkspaceAccess", True)),
             "safe_mode": bool(data.get("safe_mode", True)),
             "autopilot": not bool(data.get("safe_mode", True)),
             "allow_commands": bool(data.get("allow_commands", True)),
@@ -1124,7 +1184,26 @@ def save_settings(data):
         os.replace(temp_web, WEB_SETTINGS_FILE)
 
         # 2. Build clean agy-compliant settings for settings.json
-        agy_allow = []
+        current_agy = {}
+        if os.path.exists(SETTINGS_FILE):
+            try:
+                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    current_agy = json.load(f)
+                    if not isinstance(current_agy, dict):
+                        current_agy = {}
+            except Exception:
+                current_agy = {}
+
+        # Preserve custom fine-grained permission rules (like command(git ...))!
+        existing_rules = current_agy.get("permissions", {}).get("allow", [])
+        custom_rules = []
+        if isinstance(existing_rules, list):
+            for r in existing_rules:
+                if isinstance(r, str) and not is_generic_permission_wildcard(r):
+                    if r not in custom_rules:
+                        custom_rules.append(r)
+
+        agy_allow = list(custom_rules)
         if web_data["allow_commands"]:
             agy_allow.append("command(*)")
         if web_data["allow_write"]:
@@ -1136,19 +1215,10 @@ def save_settings(data):
         if web_data["allow_schedule"]:
             agy_allow.append("schedule(*)")
 
-        current_agy = {}
-        if os.path.exists(SETTINGS_FILE):
-            try:
-                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-                    current_agy = json.load(f)
-                    if not isinstance(current_agy, dict):
-                        current_agy = {}
-            except Exception:
-                current_agy = {}
-
         current_agy["model"] = web_data["model"]
         current_agy["effort"] = web_data["effort"]
         current_agy["safe_mode"] = web_data["safe_mode"]
+        current_agy["allowNonWorkspaceAccess"] = web_data["allowNonWorkspaceAccess"]
         current_agy["speech_enabled"] = web_data["speech_enabled"]
         current_agy["tones_enabled"] = web_data["tones_enabled"]
         current_agy["haptic_enabled"] = web_data["haptic_enabled"]
@@ -1257,70 +1327,22 @@ def handle_ai_stream(client_sock, body_bytes):
     ).encode("utf-8")
     client_sock.sendall(sse_header)
 
-    # Check if custom agent engine is active
-    custom_cfg = custom_agent.load_custom_agent_config() if custom_agent else {}
-    requested_engine = req_data.get("engine") or custom_cfg.get("engine_mode", "antigravity")
-    if requested_engine == "custom" and custom_agent:
-        client_connected = True
-        def safe_send_custom(payload_str):
-            nonlocal client_connected
-            if not client_connected:
-                return False
-            try:
-                client_sock.sendall(f"data: {payload_str}\n\n".encode("utf-8"))
-                return True
-            except Exception:
-                client_connected = False
-                return False
-
-        init_payload = json.dumps({
-            "type": "init",
-            "cwd": req_data.get("cwd") or HOME_DIR,
-            "conversation_id": conversation_id or f"custom-{int(time.time())}",
-            "engine": "custom",
-            "provider": custom_cfg.get("active_provider", "google"),
-            "model": req_data.get("model") or custom_cfg.get("selected_model", "gemini-flash-lite-latest")
-        }, ensure_ascii=False)
-        safe_send_custom(init_payload)
-
-        active_provider = custom_cfg.get("active_provider", "google")
-        history = req_data.get("history", [])
-        custom_model = req_data.get("model") or custom_cfg.get("selected_model", "gemini-flash-lite-latest")
-        work_dir = req_data.get("cwd") or HOME_DIR
-
-        if active_provider == "google":
-            api_key = custom_cfg.get("google_api_key") or custom_agent.DEFAULT_GOOGLE_KEY
-            custom_agent.run_gemini_agent_turn(prompt, history, custom_model, api_key, work_dir, safe_send_custom)
-        else:
-            # Match custom OpenAI-compatible provider
-            matched_prov = None
-            for p in custom_cfg.get("custom_providers", []):
-                if p.get("id") == active_provider:
-                    matched_prov = p
-                    break
-            if matched_prov:
-                base_url = matched_prov.get("base_url", "")
-                p_key = matched_prov.get("api_key", "")
-                custom_agent.run_openai_compatible_agent_turn(prompt, history, custom_model, base_url, p_key, work_dir, safe_send_custom)
-            else:
-                safe_send_custom(json.dumps({"type": "error", "message": f"المزود المخصص غير موجود: {active_provider}"}, ensure_ascii=False))
-
-        client_sock.close()
-        return
 
     raw_model = settings.get("model", "")
     selected_model = resolve_model_id(raw_model)
     effort = settings.get("effort", "medium")
+    mode = req_data.get("mode") or settings.get("mode", "accept-edits")
+    sandbox = req_data.get("sandbox") if "sandbox" in req_data else settings.get("sandbox", False)
 
     # Coordinated model & reasoning effort handling
-    m_eff = re.search(r'-(low|medium|high)$', selected_model)
+    m_eff = re.search(r'-(low|medium|high|max)$', selected_model)
     eff_to_pass = ""
     if m_eff:
-        if effort in ["low", "medium", "high"]:
+        if effort in ["low", "medium", "high", "max"]:
             base_model = selected_model[:m_eff.start()]
             selected_model = f"{base_model}-{effort}"
     else:
-        if effort in ["low", "medium", "high"] and "thinking" not in selected_model:
+        if effort in ["low", "medium", "high", "max"] and is_effort_supported_for_model(selected_model):
             eff_to_pass = effort
 
     denied_tools = []
@@ -1334,7 +1356,9 @@ def handle_ai_stream(client_sock, body_bytes):
             model=selected_model,
             effort=eff_to_pass,
             cwd=working_dir,
-            force_new=force_new
+            force_new=force_new,
+            mode=mode,
+            sandbox=sandbox
         )
         with ai_process_lock:
             active_ai_process = proc
@@ -1355,7 +1379,9 @@ def handle_ai_stream(client_sock, body_bytes):
                 model=selected_model,
                 effort=eff_to_pass,
                 cwd=working_dir,
-                force_new=force_new
+                force_new=force_new,
+                mode=mode,
+                sandbox=sandbox
             )
             with ai_process_lock:
                 active_ai_process = proc
@@ -3258,7 +3284,7 @@ def handle_device_agent_turn(client_sock, body_bytes):
     selected_model = resolve_model_id(raw_model) or "gemini-3.8-flash-high"
     device_model = selected_model
     effort = settings.get("effort", "medium")
-    effort_to_pass = "" if any(device_model.endswith(s) for s in ["-low", "-medium", "-high"]) else effort
+    effort_to_pass = effort if is_effort_supported_for_model(device_model) else ""
 
     system_prompt = (
         "أنت 'الوكيل الشامل الخارق' (Antigravity Omni-Agent) للتحكم في الهاتف والنظام لصالح المستخدم (أحمد).\n"
@@ -3386,7 +3412,7 @@ def handle_device_agent_turn(client_sock, body_bytes):
                 "--model", device_model,
                 "--conversation", session_id
             ]
-            if effort_to_pass and "thinking" not in device_model:
+            if effort_to_pass and is_effort_supported_for_model(device_model):
                 cmd.extend(["--effort", effort_to_pass])
             cmd.extend(["-p", full_prompt])
 
@@ -3478,6 +3504,155 @@ def handle_settings_schema(client_sock):
         ]
     }
     send_json_response(client_sock, schema_data)
+
+CONFIG_JSON_FILE = os.path.expanduser("~/.gemini/config/config.json")
+PLUGINS_DIR = os.path.expanduser("~/.gemini/config/plugins")
+
+def handle_plugins_list(client_sock):
+    plugins = []
+    cfg_data = {}
+    if os.path.exists(CONFIG_JSON_FILE):
+        try:
+            with open(CONFIG_JSON_FILE, "r", encoding="utf-8") as f:
+                cfg_data = json.load(f)
+        except Exception:
+            cfg_data = {}
+    
+    plugins_cfg = cfg_data.get("plugins", {}) if isinstance(cfg_data.get("plugins"), dict) else {}
+
+    if os.path.exists(PLUGINS_DIR):
+        for item in sorted(os.listdir(PLUGINS_DIR)):
+            item_path = os.path.join(PLUGINS_DIR, item)
+            if os.path.isdir(item_path):
+                desc = "إضافة مسجلة لـ Antigravity"
+                p_cfg = plugins_cfg.get(item, {})
+                is_enabled = True
+                if isinstance(p_cfg, dict) and "enabled" in p_cfg:
+                    is_enabled = bool(p_cfg["enabled"])
+                
+                manifest_file = os.path.join(item_path, "plugin.json")
+                if os.path.exists(manifest_file):
+                    try:
+                        with open(manifest_file, "r", encoding="utf-8") as pf:
+                            p_info = json.load(pf)
+                            desc = p_info.get("description") or desc
+                    except Exception:
+                        pass
+                
+                plugins.append({
+                    "id": item,
+                    "name": item,
+                    "enabled": is_enabled,
+                    "description": desc
+                })
+
+    send_json_response(client_sock, {"status": "ok", "plugins": plugins})
+
+def handle_plugins_toggle(client_sock, body_bytes):
+    try:
+        data = json.loads(body_bytes.decode("utf-8", errors="ignore")) if body_bytes else {}
+        plugin_id = data.get("id")
+        enabled = bool(data.get("enabled", True))
+        if not plugin_id:
+            send_json_response(client_sock, {"status": "error", "message": "missing plugin id"}, status_code=400)
+            return
+
+        cfg_data = {}
+        if os.path.exists(CONFIG_JSON_FILE):
+            try:
+                with open(CONFIG_JSON_FILE, "r", encoding="utf-8") as f:
+                    cfg_data = json.load(f)
+            except Exception:
+                cfg_data = {}
+        
+        cfg_data.setdefault("plugins", {})
+        cfg_data["plugins"].setdefault(plugin_id, {})
+        cfg_data["plugins"][plugin_id]["enabled"] = enabled
+
+        temp_cfg = f"{CONFIG_JSON_FILE}.tmp.{os.getpid()}_{int(time.time() * 1000)}"
+        with open(temp_cfg, "w", encoding="utf-8") as f:
+            json.dump(cfg_data, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_cfg, CONFIG_JSON_FILE)
+
+        send_json_response(client_sock, {"status": "ok", "id": plugin_id, "enabled": enabled})
+    except Exception as e:
+        logger.error("Error toggling plugin: %s", e)
+        send_json_response(client_sock, {"status": "error", "message": str(e)}, status_code=500)
+
+def handle_whitelist_get(client_sock):
+    cfg = load_settings()
+    whitelist = cfg.get("whitelist", [])
+    send_json_response(client_sock, {"status": "ok", "whitelist": whitelist})
+
+def handle_whitelist_remove(client_sock, body_bytes):
+    try:
+        data = json.loads(body_bytes.decode("utf-8", errors="ignore")) if body_bytes else {}
+        rule = data.get("rule", "").strip()
+        if not rule:
+            send_json_response(client_sock, {"status": "error", "message": "missing rule"}, status_code=400)
+            return
+
+        if os.path.exists(SETTINGS_FILE):
+            try:
+                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    s_data = json.load(f)
+                perms = s_data.get("permissions", {}).get("allow", [])
+                if isinstance(perms, list) and rule in perms:
+                    s_data["permissions"]["allow"] = [r for r in perms if r != rule]
+                    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                        json.dump(s_data, f, indent=2, ensure_ascii=False)
+            except Exception as e:
+                logger.warning("Error removing rule from %s: %s", SETTINGS_FILE, e)
+
+        if os.path.exists(CONFIG_JSON_FILE):
+            try:
+                with open(CONFIG_JSON_FILE, "r", encoding="utf-8") as f:
+                    c_data = json.load(f)
+                grants = c_data.get("userSettings", {}).get("globalPermissionGrants", {}).get("allow", [])
+                if isinstance(grants, list) and rule in grants:
+                    c_data["userSettings"]["globalPermissionGrants"]["allow"] = [r for r in grants if r != rule]
+                    with open(CONFIG_JSON_FILE, "w", encoding="utf-8") as f:
+                        json.dump(c_data, f, indent=2, ensure_ascii=False)
+            except Exception as e:
+                logger.warning("Error removing rule from %s: %s", CONFIG_JSON_FILE, e)
+
+        updated_cfg = load_settings()
+        send_json_response(client_sock, {"status": "ok", "whitelist": updated_cfg.get("whitelist", [])})
+    except Exception as e:
+        logger.error("Error removing whitelist rule: %s", e)
+        send_json_response(client_sock, {"status": "error", "message": str(e)}, status_code=500)
+
+def handle_system_version(client_sock):
+    agy_bin = get_agy_binary_path()
+    version_str = "Antigravity CLI (Termux)"
+    try:
+        res = subprocess.run([agy_bin, "--help"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=4.0)
+        out = res.stdout or res.stderr or ""
+        first_line = out.strip().split("\n")[0] if out else ""
+        if "Usage of agy." in first_line:
+            version_str = first_line.replace("Usage of ", "").split(":")[0]
+    except Exception:
+        pass
+    send_json_response(client_sock, {"status": "ok", "version": version_str, "binary": agy_bin})
+
+def handle_system_update(client_sock):
+    agy_bin = get_agy_binary_path()
+    try:
+        env = dict(os.environ)
+        env["AGY_AUTO_UPDATE"] = "1"
+        res = subprocess.run([agy_bin, "update", "-y"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=60.0, env=env)
+        out = (res.stdout or "") + "\n" + (res.stderr or "")
+        is_success = (res.returncode == 0)
+        send_json_response(client_sock, {
+            "status": "ok" if is_success else "error",
+            "returncode": res.returncode,
+            "output": out.strip()
+        })
+    except Exception as e:
+        logger.error("Error updating agy: %s", e)
+        send_json_response(client_sock, {"status": "error", "message": str(e)}, status_code=500)
 
 def handle_client(client_sock, backend_port, index_bytes):
     try:
@@ -3665,24 +3840,33 @@ def handle_client(client_sock, backend_port, index_bytes):
                     old_model = current_settings.get("model")
                     old_effort = current_settings.get("effort")
 
-                    for k in ["speech_enabled", "tones_enabled", "haptic_enabled", "speech_rate", "trustedWorkspaces"]:
+                    for k in ["speech_enabled", "tones_enabled", "haptic_enabled", "speech_rate", "trustedWorkspaces", "mode", "sandbox", "allowNonWorkspaceAccess"]:
                         if k in patch:
                             current_settings[k] = patch[k]
 
                     if "model" in patch:
                         new_model = resolve_model_id(patch["model"])
                         current_settings["model"] = new_model
-                        m_eff = re.search(r'-(low|medium|high)$', new_model)
+                        m_eff = re.search(r'-(low|medium|high|max)$', new_model)
                         if m_eff:
                             current_settings["effort"] = m_eff.group(1)
 
                     if "effort" in patch:
                         new_effort = patch["effort"]
-                        if new_effort in ["low", "medium", "high"]:
+                        if new_effort in ["low", "medium", "high", "max"]:
                             current_settings["effort"] = new_effort
                             cur_m = current_settings.get("model", "")
-                            if re.search(r'-(low|medium|high)$', cur_m):
-                                current_settings["model"] = re.sub(r'-(low|medium|high)$', f"-{new_effort}", cur_m)
+                            if "claude" not in cur_m.lower() and re.search(r'-(low|medium|high|max)$', cur_m):
+                                current_settings["model"] = re.sub(r'-(low|medium|high|max)$', f"-{new_effort}", cur_m)
+
+                    if "mode" in patch and patch["mode"] in ["accept-edits", "plan"]:
+                        current_settings["mode"] = patch["mode"]
+
+                    if "sandbox" in patch:
+                        current_settings["sandbox"] = bool(patch["sandbox"])
+
+                    if "allowNonWorkspaceAccess" in patch:
+                        current_settings["allowNonWorkspaceAccess"] = bool(patch["allowNonWorkspaceAccess"])
 
                     if "autopilot" in patch and "safe_mode" not in patch:
                         current_settings["safe_mode"] = not bool(patch["autopilot"])
@@ -3714,6 +3898,36 @@ def handle_client(client_sock, backend_port, index_bytes):
                 except Exception as e:
                     logger.error("Error updating settings: %s", e)
                     send_json_response(client_sock, {"status": "error", "message": str(e)}, status_code=500)
+            client_sock.close()
+            return
+
+        elif path.startswith("/api/plugins/list"):
+            handle_plugins_list(client_sock)
+            client_sock.close()
+            return
+
+        elif path.startswith("/api/plugins/toggle"):
+            handle_plugins_toggle(client_sock, body_bytes)
+            client_sock.close()
+            return
+
+        elif path.startswith("/api/ai/permissions/whitelist/remove"):
+            handle_whitelist_remove(client_sock, body_bytes)
+            client_sock.close()
+            return
+
+        elif path.startswith("/api/ai/permissions/whitelist"):
+            handle_whitelist_get(client_sock)
+            client_sock.close()
+            return
+
+        elif path.startswith("/api/system/version"):
+            handle_system_version(client_sock)
+            client_sock.close()
+            return
+
+        elif path.startswith("/api/system/update"):
+            handle_system_update(client_sock)
             client_sock.close()
             return
 
@@ -3757,52 +3971,6 @@ def handle_client(client_sock, backend_port, index_bytes):
             client_sock.close()
             return
 
-        elif path.startswith("/api/custom-agent/config"):
-            if not custom_agent:
-                send_json_response(client_sock, {"status": "error", "message": "custom_agent module unavailable"}, status_code=500)
-                client_sock.close()
-                return
-            if method == "GET":
-                cfg = custom_agent.load_custom_agent_config()
-                send_json_response(client_sock, {"status": "ok", "config": cfg})
-            elif method == "POST":
-                try:
-                    patch = json.loads(body_bytes.decode("utf-8", errors="ignore")) if body_bytes else {}
-                    cur_cfg = custom_agent.load_custom_agent_config()
-                    cur_cfg.update(patch)
-                    custom_agent.save_custom_agent_config(cur_cfg)
-                    send_json_response(client_sock, {"status": "ok", "config": cur_cfg})
-                except Exception as e:
-                    send_json_response(client_sock, {"status": "error", "message": str(e)}, status_code=500)
-            client_sock.close()
-            return
-
-        elif path.startswith("/api/custom-agent/models"):
-            if not custom_agent:
-                send_json_response(client_sock, [], status_code=200)
-                client_sock.close()
-                return
-            cfg = custom_agent.load_custom_agent_config()
-            act_prov = cfg.get("active_provider", "google")
-            if act_prov == "google":
-                models = custom_agent.DEFAULT_FLASH_LITE_MODELS
-            else:
-                prov_models = []
-                for p in cfg.get("custom_providers", []):
-                    if p.get("id") == act_prov:
-                        for m_name in p.get("models", []):
-                            prov_models.append({
-                                "id": m_name,
-                                "name": m_name,
-                                "provider": act_prov,
-                                "context_window": "Custom",
-                                "description": f"نموذج مخصص عبر مزود {p.get('name', act_prov)}"
-                            })
-                        break
-                models = prov_models if prov_models else custom_agent.DEFAULT_FLASH_LITE_MODELS
-            send_json_response(client_sock, {"status": "ok", "provider": act_prov, "models": models})
-            client_sock.close()
-            return
 
         elif path.startswith("/api/mcp/list"):
             handle_mcp_list(client_sock)
