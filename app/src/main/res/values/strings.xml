@@ -7,4 +7,5 @@
     <string name="status_connected">متصل بنجاح بمحرك الذكاء الاصطناعي</string>
     <string name="status_connecting">جاري الاتصال بالمحرك المحلي...</string>
     <string name="action_doctor">فحص وتشخيص النظام</string>
+    <string name="developed_by">Developed by Ahmed Hanafy</string>
 </resources>
