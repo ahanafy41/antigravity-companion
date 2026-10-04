@@ -322,7 +322,7 @@ public class FloatingVoiceController {
                     }
                 } catch (Exception e) {
                     LOGGER.log(Level.SEVERE, "Error in processVoiceCommand", e);
-                    speak("معلش يا أحمد، حصل خطأ غير متوقع.");
+                    speak("معلش، حصل خطأ غير متوقع.");
                 }
             }
         }).start();
@@ -356,7 +356,7 @@ public class FloatingVoiceController {
             Response response = mHttpClient.newCall(request).execute();
             if (!response.isSuccessful() || response.body() == null) {
                 LOGGER.severe("Agent HTTP error: " + response.code());
-                speak("معلش يا أحمد، الخادم رجع استجابة غير متوقعة.");
+                speak("معلش، الخادم رجع استجابة غير متوقعة.");
                 return;
             }
 
@@ -400,7 +400,7 @@ public class FloatingVoiceController {
 
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "Network error communicating with agent", e);
-            speak("معلش يا أحمد، تعذر الاتصال بالمساعد. تأكد إن سيرفر تيرمكس شغال.");
+            speak("معلش، تعذر الاتصال بالمساعد. تأكد إن سيرفر تيرمكس شغال.");
         } catch (Exception e) {
             LOGGER.log(Level.SEVERE, "Unexpected error communicating with agent", e);
             speak("حصل خطأ أثناء معالجة الأمر.");

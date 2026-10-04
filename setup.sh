@@ -56,6 +56,7 @@ curl -fsSL --retry 3 --connect-timeout 10 "$GITHUB_RAW/server/web/index.html" -o
 curl -fsSL --retry 3 --connect-timeout 10 "$GITHUB_RAW/server/web/manifest.json" -o "$SERVER_DIR/web/manifest.json" 2>/dev/null || true
 curl -fsSL --retry 3 --connect-timeout 10 "$GITHUB_RAW/server/web/icon.svg" -o "$SERVER_DIR/web/icon.svg" 2>/dev/null || true
 curl -fsSL --retry 3 --connect-timeout 10 "$GITHUB_RAW/server/web/sw.js" -o "$SERVER_DIR/web/sw.js" 2>/dev/null || true
+rm -f "$SERVER_DIR/web/youm7.html" 2>/dev/null || true
 
 # عمل روابط للمسارات لضمان التوافق مع Termux RUN_COMMAND
 ln -sf "$SERVER_DIR/launch_server.sh" "$HOME/launch_server.sh"
