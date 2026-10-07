@@ -326,7 +326,10 @@
             opt.value = m.id || m.name;
             opt.setAttribute('data-id', m.id || '');
             opt.textContent = m.name + (m.tag ? ` (${m.tag})` : '');
-            if (this.state.model && (this.state.model === m.name || this.state.model === m.id)) {
+            const cur = (this.state.model || '').toLowerCase().trim();
+            const mId = (m.id || '').toLowerCase().trim();
+            const mName = (m.name || '').toLowerCase().trim();
+            if (cur && (cur === mId || cur === mName || (mId && cur.startsWith(mId)) || (mName && cur.startsWith(mName)))) {
               opt.selected = true;
             }
             select.appendChild(opt);
@@ -695,11 +698,12 @@
       }
 
       handleExternalSync(newSettings) {
+        const normalized = this.normalizeSettings(newSettings);
         if (!this.dialog || !this.dialog.open) {
-          this.state = this.normalizeSettings(newSettings);
+          this.state = normalized;
+          this.initialState = JSON.parse(JSON.stringify(normalized));
           return;
         }
-        const normalized = this.normalizeSettings(newSettings);
         Object.keys(normalized).forEach(k => {
           if (!this.dirtyFields.has(k)) {
             this.state[k] = normalized[k];
@@ -711,6 +715,52 @@
 
       async save(closeDialog = false) {
         this.setSyncStatus('syncing', 'Saving...');
+
+        // Harvest current visible DOM values from form controls
+        if (this.fieldsContainer) {
+          const modelEl = this.fieldsContainer.querySelector('#field-model');
+          if (modelEl && modelEl.value) this.state.model = modelEl.value;
+
+          const effortEl = this.fieldsContainer.querySelector('#field-effort');
+          if (effortEl && effortEl.value) this.state.effort = effortEl.value;
+
+          const modeEl = this.fieldsContainer.querySelector('#field-mode');
+          if (modeEl && modeEl.value) this.state.mode = modeEl.value;
+
+          const apEl = this.fieldsContainer.querySelector('#field-autopilot');
+          if (apEl) this.state.autopilot = apEl.checked;
+
+          const sbEl = this.fieldsContainer.querySelector('#field-sandbox');
+          if (sbEl) this.state.sandbox = sbEl.checked;
+
+          const nonWsEl = this.fieldsContainer.querySelector('#field-allow-non-workspace');
+          if (nonWsEl) this.state.allowNonWorkspaceAccess = nonWsEl.checked;
+
+          const cmdEl = this.fieldsContainer.querySelector('#field-perm-commands');
+          if (cmdEl) this.state.allow_commands = cmdEl.checked;
+
+          const wrEl = this.fieldsContainer.querySelector('#field-perm-file-write');
+          if (wrEl) this.state.allow_write = wrEl.checked;
+
+          const webEl = this.fieldsContainer.querySelector('#field-perm-web-access');
+          if (webEl) this.state.allow_web = webEl.checked;
+
+          const subEl = this.fieldsContainer.querySelector('#field-perm-subagents');
+          if (subEl) this.state.allow_subagent = subEl.checked;
+
+          const schEl = this.fieldsContainer.querySelector('#field-perm-schedule');
+          if (schEl) this.state.allow_schedule = schEl.checked;
+
+          const spEl = this.fieldsContainer.querySelector('#field-voice-speech');
+          if (spEl) this.state.speech_enabled = spEl.checked;
+
+          const tnEl = this.fieldsContainer.querySelector('#field-voice-tones');
+          if (tnEl) this.state.tones_enabled = tnEl.checked;
+
+          const hpEl = this.fieldsContainer.querySelector('#field-voice-haptic');
+          if (hpEl) this.state.haptic_enabled = hpEl.checked;
+        }
+
         const payload = {
           model: this.state.model,
           effort: this.state.effort,
@@ -741,13 +791,20 @@
             const data = await res.json();
             this.dirtyFields.clear();
             this.setSyncStatus('saved', '● Settings Applied');
+            const savedSettings = data.settings || payload;
+            if (savedSettings.model && typeof syncActiveModelDisplay === 'function') {
+              syncActiveModelDisplay(savedSettings.model);
+            }
+            if (savedSettings.effort && typeof syncReasoningEffortDisplay === 'function') {
+              syncReasoningEffortDisplay(savedSettings.effort);
+            }
             if (closeDialog) {
               if (typeof playSuccessChime === 'function') playSuccessChime();
               announce('Antigravity settings saved and applied successfully');
               if (this.dialog) this.dialog.close();
             }
             if (this.broadcast) {
-              this.broadcast.postMessage({ type: 'SETTINGS_UPDATED', settings: data.settings || payload });
+              this.broadcast.postMessage({ type: 'SETTINGS_UPDATED', settings: savedSettings });
             }
           } else {
             throw new Error(`Server returned HTTP ${res.status}`);

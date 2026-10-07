@@ -1452,6 +1452,16 @@
           if (modelPickerDialog) modelPickerDialog.close();
           playBeep(880, 0.1);
           announce(`تم تفعيل نموذج ${label} بنجاح`);
+          if (window.dynamicSettingsEngine) {
+            window.dynamicSettingsEngine.handleExternalSync(resData?.settings || { model: modelId });
+          }
+          if ('BroadcastChannel' in window) {
+            try {
+              const bc = new BroadcastChannel('agy_settings_sync');
+              bc.postMessage({ type: 'SETTINGS_UPDATED', settings: resData?.settings || { model: modelId } });
+              bc.close();
+            } catch(e) {}
+          }
         } else {
           announce('تعذر حفظ إعداد النموذج');
         }
@@ -1885,6 +1895,9 @@
             }
             playBeep(880, 0.08);
             announce(`تم ضبط مستوى التفكير على ${effort} بنجاح`);
+            if (window.dynamicSettingsEngine && data?.settings) {
+              window.dynamicSettingsEngine.handleExternalSync(data.settings);
+            }
           }
         } catch (e) {
           announce('تعذر حفظ مستوى التفكير');
