@@ -16,8 +16,7 @@ mkdir -p "$SERVER_DIR"
 # Check if port 7681 is actively listening
 if ! (echo > /dev/tcp/127.0.0.1/7681) 2>/dev/null; then
     echo "[$(date)] Port 7681 not detected. Starting server.py..." >> "$SERVER_DIR/server_launcher.log"
-    nohup python3 "$SERVER_DIR/server.py" </dev/null > "$SERVER_DIR/server.log" 2>&1 &
-    disown || true
+    nohup python3 "$SERVER_DIR/server.py" > "$SERVER_DIR/server.log" 2>&1 &
     sleep 1
     if (echo > /dev/tcp/127.0.0.1/7681) 2>/dev/null; then
         echo "[$(date)] server.py successfully started and listening on 7681." >> "$SERVER_DIR/server_launcher.log"

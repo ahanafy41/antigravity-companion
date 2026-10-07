@@ -1,5 +1,5 @@
 // Service Worker for Termux Accessible Web (Offline-first & Standalone PWA Support)
-const CACHE_NAME = 'termux-accessible-v4';
+const CACHE_NAME = 'termux-accessible-v3';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
