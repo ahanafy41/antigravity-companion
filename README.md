@@ -1,58 +1,48 @@
-# Antigravity Companion & Automation Bridge
+# Antigravity Companion
 
-> **تطبيق الأندرويد المستقل ومحرك الأتمتة وإمكانية الوصول لمساعد Antigravity**
+تطبيق Android وواجهة محلية لمحادثات `agy` وإدارة وظائفه المتاحة، مع خدمة وصول لأفعال الهاتف المحددة. يعمل Python داخل Termux؛ ويستهلك التطبيق والمتصفح API محليًا. بياناتك محفوظة محليًا، ولا تحتاج قاعدة سحابية.
 
----
+المصدر الجاري يعيد بناء الإصدار السابق. نجاح الفحوص المحلية لا يثبت عمل الهاتف أو توافق قارئات الشاشة؛ أدلة القبول في [سجل التحقق](docs/refactor-validation.md).
 
-## 🌟 نظرة عامة (Overview)
+## التثبيت والتشغيل
 
-**Antigravity Companion** هو تطبيق أندرويد متكامل ومستقل يحل مشكلة الـ Single-Thread في قارئات الشاشة (مثل Jieshuo/CSR) حلاً جذرياً، من خلال:
-1. **واجهة استخدام مدمجة (Accessible WebView Dashboard)**: متوافقة 100% مع معايير إمكانية الوصول W3C WAI-ARIA و TalkBack وقارئ الشاشة الصيني Jieshuo.
-2. **خدمة إمكانية وصول مستقلة (Dedicated AccessibilityService)**: تعمل في عملية (Process) وثريدات مستقلة تماماً للتحكم في الشاشة، قراءة شجرة العناصر، النقر، السحب، والتقاط الشاشة دون أي بطء أو تعطيل لنطق الهاتف.
-3. **خادم ويب سوكت محلي (Local WebSocket Bridge)**: على العنوان المحلي `127.0.0.1:8765` للربط اللحظي ثنائي الاتجاه بين وكلاء الذكاء الاصطناعي في Termux وواجهة الهاتف.
-4. **تشغيل ذاتي صامت (Zero-Friction Termux Auto-Start)**: إيقاظ خادم بايثون في خلفية تيرمكس تلقائياً عبر `com.termux.RUN_COMMAND` بدون فتح الشاشة السوداء أو إدخال أوامر يدوية.
+يلزم Python و`agy` على PATH، واعتمادات [requirements.txt](requirements.txt). يحتاج Android تطبيق Termux وإذن RUN_COMMAND وإعداد allow-external-apps الذي تختاره أنت؛ لا يعدله المُثبّت خفيةً. الملفات القديمة والمحادثات لا تحذف عند الإعداد.
 
----
+مثال تشغيل واحد من جذر المشروع:
 
-## 🚀 طريقة بناء وتنزيل الـ APK عبر GitHub Actions (بدون تثبيت أدوات على الموبايل)
-
-تم إعداد المشروع بمسار **GitHub Actions CI/CD** مسبقاً، بحيث يتم بناء ملف الـ APK في السحابة وتنزيله جاهزاً:
-
-### 1. رفع المشروع إلى مستودع جديد على حسابك في GitHub:
-من داخل تيرمكس:
 ```bash
-cd /data/data/com.termux/files/home/.gemini/antigravity-cli/scratch/antigravity-companion-app
-git init
-git add .
-git commit -m "feat: initial release of Antigravity Companion Android app"
-git branch -M main
-# أنشئ مستودعاً جديداً على حسابك باسم antigravity-companion ثم اربطه:
-git remote add origin https://github.com/ahanafy41/antigravity-companion.git
-git push -u origin main
+python -m pip install -r requirements.txt
+python server/server.py
 ```
 
-### 2. تنزيل الـ APK:
-- بمجرد الرفع، توجه إلى تبويب **Actions** في مستودع GitHub.
-- ستجد مهمة **Assemble Android APK** قد بدأت وانتهت بنجاح في أقل من دقيقتين.
-- ستجد ملف `AntigravityCompanion-Debug-APK` متاحاً للتنزيل والتثبيت مباشرة على هاتفك!
+افتح العنوان المحلي الذي يطبعه الخادم وأدخل رمز الاقتران ذا العمر المحدود. يحمل المتصفح cookie من نوع HttpOnly، وتحتاج أوامر التغيير CSRF. الحساب والإذن للنموذج من اختصاص `agy`؛ تعرض الواجهة سبب تعذر الوظيفة بدل اختلاق نجاح أو استهلاك.
 
----
+لتثبيت إصدار ثابت في Termux، استعمل ZIP وmanifest وsignature صادرة مع الحزمة، والشهادة العامة المثبتة، وأداة OpenSSL (حزمة openssl-tool في Termux)، واعتمادات requirements.txt. المُثبّت يرفض فساد الملفات وخروج المسار واختلاف الشهادة، ثم يختار الإصدار ذريًا. البيانات خارج releases. الرجوع يبدّل الشفرة ويحتفظ بالبيانات الحديثة؛ أعد تشغيل العملية المملوكة لتطبيق الاختيار. تفاصيل [التثبيت والتوقيع](docs/release-and-recovery.md).
 
-## ⚙️ التثبيت والاستخدام لأول مرة
+## مرجع CLI
 
-1. قم بتثبيت ملف الـ `app-debug.apk` على هاتفك.
-2. افتح إعدادات الهاتف -> **إمكانية الوصول (Accessibility)**.
-3. ابحث عن خدمة **Antigravity AI Automation** وقم بتفعيلها.
-4. (اختياري للتشغيل الصامت الكامل): تأكد من وجود السطر التالي في ملف `~/.termux/termux.properties`:
-   ```properties
-   allow-external-apps = true
-   ```
-5. افتح تطبيق **Antigravity Companion** واستمتع بتحكم فوري وتواصل سلس مع الذكاء الاصطناعي!
+| الأداة | المدخل والغرض |
+|---|---|
+| scripts/run_phone_tests.py | --help؛ فحص الهاتف عبر ADB؛ --phase all/chat/device/voice، --speech-audio لملف WAV مسموع أمام الميكروفون، --output للتقرير، --resume لحفظ التقدم |
+| scripts/phone_acceptance.py | فاحص API داخل Termux؛ --phase و--report لازمان، --root و--timeout و--resume؛ يبقي الرموز ومحتوى الشاشة داخل الهاتف |
+| server/server.py | --help، --host 127.0.0.1، --port، --data-dir؛ تشغيلAPI المحلي |
+| scripts/phase1_preflight.py | --help؛ فحص عقودالمساعدة وHTTP محليًا؛ --strict يرفض القبول الناقص |
+| scripts/prepare_web_release.py | --check؛ تحقق revision للأصول المحفوظة محليًا |
+| scripts/package_release.py | --version، --output، --keystore؛ حزمة ثابتة موقعة دون نشر |
+| scripts/install_release.py | --archive، --manifest، --signature، --root؛ تثبيت متحقق؛ --rollback للرجوع، --verify-selected للتحقق |
 
----
+[server/version.json](server/version.json) مرجع الإصدار وهوية الحزمة. إعدادات المستخدم في settings.json تحت data-dir، بقيم مجهولة محفوظة ورقم مراجعة لمنع تعارض الحفظ. اعتماديات الحساب الأصلية تبقى لدى CLI؛ لا تستخرج الواجهة رموزه. [SKILL.md](SKILL.md) مرجع الأدوات وقواعد العمل.
 
-## 🩺 الفحص الذاتي (Doctor)
-يمكنك فحص سلامة الربط في أي وقت من تيرمكس عبر:
-```bash
-python3 scripts/doctor.py --doctor
-```
+## Android والواجهة
+
+`debug` حزمة منفصلة؛ أما `release` فيحتاج المفتاح الأصلي وقيم التوقيع الخاصة من البيئة. مفتاح الإصدار لا يضاف إلى Git، ولا تنشر Actions إصدارًا تلقائيًا. Gradle يولد الأصول من server/؛ نسخ assets القديمة لا تدخل الحزمة.
+
+أفعال الهاتف محددة بمعرف يحفظ قبل التنفيذ، فلا يعاد فعل مجهول النتيجة. التقاط الشاشة يحتاج API30؛ سائر التطبيق يحتفظ بـminSdk24. الصوت مهمة واحدة قابلة للإلغاء. الجسر مقيد بالأصل والإطار الرئيس، ويحتاج إثبات الخادم قبل إرسال سر Android أو تمكين وظائفه الخاصة.
+
+فُحصت تسميات الأزرار وترتيب Tab والحوارات وعودة التركيز والدلالة النصية التي لا تعتمد على اللون. يلزم اختبار TalkBack وJieshuo على هاتف فعلي قبل اعتماد الإصدار. السجل المحلي يقرأ دون شبكة، والإرسال يتعطل؛ لا تحفظ Service Worker مسارات API ولا تعيد طلبًا معلقًا عند عودة الشبكة.
+
+## المساهمة
+
+راجع [الخطة](docs/refactor-plan.md) و[حالة المشروع](project_state.md) و[CHANGELOG.md](CHANGELOG.md). أرسل بلاغ الخلل بخطوات تكراره ومعلومات الإصدار المنقحة، أو طلب دمج محدودًا مع دليل الفحص؛ احذف الأسرار ومحتوى المحادثات الخاصة من البلاغ.
+
+صاحب العمل الجاري: **كمال ياسر — Kamal Yaser**؛ [البريد](mailto:kamalyaser31@gmail.com)، [Telegram](https://t.me/kamalyaser31). ينسب التطبيق أصله إلى Ahmed Hanafy؛ بقيت نسبته في الواجهة.

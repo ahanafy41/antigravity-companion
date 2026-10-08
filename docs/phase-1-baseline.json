@@ -1,0 +1,223 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-04",
+  "git_head": "281089c9020160bdeb9c557e0e2ef2cb4eebf4eb",
+  "branch": "codex/refactor-phase-1",
+  "preservation_scope": "Tracked production files; no user-device data available",
+  "application_id": "com.antigravity.companion",
+  "documented_version_name": "1.2.2",
+  "documented_version_code": 5,
+  "certificate": {
+    "source": "local_pkcs12_ephemeral_read",
+    "installed_apk_verified": false,
+    "private_key_exported": false,
+    "sha256": "348BF2A7AF8F14E5EC2D0528A703BD1645049D6B1205E1F6CC7B6530F9435DDB"
+  },
+  "device": {
+    "user_data_backup": "unverified",
+    "adb_device_count": 0,
+    "termux_execution": "unverified"
+  },
+  "files": [
+    {
+      "path": ".github/workflows/build-apk.yml",
+      "size": 1970,
+      "sha256": "2f9edad74a54d4f5a2cbc9abbc7e60be735a367550d987840647420e871d53dc"
+    },
+    {
+      "path": "app/build.gradle",
+      "size": 1962,
+      "sha256": "2e221081664bdf8d3d1dbbcdddefcb80cf2cda2df039bc7fdf3a2297f683eefd"
+    },
+    {
+      "path": "app/keystore/antigravity-release-key.jks",
+      "size": 2754,
+      "sha256": "4f204cbe3c103f16756e7a9085c25be76334efca04a76e2aa5fd17c3b71a6e4a"
+    },
+    {
+      "path": "app/src/main/AndroidManifest.xml",
+      "size": 3780,
+      "sha256": "67006667efef43826e6ca61faa84dec0aca7bfe434a532591adca596f1f47706"
+    },
+    {
+      "path": "app/src/main/assets/server/launch_server.sh",
+      "size": 1328,
+      "sha256": "b3812c9f6b4933b6f88c11da4f11ee63f9badaaed1366ca2589d334584daeae7"
+    },
+    {
+      "path": "app/src/main/assets/server/server.py",
+      "size": 193782,
+      "sha256": "359cf64da9eebf45f8fd56733a0580cb75db431ccc6d22a133f7516e293664bc"
+    },
+    {
+      "path": "app/src/main/assets/server/web/icon.svg",
+      "size": 491,
+      "sha256": "b247ccfa778af8a82131124724e9a00e8c94639aa6cbe3b1bb5c128738d8907b"
+    },
+    {
+      "path": "app/src/main/assets/server/web/index.html",
+      "size": 362050,
+      "sha256": "f491336c4174fd705b320ff27bfbaa4e556ffd60a2ddeea3134298f511db50f9"
+    },
+    {
+      "path": "app/src/main/assets/server/web/manifest.json",
+      "size": 681,
+      "sha256": "780bedebf0ffaf21cdeb974729bf2c777c7a8a313019ef7f415ce13496153bc4"
+    },
+    {
+      "path": "app/src/main/assets/server/web/sw.js",
+      "size": 925,
+      "sha256": "95f711716cc2254b4c0f5ce4e3714a7a292fd8238e1c37af9893f93f7c6e6ff9"
+    },
+    {
+      "path": "app/src/main/assets/web/icon.svg",
+      "size": 491,
+      "sha256": "b247ccfa778af8a82131124724e9a00e8c94639aa6cbe3b1bb5c128738d8907b"
+    },
+    {
+      "path": "app/src/main/assets/web/index.html",
+      "size": 362050,
+      "sha256": "f491336c4174fd705b320ff27bfbaa4e556ffd60a2ddeea3134298f511db50f9"
+    },
+    {
+      "path": "app/src/main/assets/web/manifest.json",
+      "size": 681,
+      "sha256": "780bedebf0ffaf21cdeb974729bf2c777c7a8a313019ef7f415ce13496153bc4"
+    },
+    {
+      "path": "app/src/main/assets/web/sw.js",
+      "size": 925,
+      "sha256": "d5307510ab61e0d17171f1500a2e6c20068fed86915724ab77aae0de5c4273b6"
+    },
+    {
+      "path": "app/src/main/java/com/antigravity/companion/AntigravityAccessibilityService.java",
+      "size": 17849,
+      "sha256": "34f2a2893392dffb9c4b4a7f9711a9a2516baa8a691c55313df9e73692ca64d2"
+    },
+    {
+      "path": "app/src/main/java/com/antigravity/companion/AppUpdateManager.java",
+      "size": 19980,
+      "sha256": "f76986b64de1ad0bbc7a1741449eb85bd3a531eb32eaafb68fdb838c5595d4ff"
+    },
+    {
+      "path": "app/src/main/java/com/antigravity/companion/BootReceiver.java",
+      "size": 991,
+      "sha256": "8cbb00edfb42d24174e6d01415dd1fc12eaf0b80357e66cea0c6d95142e4cfe5"
+    },
+    {
+      "path": "app/src/main/java/com/antigravity/companion/DoctorDiagnosticEngine.java",
+      "size": 5459,
+      "sha256": "037f8830411f5a26c9790cc0d44bf4f966183b4bc501cee8eddaf31be5d5ed4f"
+    },
+    {
+      "path": "app/src/main/java/com/antigravity/companion/FloatingVoiceController.java",
+      "size": 23550,
+      "sha256": "0d3bcfbadbdd77cfbe14eeb49e8fe9deb2f31a81188c41eff358aef0589a052e"
+    },
+    {
+      "path": "app/src/main/java/com/antigravity/companion/LocalAutomationServer.java",
+      "size": 9796,
+      "sha256": "8a6ef11778f2847e2b515cdb13d97cb9f1acb259dd8289358e446c3c15691a81"
+    },
+    {
+      "path": "app/src/main/java/com/antigravity/companion/MainActivity.java",
+      "size": 14722,
+      "sha256": "e80e27a87d63565cc84d0dbf23a117f39da3efd720bacad6cd0c0156e1b92659"
+    },
+    {
+      "path": "app/src/main/java/com/antigravity/companion/TermuxBridge.java",
+      "size": 7085,
+      "sha256": "68c737aff3442a35e3099bcca9712e9499c54348f24e12d0a949d9d37c5ccab4"
+    },
+    {
+      "path": "app/src/main/java/com/antigravity/companion/VoiceCommandActivity.java",
+      "size": 2545,
+      "sha256": "10fd0703372d35c2508b6ac39ef4911a99a2438abf08067ee02fd9536758a751"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_launcher.xml",
+      "size": 453,
+      "sha256": "b9c97b88b086ed8fe20a40cc089a0527303af1ef9d359aaac32b5053ca4ef7ec"
+    },
+    {
+      "path": "app/src/main/res/drawable/ic_mic.xml",
+      "size": 665,
+      "sha256": "e6835c211955734acc6c2d8326e3f2ba9b01238e7ca0a6dfac45bc9fe6c7fd58"
+    },
+    {
+      "path": "app/src/main/res/values/colors.xml",
+      "size": 347,
+      "sha256": "90eef65d4bc881ec28381dcfac27b0e12d9faab6d109d95d3f8e486a31be690c"
+    },
+    {
+      "path": "app/src/main/res/values/strings.xml",
+      "size": 1070,
+      "sha256": "cb87940fd0e30e8ad1f05f8f450d2cf85586a8680ddc11283116852851a2ae5c"
+    },
+    {
+      "path": "app/src/main/res/values/themes.xml",
+      "size": 920,
+      "sha256": "ddc00aa1f90a3e1ede51b6c5fdedc14a32e7023671657c986910140c9267f8c5"
+    },
+    {
+      "path": "app/src/main/res/xml/accessibility_service_config.xml",
+      "size": 574,
+      "sha256": "4b1236d690228000f60e585ff0d1f0c9cc8e0973fc391a4e8845052d94b56f82"
+    },
+    {
+      "path": "app/src/main/res/xml/file_paths.xml",
+      "size": 577,
+      "sha256": "ae3b9f945dbfd67c7dc90d12ca4e52f60fd9b19b4f138761e7680f0fd1b646ca"
+    },
+    {
+      "path": "build.gradle",
+      "size": 149,
+      "sha256": "8116755db2388a16d16593cc6c59d6a1c3fb870784e956074e3b2ea380f87d0d"
+    },
+    {
+      "path": "gradle.properties",
+      "size": 112,
+      "sha256": "03c3cca2020011c3b4ba93a657a64b96f603be460115faeeab4429440068891d"
+    },
+    {
+      "path": "server/launch_server.sh",
+      "size": 1328,
+      "sha256": "b3812c9f6b4933b6f88c11da4f11ee63f9badaaed1366ca2589d334584daeae7"
+    },
+    {
+      "path": "server/server.py",
+      "size": 193782,
+      "sha256": "359cf64da9eebf45f8fd56733a0580cb75db431ccc6d22a133f7516e293664bc"
+    },
+    {
+      "path": "server/web/icon.svg",
+      "size": 491,
+      "sha256": "b247ccfa778af8a82131124724e9a00e8c94639aa6cbe3b1bb5c128738d8907b"
+    },
+    {
+      "path": "server/web/index.html",
+      "size": 362050,
+      "sha256": "f491336c4174fd705b320ff27bfbaa4e556ffd60a2ddeea3134298f511db50f9"
+    },
+    {
+      "path": "server/web/manifest.json",
+      "size": 681,
+      "sha256": "780bedebf0ffaf21cdeb974729bf2c777c7a8a313019ef7f415ce13496153bc4"
+    },
+    {
+      "path": "server/web/sw.js",
+      "size": 925,
+      "sha256": "d5307510ab61e0d17171f1500a2e6c20068fed86915724ab77aae0de5c4273b6"
+    },
+    {
+      "path": "settings.gradle",
+      "size": 355,
+      "sha256": "f045ed9b201c9cfe5f550a595d70c78bee865ac7c4572a02cd4601cbf2aebed8"
+    },
+    {
+      "path": "setup.sh",
+      "size": 5797,
+      "sha256": "7e47d982f0c3d5997da53a12bad6ca5951313550408448500eb9d68e5a62b571"
+    }
+  ]
+}

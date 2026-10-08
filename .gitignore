@@ -7,3 +7,7 @@ app/build/
 local.properties
 __pycache__/
 *.pyc
+.tmp/
+
+app/keystore/*.jks
+app/keystore/*.p12

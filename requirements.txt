@@ -1,0 +1,4 @@
+# Dependency exercised by the new phase-one probe on Windows.
+# Termux installation and operation remain an acceptance blocker.
+# This is not a complete inventory of legacy server dependencies.
+aiohttp==3.13.3

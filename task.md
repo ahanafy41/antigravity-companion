@@ -1,0 +1,215 @@
+# سجل العمل
+
+## جمع التغييرات 2026-10-08
+
+chore: commit all accumulated changes — complete؛ محفوظة في commit هذه الجلسة؛ أمر المستخدم بجمع كل التغييرات منذ آخر commit. فحص المسارات غير المستبعدة لم يرصد نمطًا ظاهرًا لاعتماد سري؛ ملفات التوقيع الخاصة والمؤقتات مستبعدة. لا هاتف أو متصفح أو push.
+
+## إعداد السيرفر والويب 2026-10-08
+
+chore: prepare server and web delivery — complete locally؛ جُدّدت بصمة SW وتوحدت السجلات وأُعدّت حزمة مصدر وجرد SHA256. نجح 77 فحص Python وفحص الويب الأساسي وصياغة JavaScript. فحص الهاتف والمتصفح مستبعدان بأمر المستخدم؛ لا نشر أو commit. الحصيلة docs/server-web-delivery.md.
+
+| الملفات | الحال |
+|---|---|
+| server/web/sw.js | complete |
+| project_state.md، task.md، CHANGELOG.md، docs/server-web-delivery.md | complete |
+| مصادر السيرفر والويب اللازمة للتسليم | complete؛ حزمة مصدر وجرد وفحص محلي |
+
+## خطة التكافؤ 2026-10-07
+
+feat: feature parity restoration — in_progress؛ اعتمد المستخدم الخطة؛ بدأ التنفيذ المحلي والفحوص. لا حساب أو ترقيةCLI فعلية أو هاتف أو نشر في هذا الطلب.
+
+| الملفات | الحال |
+|---|---|
+| docs/main-feature-baseline.md، docs/feature-restoration-contracts.md | complete |
+| docs/feature-parity-spec.md، docs/feature-restoration-plan.md | complete؛ اعتمدت الخطة وفق سجل العمل أعلاه |
+| العقود والحصص والترقية والأذون والمهارات وأفعالAndroid | in_progress؛ تنفيذ وفحص محلي |
+| دخول الحساب وMCP والمهام والصوت وبقية التكافؤ | not_started؛ بعد المراحل السابقة |
+| قبول الحساب والهاتف وOTA الحقيقي | not_started؛ يحتاج فعلًا مأذونًا مخصوصًا |
+
+## تدقيق 2026-10-07
+
+fix: branch audit — complete locally؛ أصلحت العيوب الستة ومسالك الانقطاع والاختيار التي كشفها التدقيق المستقل. الخطة docs/branch-audit-fix-plan.md والحصيلة docs/branch-audit-fix-report.md؛ لا commit أو push أو نشر أو هاتف.
+
+| الملفات | الحال |
+|---|---|
+| server/sessions.py، server/cli_client.py، server/application.py، scripts/run_backend_tests.py | complete |
+| server/web/panels.js، server/web/run_ui_tests.cjs، server/web/sw.js | complete |
+| MainActivity.java، AppUpdateManager.java، ServerConnection.java، AntigravityAccessibilityService.java | complete |
+| ElementClick.java، UpdateCompatibility.java، ElementClickTest.java، UpdateCompatibilityTest.java | complete |
+| تدقيق مستقل وحصيلة الفحوص | complete locally؛ Python63 وAndroid25 والويب ناجحة؛ Lint0أخطاء/24تحذيرًا؛ 39 أصلAPK مطابقة |
+
+تاريخ الحال 2026-10-05. الفرع codex/refactor-phase-1؛ المصدر 1.3.6/12، والهاتف حاليًا1.3.6/12؛ قبوله التفصيلي السابق1.3.2/8. التنفيذ والتجربة مأذونان، ولا commit أو push أو نشر.
+
+| المرحلة | الحال | الدليل والباقي |
+|---|---|---|
+| 1 العقود والفاحص | complete locally | help الفعلي و8 فحوص؛ المحادثة والإلغاء والاستئناف ثبتت على الهاتف |
+| 2 المصدر والعمليات | complete locally | مصدر واحد وملكية عملية وحفظ معرف الطلب |
+| 3 HTTP والحفظ | complete locally | 24 فحصًا وعزل ومراجعة إعدادات؛ HMAC/bootstrap مثبتان على الهاتف |
+| 4 الواجهة | complete locally | Node/Chromium؛ الواجهة المقترنة ظهرت على الهاتف |
+| 5 Android | complete locally | 14 فحصًا وبناء وLint؛ tree واللقطة مثبتان على الهاتف |
+| 6 الترقية | complete locally | توقيع وتثبيت ورجوع ورفض عبث محليًا؛ تثبيت1.3.2 على الهاتف؛ OTA بعيد باق |
+| 7 الاعتماد والتنظيف | code_complete; acceptance_pending | كتابة العقود مكتملة؛ Back وقارئات الشاشة وOTA وإزالة النسخ القديمة عند تحقق شرط القبول باقية؛ الإملاء مستثنى |
+
+## جرد الملفات المنجزة
+
+complete يثبت إتمام العمل المبيّن؛ نتائج الفحوص السابقة تخص نسخها، والإصلاحات الأخيرة لم تُعد فحوصها بأمر المستخدم. لا يعد ذلك قبولًا ميدانيًا شاملًا. مسار keystore نقل إلى حفظ خاص مع نسخة موثقة، وليس إتلافًا للمفتاح؛ التاريخ باق.
+
+| الملف | الحال |
+|---|---|
+| `.gitattributes` | complete |
+| `.github/workflows/build-apk.yml` | complete |
+| `.gitignore` | complete |
+| `CHANGELOG.md` | complete |
+| `docs/independent-code-review.md` | complete |
+| `docs/code-completion-plan.md` | complete |
+| `docs/code-completion-report.md` | complete |
+| `docs/main-parity-fix-plan.md` | complete |
+| `server/cli_catalog.py` | complete code |
+| `server/runtime_status.py` | complete code |
+| `app/src/main/java/com/antigravity/companion/NativeRequestLedger.java` | complete code |
+| `README.md` | complete |
+| `SKILL.md` | complete |
+| `app/build.gradle` | complete |
+| `app/keystore/antigravity-release-key.jks` | complete |
+| `app/src/main/AndroidManifest.xml` | complete |
+| `app/src/main/assets/repair.html` | complete |
+| `app/src/main/java/com/antigravity/companion/ActionLedger.java` | complete |
+| `app/src/main/java/com/antigravity/companion/AntigravityAccessibilityService.java` | complete |
+| `app/src/main/java/com/antigravity/companion/AppUpdateManager.java` | complete |
+| `app/src/main/java/com/antigravity/companion/BootReceiver.java` | complete |
+| `app/src/main/java/com/antigravity/companion/CompanionWebViewClient.java` | complete |
+| `app/src/main/java/com/antigravity/companion/DeviceArguments.java` | complete |
+| `app/src/main/java/com/antigravity/companion/DoctorDiagnosticEngine.java` | complete |
+| `app/src/main/java/com/antigravity/companion/FloatingVoiceController.java` | complete |
+| `app/src/main/java/com/antigravity/companion/LocalAutomationServer.java` | complete |
+| `app/src/main/java/com/antigravity/companion/MainActivity.java` | complete |
+| `app/src/main/java/com/antigravity/companion/NativeProof.java` | complete |
+| `app/src/main/java/com/antigravity/companion/NativeSecrets.java` | complete |
+| `app/src/main/java/com/antigravity/companion/OriginPolicy.java` | complete |
+| `app/src/main/java/com/antigravity/companion/PhoneResultBudget.java` | complete |
+| `app/src/main/java/com/antigravity/companion/ScreenSnapshot.java` | complete |
+| `app/src/main/java/com/antigravity/companion/ServerConnection.java` | complete |
+| `app/src/main/java/com/antigravity/companion/TermuxBridge.java` | complete |
+| `app/src/main/java/com/antigravity/companion/TermuxLaunchContract.java` | complete |
+| `app/src/main/java/com/antigravity/companion/UpdatePolicy.java` | complete |
+| `app/src/main/java/com/antigravity/companion/VoiceCapture.java` | complete |
+| `app/src/main/java/com/antigravity/companion/VoiceCommandActivity.java` | complete |
+| `app/src/main/res/xml/file_paths.xml` | complete |
+| `app/src/main/res/xml/network_security_config.xml` | complete |
+| `app/src/test/java/com/antigravity/companion/ActionLedgerTest.java` | complete |
+| `app/src/test/java/com/antigravity/companion/DeviceArgumentsTest.java` | complete |
+| `app/src/test/java/com/antigravity/companion/NativeProofTest.java` | complete |
+| `app/src/test/java/com/antigravity/companion/OriginPolicyTest.java` | complete |
+| `app/src/test/java/com/antigravity/companion/PhoneResultBudgetTest.java` | complete |
+| `app/src/test/java/com/antigravity/companion/TermuxLaunchContractTest.java` | complete |
+| `app/src/test/java/com/antigravity/companion/UpdatePolicyTest.java` | complete |
+| `docs/phase-1-baseline.json` | complete |
+| `docs/phase-1-contracts.md` | complete |
+| `docs/phase-1-inventory.md` | complete |
+| `docs/phase-1-local-evidence.json` | complete |
+| `docs/phase-1-validation.md` | complete |
+| `docs/phone-validation.md` | complete |
+| `docs/refactor-plan.md` | complete |
+| `docs/refactor-validation.md` | complete |
+| `docs/release-and-recovery.md` | complete |
+| `docs/termux-phone-diagnosis.md` | complete |
+| `project_state.md` | complete |
+| `requirements.txt` | complete |
+| `scripts/ReleaseSigner.java` | complete |
+| `scripts/install_release.py` | complete |
+| `scripts/package_release.py` | complete |
+| `scripts/phase1_preflight.py` | complete |
+| `scripts/prepare_web_release.py` | complete |
+| `scripts/run_backend_tests.py` | complete |
+| `scripts/run_launcher_tests.py` | complete |
+| `scripts/run_release_tests.py` | complete |
+| `scripts/run_tests.py` | complete |
+| `server/android_client.py` | complete |
+| `server/application.py` | complete |
+| `server/cli_client.py` | complete |
+| `server/launch_server.sh` | complete |
+| `server/launcher.py` | complete |
+| `server/legacy_conversations.py` | complete |
+| `server/release-cert.der` | complete |
+| `server/security.py` | complete |
+| `server/server.py` | complete |
+| `server/sessions.py` | complete |
+| `server/storage.py` | complete |
+| `server/version.json` | complete |
+| `server/web/api.js` | complete |
+| `server/web/app.js` | complete |
+| `server/web/history.js` | complete |
+| `server/web/index.html` | complete |
+| `server/web/manifest.json` | complete |
+| `server/web/native.js` | complete |
+| `server/web/panels.js` | complete |
+| `server/web/run_tests.cjs` | complete |
+| `server/web/run_ui_tests.cjs` | complete |
+| `server/web/state.js` | complete |
+| `server/web/styles.css` | complete |
+| `server/web/sw.js` | complete |
+| `server/web/ui.js` | complete |
+| `server/web/vendor/alpine-LICENSE.md` | complete |
+| `server/web/vendor/alpine-csp.min.js` | complete |
+| `server/web/vendor/dompurify-LICENSE.txt` | complete |
+| `server/web/vendor/manifest.json` | complete |
+| `server/web/vendor/marked-LICENSE.md` | complete |
+| `server/web/vendor/marked.umd.js` | complete |
+| `server/web/vendor/purify.min.js` | complete |
+| `server/web/vendor/tailwind-LICENSE.txt` | complete |
+| `server/web/vendor/tailwind-input.css` | complete |
+| `server/web/vendor/tailwind.min.css` | complete |
+| `setup.sh` | complete |
+| `task.md` | complete |
+
+## حصيلة الاستئناف
+
+كان عائق الهاتف غياب openssl-tool وaiohttp؛ حُصلا بعد تشخيص محدد وإذن تحديث فهارس apt دون ترقية عامة. ثبت CRLF ثم اختلاف shebang في RUN_COMMAND؛ أوقف الوكيل التجارب، وبحث المصدر الموسوم والشفرة القديمة وأعاد المعالج محليًا قبل الإصلاح. نجح العقد ومراجعته ثم فحص قبول واحد محدد في 1.3.2: البدء البارد والاقتران وHMAC/bootstrap وtree واللقطة. التفاصيل docs/termux-phone-diagnosis.md وdocs/phone-validation.md.
+
+## الباقي
+
+إصلاح Back الجديد غير متحقق منه على الهاتف بطلب المستخدم؛ الصوت غير محسوم ومستثنى من العيوب. OTA بعيد ورفض أدوات CLI وقبول شامل لقارئات الشاشة وأجهزة أقدم باقية. assets القديمة مستبعدة وباقية إلى قبول الهاتف؛ انقضاء أحداث البث بعد24ساعة وإخلاء الأقدم ضمن32MiB مكتوبان، والمحادثات محفوظة. حد50MiB يرفض الجديد دون حذفها. لم تُهيأ أسرار CI ولم ينشر شيء. كل حالة جديدة تقيد هنا وفي project_state.md وCHANGELOG.md.
+
+## قبول الهاتف الآلي الجاري
+
+2026-10-04: طلب المستخدم سكربتًا ينفذ المحادثة والإلغاء والاستئناف والإملاء وإلغاءه وأفعال الضغط والتمرير والرجوع على الهاتف. scripts/phone_acceptance.py وscripts/run_phone_tests.py: complete locally؛ آخر إصلاحات الفاحص غير معادة الفحص بطلب المستخدم. البحث في عقود API والشفرة الأصلية ومصادر Android سبق التنفيذ. الفحوص تستعمل مجلدًا معزولًا وعبارة صوتية معلومة؛ لا تبديل لخدمات المستخدم أو إعداداته، ولا خروج للرموز أو الشاشة في التقرير.
+
+## حصيلة السكربت
+
+2026-10-05: المحادثة والتذكر وSSE والإلغاء وزوال العملية واستئناف معرف المحادثة والضغط والتمرير: complete على 1.3.2. Back: إصلاح المصدر complete، والقبول الميداني not_started بطلب عدم إعادة الفحص. الصوت: inconclusive، لا يعد عيبًا بقرار المستخدم. الهاتف غير متصل؛ لا أوامر ADB لاحقة.
+
+| الملف الجديد | الحال |
+|---|---|
+| scripts/phone_acceptance.py | complete locally |
+| scripts/run_phone_tests.py | complete locally; final amendments unverified |
+| docs/phone-script-validation.md | complete |
+
+2026-10-05: اكتمل بناء Release 1.3.3/9 في 47 ثانية، وحزمة الخادم الموقعة في .tmp/release/1.3.3. APK في app/build/outputs/apk/release/app-release.apk. لا إعادة فحوص ولا اتصال هاتف؛ Debug السابق باق 1.3.2/8. clean-code-guard مراجعة شفرة فقط؛ الفحص الرجوعي الجديد غير منفذ، والقبول الميداني للإصلاح غير محسوم.
+
+## المراجعة المستقلة الجارية
+
+2026-10-05: طلب المستخدم وكيلاً مستقلاً لمراجعة كامل الشفرة الجديدة بمهارات ponytail وclean-code-guard وcode-review، ثم إصلاح العيوب المثبتة. جرد 72 ملف شفرة وضبط في .tmp/independent-review/inventory.json؛ المقارنة مع HEAD 281089c90201 وتشمل الملفات غير المتتبعة. مراجعة Standards وSpec ساكنة؛ لا اختبارات أو هاتف، وتعذر الإملاء ليس عيبًا. الحال in_progress، والتقرير والتغطية تحت .tmp/independent-review.
+
+2026-10-05: أصلحت نتائج الوكيل الستة: precache، MCP، هوية الحزمة، رابط Markdown، ذيل NDJSON وeffort. docs/independent-code-review.md: complete؛ مراجعة الإصلاحات وبناء 1.3.4/10: in_progress. أمثلة الانحدار المضافة غير منفذة؛ لا هاتف ولا إعادة فحوص.
+
+## حصيلة المراجعة والإصلاح
+
+2026-10-05: المراجعة المستقلة والإصلاح: complete. شملت 70 ملف شفرة وضبط وفحص، وملفي دليل تاريخي. Standards: عيب واحد؛ Spec: خمسة؛ جميعها أصلحت. المراجعة الساكنة الختامية لم تجد عيب إنتاج مؤكّدًا؛ أصلح فرق newline في مثال Markdown أيضًا. بناء Release 1.3.4/10 نجح في 33 ثانية، وحزمة الخادم وقعت في .tmp/release/1.3.4 دون استبدال إصدارات سابقة. لا اختبارات أو lint أو تحقق شهادة مستقل أو هاتف. Debug السابق 1.3.2/8، والقبول الميداني للإصلاحات غير محسوم. التفاصيل docs/independent-code-review.md؛ بقية المرحلة السابعة ثابتة.
+
+2026-10-05: إكمال كتابة الشفرة: in_progress بإذن المستخدم؛ الخطة docs/code-completion-plan.md تشمل انقضاء الأحداث، وغلق الجلسة الساكنة، وعقد 404/405. لا فحوص أو هاتف؛ حذف النسخ القديمة يظل مشروطًا بقبول ميداني.
+
+2026-10-05: الشفرة في sessions/application/app وأمثلة الانحدار: complete code؛ مراجعة المواضع الأخيرة وبناء 1.3.5/11: in_progress. لا اختبارات أو هاتف. النسخ القديمة غير الداخلة في البناء لا تحذف قبل استيفاء شرط القبول.
+
+## حصيلة إتمام كتابة الشفرة
+
+2026-10-05: complete code وفق مقابلة الخطة الأصلية والمعتمدة والمراجعة الساكنة المستقلة. اكتملت عقود انقضاء أحداث البث وغلق CLI الساكن وأخطاء v1، ومعالجة القراءة المحلية عند انقطاع close. خمسة أمثلة backend وسيناريوها UI مكتوبة غير منفذة. نجح بناء Debug وRelease 1.3.5/11 في 48 ثانية، ووقعت حزمة الخادم في .tmp/release/1.3.5، دون استبدال الإصدارات السابقة. لا اختبارات أو lint أو black/flake8 أو تحقق شهادة مستقل أو هاتف. الهاتف آخره1.3.2/8؛ الإصدار الجديد غير مثبت. المرحلة السابعة acceptance_pending: قبول الهاتف وقارئات الشاشة وOTA وإزالة assets القديمة عند تحقق شرط القبول باقية؛ لا نقص برمجي مؤكّد باقٍ في مقابلة الخطة. التقرير docs/code-completion-report.md. لا commit أو push أو نشر.
+
+2026-10-05: إصلاح نتائج المقارنة مع main: in_progress بإذن المستخدم؛ الخطة docs/main-parity-fix-plan.md. أكّد التدقيق أن حصيلة الإتمام السابقة ليست تكافؤًا كاملًا معmain. لا اختبارات/هاتف/commit/merge. وكيل Android ووكيل الويب يعملان في ملفات منفصلة، وroot يملك Python والعقود والسجلات.
+
+2026-10-05: إصلاحاتmainومواءمةepochوmetadataوالسياسةوالإحصاءوDoctor:complete code؛المراجعةالختاميةوالبناء1.3.6/12:in_progress. أمثلةPython/Java/JSمكتوبةغيرمنفذة؛لاPhone/commit/merge. العقودالغائبةلهابيانتعذر،ولايدّعىتكافؤكامللكلوظائفmainالقديمةالمتجاوزةللعقود.
+
+2026-10-05: المراجعة المستقلة الأخيرة: complete static review؛ أصلح إرسال args دون تبديل بصمة الطلبات القديمة. لا finding مؤكد باقٍ في نطاق المراجعة. البناء1.3.6/12: in_progress. المرجع docs/main-parity-fix-report.md؛ لا اختبارات أو هاتف أو commit/merge.
+
+2026-10-05: إصلاح العيوب المؤكدة ومراجعتها الساكنة: complete؛ نجح بناء Debug وRelease1.3.6/12 في56 ثانية، وأعدت حزمة الخادم الموقعة .tmp/release/1.3.6/companion-server-1.3.6.zip دون استبدال السابق. أمثلة الانحدار غير منفذة بطلب المستخدم؛ لا هاتف أو lint أو تحقق شهادة مستقل أو commit/merge/push. يلزم APK والخادم معًا لعقد journal_ready. القبول الميداني والعقود غير المدعومة وحدود الدمج في docs/main-parity-fix-report.md.
+
+2026-10-05: ثُبّت Release1.3.6/12 على الهاتف عبر adb install -r دون مسح البيانات، وثُبّت الخادم الموقّع1.3.6 داخل Termux. أعاد المثبت status=installed؛ فُتح Companion وأظهر «الخادم متصل ومصادق». اقتصرت المعاينة على نتيجة التثبيت ورقم APK وحال الاتصال؛ لا فحص تفصيلي أو قبول شامل للهاتف/قارئ الشاشة/OTA.

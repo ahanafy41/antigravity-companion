@@ -1,0 +1,191 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-10-04T07:15:24.205352+00:00",
+  "checks": [
+    {
+      "name": "termux",
+      "status": "unverified",
+      "required": true,
+      "detail": "phone runtime not verified",
+      "elapsed_seconds": 0,
+      "platform": "win32"
+    },
+    {
+      "name": "aiohttp",
+      "status": "confirmed",
+      "required": true,
+      "detail": "loopback HTTP exchange verified",
+      "elapsed_seconds": 0.332,
+      "version": "3.13.3"
+    },
+    {
+      "name": "agy",
+      "status": "confirmed",
+      "required": true,
+      "detail": "command help contract recognized",
+      "elapsed_seconds": 0.092,
+      "argument_names": [],
+      "supported_flags": [
+        "--agent",
+        "--continue",
+        "--conversation",
+        "--effort",
+        "--input-format",
+        "--mode",
+        "--model",
+        "--output-format",
+        "--print-timeout",
+        "--project",
+        "--sandbox"
+      ],
+      "missing_flags": []
+    },
+    {
+      "name": "mcp_add",
+      "status": "confirmed",
+      "required": true,
+      "detail": "command help contract recognized",
+      "elapsed_seconds": 0.088,
+      "argument_names": [
+        "name",
+        "commandOrUrl"
+      ],
+      "supported_flags": [
+        "--env",
+        "--header",
+        "--help",
+        "--type"
+      ],
+      "missing_flags": []
+    },
+    {
+      "name": "mcp_remove",
+      "status": "confirmed",
+      "required": true,
+      "detail": "command help contract recognized",
+      "elapsed_seconds": 0.091,
+      "argument_names": [
+        "name"
+      ],
+      "supported_flags": [
+        "--help"
+      ],
+      "missing_flags": []
+    },
+    {
+      "name": "mcp_list",
+      "status": "confirmed",
+      "required": true,
+      "detail": "command help contract recognized",
+      "elapsed_seconds": 0.09,
+      "argument_names": [],
+      "supported_flags": [
+        "--help"
+      ],
+      "missing_flags": []
+    },
+    {
+      "name": "mcp_enable",
+      "status": "confirmed",
+      "required": true,
+      "detail": "command help contract recognized",
+      "elapsed_seconds": 0.09,
+      "argument_names": [
+        "name"
+      ],
+      "supported_flags": [
+        "--help"
+      ],
+      "missing_flags": []
+    },
+    {
+      "name": "mcp_disable",
+      "status": "confirmed",
+      "required": true,
+      "detail": "command help contract recognized",
+      "elapsed_seconds": 0.086,
+      "argument_names": [
+        "name"
+      ],
+      "supported_flags": [
+        "--help"
+      ],
+      "missing_flags": []
+    },
+    {
+      "name": "models",
+      "status": "confirmed",
+      "required": true,
+      "detail": "command help contract recognized",
+      "elapsed_seconds": 0.084,
+      "argument_names": [],
+      "supported_flags": [
+        "--help"
+      ],
+      "missing_flags": []
+    },
+    {
+      "name": "agents",
+      "status": "confirmed",
+      "required": true,
+      "detail": "command help contract recognized",
+      "elapsed_seconds": 0.087,
+      "argument_names": [],
+      "supported_flags": [
+        "--help"
+      ],
+      "missing_flags": []
+    },
+    {
+      "name": "phone_stream_multiturn",
+      "status": "unverified",
+      "required": true,
+      "detail": "requires witnessed phone acceptance test",
+      "elapsed_seconds": 0
+    },
+    {
+      "name": "phone_cancellation",
+      "status": "unverified",
+      "required": true,
+      "detail": "requires witnessed phone acceptance test",
+      "elapsed_seconds": 0
+    },
+    {
+      "name": "phone_permissions",
+      "status": "unverified",
+      "required": true,
+      "detail": "requires witnessed phone acceptance test",
+      "elapsed_seconds": 0
+    },
+    {
+      "name": "phone_data_backup",
+      "status": "unverified",
+      "required": true,
+      "detail": "requires witnessed phone acceptance test",
+      "elapsed_seconds": 0
+    },
+    {
+      "name": "phone_apk_signature",
+      "status": "unverified",
+      "required": true,
+      "detail": "requires witnessed phone acceptance test",
+      "elapsed_seconds": 0
+    },
+    {
+      "name": "phone_termux_result",
+      "status": "unverified",
+      "required": true,
+      "detail": "requires witnessed phone acceptance test",
+      "elapsed_seconds": 0
+    }
+  ],
+  "blocking_checks": [
+    "termux",
+    "phone_stream_multiturn",
+    "phone_cancellation",
+    "phone_permissions",
+    "phone_data_backup",
+    "phone_apk_signature",
+    "phone_termux_result"
+  ]
+}

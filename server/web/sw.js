@@ -1,32 +1,21 @@
-// Service Worker for Termux Accessible Web (Offline-first & Standalone PWA Support)
-const CACHE_NAME = 'termux-accessible-v4';
-
-self.addEventListener('install', (event) => {
-  self.skipWaiting();
+'use strict';
+const CACHE_NAME = 'antigravity-static-a913803288abede298748859';
+const STATIC_PATHS = new Set(['/', '/styles.css', '/api.js', '/history.js', '/state.js', '/native.js', '/ui.js', '/panels.js', '/app.js', '/manifest.json', '/icon.svg', '/vendor/alpine-csp.min.js', '/vendor/marked.umd.js', '/vendor/purify.min.js', '/vendor/tailwind.min.css']);
+self.addEventListener('install', event => {
+  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll([...STATIC_PATHS])).then(()=>self.skipWaiting()));
 });
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
-  );
+self.addEventListener('activate', event => {
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('antigravity-static-') && key !== CACHE_NAME).map(key => caches.delete(key)))).then(()=>self.clients.claim()));
 });
-
-self.addEventListener('fetch', (event) => {
-  // Pass dynamic API and websocket requests through directly without caching
-  if (event.request.url.includes('/api/') || event.request.url.includes('/ws') || event.request.url.includes('/termux')) {
-    return;
-  }
-  event.respondWith(
-    fetch(event.request).catch(() => {
-      return caches.match(event.request);
-    })
-  );
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  const url = new URL(request.url);
+  if (request.method !== 'GET' || url.origin !== self.location.origin || url.search || !STATIC_PATHS.has(url.pathname)) return;
+  event.respondWith(caches.open(CACHE_NAME).then(async cache => {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    const response = await fetch(request);
+    if (response.ok) await cache.put(request,response.clone());
+    return response;
+  }));
 });

@@ -1,386 +1,345 @@
 package com.antigravity.companion;
 
 import android.annotation.SuppressLint;
-import android.content.Context;
 import android.content.Intent;
+import android.content.ActivityNotFoundException;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.provider.Settings;
-import android.view.View;
-import android.webkit.JavascriptInterface;
-import android.webkit.WebChromeClient;
-import android.webkit.WebResourceRequest;
+import android.webkit.CookieManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-
+import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
-
+import androidx.webkit.WebViewAssetLoader;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
 import com.google.gson.JsonObject;
-
+import com.google.gson.JsonParser;
+import com.google.gson.JsonParseException;
 import java.io.File;
-import java.util.Locale;
-import java.util.logging.Logger;
+import java.io.IOException;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * MainActivity: Accessible companion UI dashboard with integrated WebView.
- * Compliant with WCAG 2.2 AAA, TalkBack, and Jieshuo screen readers.
- */
-public class MainActivity extends AppCompatActivity {
-
-    private static final Logger LOGGER = Logger.getLogger(MainActivity.class.getName());
-
-    private WebView mWebView;
-    private LinearLayout mBannerA11y;
-    private TextView mTvStatus;
-    private Button mBtnEnableA11y;
-    private AppUpdateManager mUpdateManager;
-
-    public static final String LOCAL_URL = "http://127.0.0.1:7681";
-    public static final String FALLBACK_ASSET_URL = "file:///android_asset/web/index.html";
-    private static final int REQ_CODE_TERMUX_PERM = 2001;
-
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setupViews();
-
-        // 1. Request Termux RUN_COMMAND permission if needed
-        checkAndRequestTermuxPermission();
-
-        // 2. Silent check & auto-start of local Termux server
-        TermuxBridge.ensureServerRunningAsync(this);
-
-        // 3. Start WebSocket bridge if service already connected
-        LocalAutomationServer.startServer();
-
-        // 4. Initialize OTA update manager
-        mUpdateManager = AppUpdateManager.getInstance(this);
-
-        // 5. Load initial web dashboard
-        loadInitialPage();
+public final class MainActivity extends AppCompatActivity {
+    private WebView webView;
+    private TextView status;
+    private OriginPolicy origins;
+    private AppUpdateManager updates;
+    private ServerConnection server;
+    private VoiceCapture voice;
+    private Button voiceButton;
+    private final ExecutorService connectionExecutor = Executors.newSingleThreadExecutor();
+    private final AtomicBoolean connecting = new AtomicBoolean();
+    private final Map<String, NativeAction> actions = new HashMap<>();
+    private final NativeRequestLedger requestIds = new NativeRequestLedger();
+    private int pageGeneration;
+    private volatile boolean destroyed;
+    private boolean bridgeSupported;
+    private boolean serverConnected;
+    private volatile String lastTermuxFailure = "";
+    private interface NativeAction { void execute(NativeRequest request); }
+    private static final class NativeRequest {
+        final String id;
+        final JsonObject args;
+        final int generation;
+        NativeRequest(String id, JsonObject args, int generation) { this.id = id; this.args = args; this.generation = generation; }
     }
-
-    private void checkAndRequestTermuxPermission() {
-        String perm = "com.termux.permission.RUN_COMMAND";
-        if (ContextCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{perm}, REQ_CODE_TERMUX_PERM);
+    @Override protected void onCreate(Bundle savedState) {
+        super.onCreate(savedState);
+        origins = new OriginPolicy(NativeSecrets.serverPort(this));
+        updates = new AppUpdateManager(this); server = new ServerConnection(this); voice = new VoiceCapture(this);
+        buildViews(); configureWebView(); registerActions();
+        installBackHandler();
+        webView.loadUrl(OriginPolicy.REPAIR_URL); connectServer(null);
+    }
+    private void buildViews() {
+        LinearLayout panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL);
+        status = new TextView(this); status.setText(BootReceiver.restartNeeded(this)
+                ? "استعادة اتصال الخادم بعد إعادة تشغيل الهاتف" : "فحص الاتصال بالخادم"); status.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        panel.addView(status);
+        Button restart = new Button(this); restart.setText("تشغيل الخادم");
+        restart.setOnClickListener(view -> connectServer(null)); panel.addView(restart);
+        Button accessibility = new Button(this); accessibility.setText("إعداد خدمة الوصول");
+        accessibility.setOnClickListener(view -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))); panel.addView(accessibility);
+        voiceButton = new Button(this); voiceButton.setText("إملاء رسالة");
+        voiceButton.setOnClickListener(view -> {
+            if (voice.active()) { voice.cancel(); voiceButton.setText("إملاء رسالة"); return; }
+            voiceButton.setText("إلغاء الإملاء");
+            voice.start(speech -> { voiceButton.setText("إملاء رسالة"); acceptVoice(speech); });
+        }); panel.addView(voiceButton);
+        addVoicePreference(panel, "voice_sound", "صوت الإملاء", false);
+        addVoicePreference(panel, "voice_vibration", "اهتزاز الإملاء", true);
+        Button cancelDownload = new Button(this); cancelDownload.setText("إلغاء تنزيل الترقية");
+        cancelDownload.setOnClickListener(view -> updates.cancelDownload()); panel.addView(cancelDownload);
+        webView = new WebView(this); webView.setContentDescription("محادثة Antigravity");
+        panel.addView(webView, new LinearLayout.LayoutParams(-1, 0, 1)); setContentView(panel);
+    }
+    private void addVoicePreference(LinearLayout panel, String key, String label, boolean initial) {
+        android.content.SharedPreferences preferences = getSharedPreferences("companion_settings", MODE_PRIVATE);
+        android.widget.CheckBox checkbox = new android.widget.CheckBox(this); checkbox.setText(label);
+        checkbox.setChecked(preferences.getBoolean(key, initial));
+        checkbox.setOnCheckedChangeListener((button, checked) -> preferences.edit().putBoolean(key, checked).apply());
+        panel.addView(checkbox);
+    }
+    @SuppressLint("SetJavaScriptEnabled") private void configureWebView() {
+        WebSettings settings = webView.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
+        settings.setAllowFileAccess(false); settings.setAllowContentAccess(false);
+        settings.setAllowFileAccessFromFileURLs(false); settings.setAllowUniversalAccessFromFileURLs(false);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        settings.setSupportMultipleWindows(false); settings.setJavaScriptCanOpenWindowsAutomatically(false);
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false);
+        WebViewAssetLoader assets = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this)).build();
+        webView.setWebViewClient(new CompanionWebViewClient(this, origins, assets));
+        bridgeSupported = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER);
+        if (!bridgeSupported) { status.setText("حدّث Android System WebView لتفعيل جسر التطبيق"); return; }
+        WebViewCompat.addWebMessageListener(webView, "CompanionNative", Collections.singleton(origins.origin()),
+                (view, message, sourceOrigin, isMainFrame, replyProxy) -> {
+                    if (isMainFrame && origins.allowsBridge(sourceOrigin.toString())) receiveNativeRequest(message.getData());
+                });
+    }
+    void openBrowser(Uri url) {
+        try { startActivity(new Intent(Intent.ACTION_VIEW, url).addCategory(Intent.CATEGORY_BROWSABLE)); }
+        catch (ActivityNotFoundException unavailable) { status.setText("لا متصفح متاح لفتح الرابط"); }
+    }
+    void navigationStarted() { pageGeneration++; requestIds.clear(); serverConnected = false; voice.cancel(); }
+    void navigationFinished() {
+        if (destroyed || !origins.allowsBridge(webView.getUrl())) return;
+        int generation = pageGeneration;
+        connectionExecutor.execute(() -> {
+            boolean authenticated;
+            try { authenticated = server.authenticServer(); } catch (IOException offline) { authenticated = false; }
+            final boolean proved = authenticated;
+            runOnUiThread(() -> {
+                if (destroyed || generation != pageGeneration) return;
+                serverConnected = proved;
+                if (proved) { BootReceiver.recovered(this); status.setText("الخادم متصل ومصادق"); deliverPendingVoice(); }
+                else status.setText("جسر الهاتف غير مصادق؛ الاقتران اليدوي متاح للمحادثة فقط");
+            });
+        });
+    }
+    void serverConnectionLost() {
+        serverConnected = false; status.setText("تعذر الاتصال. أعد تشغيل الخادم."); webView.loadUrl(OriginPolicy.REPAIR_URL);
+    }
+    private void registerActions() {
+        actions.put("get_app_version", request -> {
+            JsonObject version = new JsonObject(); version.addProperty("version", updates.getCurrentVersionName());
+            version.add("native_status", DoctorDiagnosticEngine.runDiagnosis(this));
+            version.addProperty("version_code", updates.currentVersionCode()); version.addProperty("can_install", updates.canInstallUnknownApps());
+            reply(request, version);
+        });
+        actions.put("check_update", request -> updates.checkForUpdates(outcome -> reply(request, outcome)));
+        actions.put("download_update", this::downloadUpdate);
+        actions.put("open_install_permission", request -> { updates.openInstallPermissionSettings(this); reply(request, new JsonObject()); });
+        actions.put("start_voice", request -> {
+            voiceButton.setText("إلغاء الإملاء");
+            voice.start(speech -> { voiceButton.setText("إملاء رسالة"); reply(request, speech); });
+        });
+        actions.put("cancel_voice", request -> { voice.cancel(); reply(request, new JsonObject()); });
+        actions.put("start_server", this::connectServer); actions.put("bootstrap", this::connectServer);
+    }
+    private void receiveNativeRequest(String message) {
+        NativeRequest request = null;
+        try {
+            if (message == null || message.length() > 65536) throw new IllegalArgumentException("Native request too large");
+            com.google.gson.JsonElement root = JsonParser.parseString(message);
+            if (!root.isJsonObject()) throw new IllegalArgumentException("Native request must be an object");
+            JsonObject payload = root.getAsJsonObject();
+            String id = ScreenSnapshot.required(payload, "request_id");
+            if (!id.matches("[A-Za-z0-9._:-]{1,128}")) throw new IllegalArgumentException("Invalid request_id");
+            if (!payload.has("args") || !payload.get("args").isJsonObject()) throw new IllegalArgumentException("Missing args");
+            requestIds.reserve(id);
+            request = new NativeRequest(id, payload.getAsJsonObject("args"), pageGeneration);
+            String actionName = ScreenSnapshot.required(payload, "action");
+            if (!serverConnected && !actionName.equals("get_app_version") && !actionName.equals("start_server")
+                    && !actionName.equals("bootstrap")) throw new IllegalStateException("Native actions need an authenticated server");
+            NativeAction action = actions.get(actionName);
+            if (action == null) throw new IllegalArgumentException("Unsupported native action");
+            action.execute(request);
+        } catch (JsonParseException | IllegalArgumentException | IllegalStateException | SecurityException failure) {
+            if (request != null) reply(request, error(failure.getMessage())); else status.setText("طلب Native مخالف: " + failure.getMessage());
         }
     }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        updateAccessibilityBanner();
-    }
-
-    private void setupViews() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.MATCH_PARENT
-        ));
-
-        // Accessible Status Banner for Accessibility Service Status
-        mBannerA11y = new LinearLayout(this);
-        mBannerA11y.setOrientation(LinearLayout.HORIZONTAL);
-        mBannerA11y.setPadding(32, 24, 32, 24);
-        mBannerA11y.setBackgroundColor(0xFF2A2A2A);
-
-        mTvStatus = new TextView(this);
-        mTvStatus.setText(R.string.service_not_enabled);
-        mTvStatus.setTextColor(0xFFFFFFFF);
-        mTvStatus.setTextSize(14f);
-        LinearLayout.LayoutParams tvParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-        mBannerA11y.addView(mTvStatus, tvParams);
-
-        mBtnEnableA11y = new Button(this);
-        mBtnEnableA11y.setText(R.string.btn_enable_service);
-        mBtnEnableA11y.setContentDescription(getString(R.string.btn_enable_service));
-        mBtnEnableA11y.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                openAccessibilitySettings();
+    private void downloadUpdate(NativeRequest request) {
+        if (request.args.has("cancel") && (!request.args.get("cancel").isJsonPrimitive()
+                || !request.args.get("cancel").getAsJsonPrimitive().isBoolean())) throw new IllegalArgumentException("cancel must be boolean");
+        if (request.args.has("cancel") && request.args.get("cancel").getAsBoolean()) {
+            updates.cancelDownload(); reply(request, new JsonObject()); return;
+        }
+        updates.download(new AppUpdateManager.DownloadListener() {
+            @Override public void progress(int percent, long bytes, long total) {
+                JsonObject progress = new JsonObject(); progress.addProperty("request_id", request.id);
+                progress.addProperty("percent", percent); progress.addProperty("bytes_downloaded", bytes); progress.addProperty("total_bytes", total);
+                emit("companion-native-progress", progress, request.generation);
             }
-        });
-        mBannerA11y.addView(mBtnEnableA11y);
-
-        root.addView(mBannerA11y);
-
-        // Main Accessible WebView
-        mWebView = new WebView(this);
-        mWebView.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-        ));
-        configureWebView(mWebView);
-        root.addView(mWebView);
-
-        setContentView(root);
-    }
-
-    @SuppressLint("SetJavaScriptEnabled")
-    private void configureWebView(WebView webView) {
-        WebSettings settings = webView.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
-        settings.setAllowFileAccess(true);
-        settings.setAllowContentAccess(true);
-        settings.setLoadsImagesAutomatically(true);
-
-        // Inject Native Bridge Object into JavaScript
-        webView.addJavascriptInterface(new AntigravityJsBridge(), "AntigravityBridge");
-
-        webView.setWebChromeClient(new WebChromeClient());
-        webView.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                Uri uri = request.getUrl();
-                if ("127.0.0.1".equals(uri.getHost()) || "localhost".equals(uri.getHost()) || uri.toString().startsWith("file://")) {
-                    return false;
-                }
-                Intent intent = new Intent(Intent.ACTION_VIEW, uri);
-                startActivity(intent);
-                return true;
-            }
-        });
-    }
-
-    private void loadInitialPage() {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                final boolean serverReady = TermuxBridge.isPortOpen("127.0.0.1", 7681, 1000);
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (serverReady) {
-                            mWebView.loadUrl(LOCAL_URL);
-                        } else {
-                            mWebView.loadUrl(FALLBACK_ASSET_URL);
-                        }
-                    }
+            @Override public void downloaded(File apk) {
+                JsonObject outcome = new JsonObject(); outcome.addProperty("downloaded", true);
+                boolean canInstall = updates.canInstallUnknownApps(); outcome.addProperty("install_permission_required", !canInstall);
+                if (!canInstall) { outcome.addProperty("installer_opened", false); reply(request, outcome); return; }
+                updates.installVerifiedApk(MainActivity.this, apk, server, installed -> {
+                    if (installed.has("error")) { reply(request, installed); return; }
+                    outcome.addProperty("installer_opened", installed.get("installer_opened").getAsBoolean());
+                    reply(request, outcome);
                 });
             }
-        }).start();
+            @Override public void failed(String failure) { reply(request, error(failure)); }
+        });
     }
-
-    private void updateAccessibilityBanner() {
-        boolean active = AntigravityAccessibilityService.isServiceRunning();
-        mBannerA11y.setVisibility(active ? View.GONE : View.VISIBLE);
+    private void connectServer(NativeRequest request) {
+        if (!connecting.compareAndSet(false, true)) { if (request != null) reply(request, error("Server connection already pending")); return; }
+        lastTermuxFailure = "";
+        status.setText("فحص هوية الخادم");
+        connectionExecutor.execute(() -> {
+            try {
+                if (!server.healthReady()) {
+                    runOnUiThread(this::launchTermux);
+                    long deadline = SystemClock.elapsedRealtime() + 30000;
+                    while (!destroyed && SystemClock.elapsedRealtime() < deadline && !server.healthReady()) Thread.sleep(500);
+                    if (destroyed) return;
+                    if (!server.healthReady()) throw new IOException("Server health check timed out; setup in Termux may be required");
+                }
+                authenticateServer(request);
+            } catch (IOException | InterruptedException failure) {
+                if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
+                runOnUiThread(() -> { if (!destroyed) { status.setText("تعذر اتصال الخادم: " + connectionFailureReason(failure.getMessage())); if (request != null) reply(request, error(failure.getMessage())); } });
+            } finally { connecting.set(false); }
+        });
     }
-
-    private void openAccessibilitySettings() {
-        Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(intent);
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (mWebView != null && mWebView.canGoBack()) {
-            mWebView.goBack();
-        } else {
-            super.onBackPressed();
+    private void authenticateServer(NativeRequest request) throws IOException, InterruptedException {
+        try {
+            String cookie = server.bootstrapCookie(); runOnUiThread(() -> serverReady(request, cookie));
+        } catch (ServerConnection.BootstrapUnauthorized unavailable) {
+            if (!configureRunningServer()) { manualPairing(request, unavailable.getMessage()); return; }
+            try {
+                String cookie = server.bootstrapCookie(); runOnUiThread(() -> serverReady(request, cookie));
+            } catch (ServerConnection.BootstrapUnauthorized stillUnpaired) { manualPairing(request, stillUnpaired.getMessage()); }
         }
     }
-
-    /**
-     * JavaScript Bridge exposing native phone operations safely to the web client.
-     */
-    public class AntigravityJsBridge {
-
-        @JavascriptInterface
-        public boolean isAccessibilityActive() {
-            return AntigravityAccessibilityService.isServiceRunning();
-        }
-
-        @JavascriptInterface
-        public void openSettings() {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    openAccessibilitySettings();
-                }
+    private boolean configureRunningServer() throws InterruptedException {
+        java.util.concurrent.CountDownLatch finished = new java.util.concurrent.CountDownLatch(1);
+        AtomicBoolean configured = new AtomicBoolean();
+        runOnUiThread(() -> {
+            if (destroyed || checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) {
+                finished.countDown(); return;
+            }
+            TermuxBridge.startServer(this, launch -> {
+                rememberTermuxFailure(launch);
+                String state = launch.get("state").getAsString();
+                if (state.equals("accepted")) return;
+                configured.set(state.equals("finished")); finished.countDown();
             });
+        });
+        return finished.await(32, java.util.concurrent.TimeUnit.SECONDS) && configured.get() && !destroyed;
+    }
+    private void manualPairing(NativeRequest request, String reason) {
+        runOnUiThread(() -> {
+            if (destroyed) return;
+            serverConnected = false; status.setText("اقترن يدويًا بالخادم؛ جسر الهاتف غير مصادق. " + connectionFailureReason(reason));
+            if (request != null) reply(request, error("Manual pairing required; phone bridge is not authenticated"));
+            if (!origins.allowsBridge(webView.getUrl())) webView.loadUrl(origins.origin());
+        });
+    }
+    private void launchTermux() {
+        if (destroyed) return;
+        if (checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{"com.termux.permission.RUN_COMMAND"}, 2001); return;
         }
-
-        @JavascriptInterface
-        public void triggerServerWakeup() {
-            TermuxBridge.ensureServerRunningAsync(MainActivity.this);
-        }
-
-        @JavascriptInterface
-        public String runDiagnostics() {
-            JsonObject diag = DoctorDiagnosticEngine.runDiagnosis(MainActivity.this);
-            return diag.toString();
-        }
-
-        @JavascriptInterface
-        public boolean isTermuxServerReady() {
-            return TermuxBridge.isPortOpen("127.0.0.1", 7681, 400);
-        }
-
-        @JavascriptInterface
-        public boolean isAutomationServerReady() {
-            return TermuxBridge.isPortOpen("127.0.0.1", 8765, 300);
-        }
-
-        @JavascriptInterface
-        public void loadChatUrl() {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    if (mWebView != null) {
-                        mWebView.loadUrl(LOCAL_URL);
-                    }
-                }
+        TermuxBridge.startServer(this, launch -> {
+            rememberTermuxFailure(launch);
+            runOnUiThread(() -> {
+                if (!destroyed) status.setText((serverConnected ? "الخادم متصل؛ " : "")
+                        + TermuxLaunchContract.summary(launch));
             });
+        });
+    }
+    private void rememberTermuxFailure(JsonObject launch) {
+        String state = launch.get("state").getAsString();
+        if (state.equals("failed") || state.equals("outcome_unknown")) {
+            lastTermuxFailure = TermuxLaunchContract.summary(launch);
+        } else if (state.equals("finished")) {
+            lastTermuxFailure = "";
         }
-
-        @JavascriptInterface
-        public void copySetupCommand() {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                    android.content.ClipData clip = android.content.ClipData.newPlainText("Antigravity Setup", "curl -fsSL https://raw.githubusercontent.com/ahanafy41/antigravity-companion/main/setup.sh | bash");
-                    if (clipboard != null) {
-                        clipboard.setPrimaryClip(clip);
-                    }
-                }
-            });
-        }
-
-        @JavascriptInterface
-        public void openTermuxApp() {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    Intent intent = getPackageManager().getLaunchIntentForPackage("com.termux");
-                    if (intent != null) {
-                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                        startActivity(intent);
-                    }
-                }
-            });
-        }
-
-        @JavascriptInterface
-        public String getAppVersion() {
-            return mUpdateManager.getCurrentVersionName();
-        }
-
-        @JavascriptInterface
-        public boolean canInstallUnknownApps() {
-            return mUpdateManager.canInstallUnknownApps();
-        }
-
-        @JavascriptInterface
-        public void openInstallPermissionSettings() {
-            runOnUiThread(new Runnable() {
-                @Override
-                public void run() {
-                    mUpdateManager.openInstallPermissionSettings(MainActivity.this);
-                }
-            });
-        }
-
-        @JavascriptInterface
-        public void checkForUpdate() {
-            mUpdateManager.checkForUpdatesAsync(new AppUpdateManager.CheckUpdateCallback() {
-                @Override
-                public void onSuccess(final AppUpdateManager.UpdateInfo info) {
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (mWebView != null) {
-                                String js = "if (window.onUpdateCheckResult) { window.onUpdateCheckResult(" + info.toJsonObject().toString() + "); }";
-                                mWebView.evaluateJavascript(js, null);
-                            }
-                        }
-                    });
-                }
-
-                @Override
-                public void onError(final String error) {
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (mWebView != null) {
-                                JsonObject errObj = new JsonObject();
-                                errObj.addProperty("error", error);
-                                String js = "if (window.onUpdateCheckError) { window.onUpdateCheckError(" + errObj.toString() + "); }";
-                                mWebView.evaluateJavascript(js, null);
-                            }
-                        }
-                    });
-                }
-            });
-        }
-
-        @JavascriptInterface
-        public void startUpdateDownload(final String downloadUrl) {
-            mUpdateManager.startDownloadAsync(downloadUrl, new AppUpdateManager.DownloadProgressListener() {
-                @Override
-                public void onProgress(final int percent, final long bytesDownloaded, final long totalBytes) {
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (mWebView != null) {
-                                String js = String.format(Locale.US,
-                                        "if (window.onUpdateProgress) { window.onUpdateProgress(%d, %d, %d); }",
-                                        percent, bytesDownloaded, totalBytes);
-                                mWebView.evaluateJavascript(js, null);
-                            }
-                        }
-                    });
-                }
-
-                @Override
-                public void onComplete(final File apkFile) {
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (mWebView != null) {
-                                String js = "if (window.onUpdateDownloadComplete) { window.onUpdateDownloadComplete(); }";
-                                mWebView.evaluateJavascript(js, null);
-                            }
-                            // Auto-trigger package installer on main thread
-                            mUpdateManager.installApk(apkFile);
-                        }
-                    });
-                }
-
-                @Override
-                public void onError(final String error) {
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (mWebView != null) {
-                                JsonObject errObj = new JsonObject();
-                                errObj.addProperty("error", error);
-                                String js = "if (window.onUpdateDownloadError) { window.onUpdateDownloadError(" + errObj.toString() + "); }";
-                                mWebView.evaluateJavascript(js, null);
-                            }
-                        }
-                    });
-                }
-            });
-        }
-
-        @JavascriptInterface
-        public boolean installDownloadedUpdate() {
-            return mUpdateManager.installDownloadedUpdate();
-        }
+    }
+    private String connectionFailureReason(String reason) {
+        String diagnostic = lastTermuxFailure;
+        return diagnostic.isEmpty() ? reason : reason + "; " + diagnostic;
+    }
+    private void serverReady(NativeRequest request, String cookie) {
+        if (destroyed) return;
+        CookieManager.getInstance().setCookie(origins.origin(), cookie, accepted -> {
+            if (destroyed) return;
+            if (!accepted) { status.setText("تعذر حفظ جلسة الخادم"); if (request != null) reply(request, error("Session cookie rejected")); return; }
+            CookieManager.getInstance().flush();
+            boolean reload = !serverConnected || !origins.allowsBridge(webView.getUrl());
+            if (!reload) serverConnected = true;
+            status.setText("الخادم متصل");
+            JsonObject ready = new JsonObject(); ready.addProperty("state", "health_ready"); if (request != null) reply(request, ready);
+            if (reload) webView.loadUrl(origins.origin());
+        });
+    }
+    private void reply(NativeRequest request, JsonObject outcome) {
+        if (request.generation != pageGeneration || !requestIds.complete(request.id)) return;
+        JsonObject envelope = new JsonObject(); envelope.addProperty("request_id", request.id);
+        envelope.addProperty("success", !outcome.has("error"));
+        if (outcome.has("error")) envelope.add("error", outcome.get("error")); else envelope.add("result", outcome);
+        emit("companion-native-result", envelope, request.generation);
+    }
+    private void emit(String event, JsonObject detail, int generation) {
+        runOnUiThread(() -> {
+            if (!destroyed && generation == pageGeneration && origins.allowsBridge(webView.getUrl()))
+                webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('" + event + "',{detail:" + detail + "}));", null);
+        });
+    }
+    private void installBackHandler() {
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override public void handleOnBackPressed() { dismissDialogOrLeave(this); }
+        });
+    }
+    private void dismissDialogOrLeave(OnBackPressedCallback callback) {
+        if (destroyed) return;
+        if (!origins.allowsBridge(webView.getUrl())) { leaveActivity(callback); return; }
+        int generation = pageGeneration;
+        webView.evaluateJavascript(
+                "Boolean(window.Companion && window.Companion.ui && window.Companion.ui.dismissTopDialog && window.Companion.ui.dismissTopDialog())",
+                dismissed -> {
+                    if (destroyed || generation != pageGeneration) return;
+                    if (!"true".equals(dismissed)) leaveActivity(callback);
+                });
+    }
+    private void leaveActivity(OnBackPressedCallback callback) {
+        callback.setEnabled(false);
+        try { getOnBackPressedDispatcher().onBackPressed(); }
+        finally { callback.setEnabled(true); }
+    }
+    private void acceptVoice(JsonObject speech) {
+        if (speech.has("error")) { status.setText(speech.get("error").getAsString()); return; }
+        getIntent().putExtra("voice_text", speech.get("text").getAsString());
+        getIntent().putExtra("voice_task_id", speech.get("task_id").getAsString()); deliverPendingVoice();
+    }
+    private void deliverPendingVoice() {
+        String text = getIntent().getStringExtra("voice_text");
+        if (text == null || !serverConnected || !origins.allowsBridge(webView.getUrl())) return;
+        JsonObject speech = new JsonObject(); speech.addProperty("text", text);
+        speech.addProperty("task_id", getIntent().getStringExtra("voice_task_id"));
+        emit("companion-voice-input", speech, pageGeneration); getIntent().removeExtra("voice_text"); getIntent().removeExtra("voice_task_id");
+    }
+    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); deliverPendingVoice(); }
+    private static JsonObject error(String message) { JsonObject failure = new JsonObject(); failure.addProperty("error", message); return failure; }
+    @Override protected void onDestroy() {
+        destroyed = true; TermuxBridge.cancelRequests(this); voice.close(); updates.close(); server.close(); connectionExecutor.shutdownNow();
+        if (bridgeSupported) WebViewCompat.removeWebMessageListener(webView, "CompanionNative");
+        webView.stopLoading(); webView.setWebViewClient(new WebViewClient()); webView.destroy(); super.onDestroy();
     }
 }

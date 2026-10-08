@@ -1,241 +1,132 @@
 package com.antigravity.companion;
 
-import com.google.gson.Gson;
+import android.os.Handler;
+import android.os.Looper;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-
+import com.google.gson.JsonParseException;
 import org.java_websocket.WebSocket;
+import org.java_websocket.drafts.Draft;
+import org.java_websocket.exceptions.InvalidDataException;
+import org.java_websocket.exceptions.WebsocketNotConnectedException;
 import org.java_websocket.handshake.ClientHandshake;
+import org.java_websocket.handshake.ServerHandshakeBuilder;
 import org.java_websocket.server.WebSocketServer;
-
+import java.io.File;
+import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.logging.Level;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
-/**
- * LocalAutomationServer: RFC 6455 Duplex WebSocket Server bound to 127.0.0.1:8765.
- * Acts as the bridge between Termux AI Agents / Accessible Web UI and the native AccessibilityService.
- */
-public class LocalAutomationServer extends WebSocketServer {
-
-    private static final Logger LOGGER = Logger.getLogger(LocalAutomationServer.class.getName());
+public final class LocalAutomationServer extends WebSocketServer implements AutoCloseable {
     public static final int PORT = 8765;
-    public static final String HOST = "127.0.0.1";
-
-    private static volatile LocalAutomationServer sServerInstance;
-    private final Gson mGson = new Gson();
-
-    public LocalAutomationServer(InetSocketAddress address) {
-        super(address);
-        setReuseAddr(true);
-        setTcpNoDelay(true);
+    private static final Logger LOGGER = Logger.getLogger(LocalAutomationServer.class.getName());
+    private final AntigravityAccessibilityService service;
+    private final byte[] authorization;
+    private final ActionLedger ledger;
+    private final java.util.concurrent.ExecutorService journalWriter = java.util.concurrent.Executors.newSingleThreadExecutor();
+    private final Handler deadlines = new Handler(Looper.getMainLooper());
+    LocalAutomationServer(AntigravityAccessibilityService service) throws IOException {
+        super(new InetSocketAddress("127.0.0.1", PORT), 1, java.util.Collections.singletonList(
+                new org.java_websocket.drafts.Draft_6455(java.util.Collections.emptyList(), 1024 * 1024)));
+        this.service = service;
+        authorization = ("Bearer " + NativeSecrets.androidToken(service)).getBytes(StandardCharsets.UTF_8);
+        ledger = new ActionLedger(new File(service.getNoBackupFilesDir(), "phone_actions.json"));
+        setReuseAddr(true); setConnectionLostTimeout(30);
     }
-
-    public static synchronized void startServer() {
-        if (sServerInstance == null) {
-            try {
-                sServerInstance = new LocalAutomationServer(new InetSocketAddress(HOST, PORT));
-                sServerInstance.start();
-                LOGGER.info("LocalAutomationServer started on ws://" + HOST + ":" + PORT);
-            } catch (Exception e) {
-                LOGGER.log(Level.SEVERE, "Failed to start LocalAutomationServer", e);
-            }
-        }
+    @Override public ServerHandshakeBuilder onWebsocketHandshakeReceivedAsServer(
+            WebSocket socket, Draft draft, ClientHandshake request) throws InvalidDataException {
+        byte[] supplied = request.getFieldValue("Authorization").getBytes(StandardCharsets.UTF_8);
+        if (!MessageDigest.isEqual(authorization, supplied) || socket.getRemoteSocketAddress() == null
+                || !socket.getRemoteSocketAddress().getAddress().isLoopbackAddress())
+            throw new InvalidDataException(1008, "Unauthorized");
+        return super.onWebsocketHandshakeReceivedAsServer(socket, draft, request);
     }
-
-    public static synchronized void stopServer() {
-        if (sServerInstance != null) {
-            try {
-                sServerInstance.stop(1000);
-                sServerInstance = null;
-                LOGGER.info("LocalAutomationServer stopped cleanly.");
-            } catch (Exception e) {
-                LOGGER.log(Level.SEVERE, "Error stopping LocalAutomationServer", e);
-            }
-        }
-    }
-
-    @Override
-    public void onOpen(WebSocket conn, ClientHandshake handshake) {
-        LOGGER.info("Client connected: " + conn.getRemoteSocketAddress());
-        JsonObject welcome = new JsonObject();
-        welcome.addProperty("event", "connected");
-        welcome.addProperty("service_active", AntigravityAccessibilityService.isServiceRunning());
-        conn.send(welcome.toString());
-    }
-
-    @Override
-    public void onClose(WebSocket conn, int code, String reason, boolean remote) {
-        LOGGER.info("Client disconnected: " + conn.getRemoteSocketAddress());
-    }
-
-    @Override
-    public void onMessage(final WebSocket conn, String message) {
+    @Override public void onMessage(WebSocket socket, String message) {
+        String actionId = "";
         try {
-            JsonObject request = JsonParser.parseString(message).getAsJsonObject();
-            String action = request.has("action") ? request.get("action").getAsString() : "";
-            String id = request.has("id") ? request.get("id").getAsString() : "0";
-
-            handleAction(conn, id, action, request);
-        } catch (Exception e) {
-            LOGGER.log(Level.WARNING, "Error processing incoming message", e);
-            sendError(conn, "0", "Invalid JSON payload: " + e.getMessage());
+            if (message.length() > 1024 * 1024) throw new IllegalArgumentException("Phone request too large");
+            com.google.gson.JsonElement root = JsonParser.parseString(message);
+            if (!root.isJsonObject()) throw new IllegalArgumentException("Phone request must be an object");
+            JsonObject request = root.getAsJsonObject();
+            actionId = ScreenSnapshot.required(request, "action_id");
+            if (!actionId.matches("[A-Za-z0-9._:-]{1,128}")) throw new IllegalArgumentException("Invalid action_id");
+            String action = ScreenSnapshot.required(request, "action");
+            if (!request.has("args") || !request.get("args").isJsonObject()) throw new IllegalArgumentException("Missing args object");
+            JsonObject args = request.getAsJsonObject("args");
+            final String requestId = actionId;
+            if (DeviceActionPolicy.isReadOnly(action)) {
+                dispatch(action, args, actionId, outcome -> send(socket, PhoneResultBudget.bounded(outcome))); return;
+            }
+            if (!DeviceActionPolicy.supported(action))
+                throw new IllegalArgumentException("Unsupported phone action");
+            JsonObject previous = ledger.reserve(actionId, action, args);
+            if (previous != null) { send(socket, previous); return; }
+            dispatch(action, args, actionId, outcome -> publishEffect(socket, requestId, outcome));
+        } catch (ActionLedger.RetiredEpochException retired) {
+            JsonObject rejected = response(actionId, "failed", error(retired.getMessage()));
+            rejected.addProperty("error_code", "stale_epoch"); send(socket, rejected);
+        } catch (JsonParseException | IllegalArgumentException | IllegalStateException | IOException malformed) {
+            send(socket, response(actionId, "failed", error(malformed.getMessage())));
         }
     }
-
-    private void handleAction(final WebSocket conn, final String id, String action, JsonObject request) {
-        final AntigravityAccessibilityService service = AntigravityAccessibilityService.getInstance();
-
-        switch (action) {
-            case "ping": {
-                JsonObject res = new JsonObject();
-                res.addProperty("id", id);
-                res.addProperty("status", "pong");
-                res.addProperty("service_connected", service != null);
-                conn.send(res.toString());
-                break;
-            }
-
-            case "get_window_tree": {
-                if (service == null) {
-                    sendError(conn, id, "AccessibilityService is not enabled or connected.");
-                    return;
-                }
-                JsonObject tree = service.dumpWindowHierarchyJson();
-                tree.addProperty("id", id);
-                conn.send(tree.toString());
-                break;
-            }
-
-            case "click_node": {
-                if (service == null) {
-                    sendError(conn, id, "AccessibilityService is not enabled.");
-                    return;
-                }
-                String target = request.has("target") ? request.get("target").getAsString() : "";
-                boolean success = service.clickNode(target);
-                JsonObject res = new JsonObject();
-                res.addProperty("id", id);
-                res.addProperty("status", success ? "success" : "failed");
-                conn.send(res.toString());
-                break;
-            }
-
-            case "launch_app": {
-                if (service == null) {
-                    sendError(conn, id, "AccessibilityService is not enabled.");
-                    return;
-                }
-                String target = request.has("target") ? request.get("target").getAsString() : "";
-                boolean success = service.launchApp(target);
-                JsonObject res = new JsonObject();
-                res.addProperty("id", id);
-                res.addProperty("status", success ? "success" : "failed");
-                conn.send(res.toString());
-                break;
-            }
-
-            case "click_coords": {
-                if (service == null) {
-                    sendError(conn, id, "AccessibilityService is not enabled.");
-                    return;
-                }
-                float x = request.has("x") ? request.get("x").getAsFloat() : 0f;
-                float y = request.has("y") ? request.get("y").getAsFloat() : 0f;
-                boolean success = service.clickAtCoordinates(x, y);
-                JsonObject res = new JsonObject();
-                res.addProperty("id", id);
-                res.addProperty("status", success ? "success" : "failed");
-                conn.send(res.toString());
-                break;
-            }
-
-            case "scroll": {
-                if (service == null) {
-                    sendError(conn, id, "AccessibilityService is not enabled.");
-                    return;
-                }
-                boolean forward = !request.has("direction") || !"up".equalsIgnoreCase(request.get("direction").getAsString());
-                boolean success = service.scroll(forward);
-                JsonObject res = new JsonObject();
-                res.addProperty("id", id);
-                res.addProperty("status", success ? "success" : "failed");
-                conn.send(res.toString());
-                break;
-            }
-
-            case "set_text": {
-                if (service == null) {
-                    sendError(conn, id, "AccessibilityService is not enabled.");
-                    return;
-                }
-                String text = request.has("text") ? request.get("text").getAsString() : "";
-                boolean success = service.setTextOnFocused(text);
-                JsonObject res = new JsonObject();
-                res.addProperty("id", id);
-                res.addProperty("status", success ? "success" : "failed");
-                conn.send(res.toString());
-                break;
-            }
-
-            case "global_action": {
-                if (service == null) {
-                    sendError(conn, id, "AccessibilityService is not enabled.");
-                    return;
-                }
-                int actionCode = request.has("code") ? request.get("code").getAsInt() : 1; // 1 = GLOBAL_ACTION_BACK
-                boolean success = service.performGlobal(actionCode);
-                JsonObject res = new JsonObject();
-                res.addProperty("id", id);
-                res.addProperty("status", success ? "success" : "failed");
-                conn.send(res.toString());
-                break;
-            }
-
-            case "screenshot": {
-                if (service == null) {
-                    sendError(conn, id, "AccessibilityService is not enabled.");
-                    return;
-                }
-                service.takeScreenshotAsync(new AntigravityAccessibilityService.ScreenshotCallback() {
-                    @Override
-                    public void onSuccess(String base64Image) {
-                        JsonObject res = new JsonObject();
-                        res.addProperty("id", id);
-                        res.addProperty("status", "success");
-                        res.addProperty("image_base64", base64Image);
-                        conn.send(res.toString());
-                    }
-
-                    @Override
-                    public void onError(String errorMessage) {
-                        sendError(conn, id, errorMessage);
-                    }
-                });
-                break;
-            }
-
-            default:
-                sendError(conn, id, "Unknown action: " + action);
-                break;
+    private void dispatch(String action, JsonObject args, String actionId, java.util.function.Consumer<JsonObject> publish) {
+        AtomicBoolean completed = new AtomicBoolean();
+        Runnable timeout = () -> completeOnce(
+                response(actionId, "outcome_unknown", error("Phone action timeout; do not replay")), completed, publish);
+        deadlines.postDelayed(timeout, 15000);
+        service.executeAction(action, args, outcome -> {
+            deadlines.removeCallbacks(timeout);
+            String status = outcome.has("error") ? "failed" : "completed";
+            completeOnce(response(actionId, status, outcome), completed, publish);
+        });
+    }
+    private static void completeOnce(JsonObject outcome, AtomicBoolean completed, java.util.function.Consumer<JsonObject> publish) {
+        if (completed.compareAndSet(false, true)) publish.accept(outcome);
+    }
+    private void publishEffect(WebSocket socket, String actionId, JsonObject outcome) {
+        try { journalWriter.execute(() -> persistResult(socket, actionId, outcome)); }
+        catch (java.util.concurrent.RejectedExecutionException stopped) {
+            send(socket, response(actionId, "outcome_unknown", error("Service closed before result was recorded")));
         }
     }
-
-    private void sendError(WebSocket conn, String id, String message) {
-        JsonObject err = new JsonObject();
-        err.addProperty("id", id);
-        err.addProperty("status", "error");
-        err.addProperty("message", message);
-        conn.send(err.toString());
+    private void persistResult(WebSocket socket, String actionId, JsonObject outcome) {
+        try {
+            JsonObject bounded = PhoneResultBudget.bounded(outcome);
+            ledger.complete(actionId, bounded); send(socket, bounded);
+        }
+        catch (IOException failure) {
+            send(socket, response(actionId, "outcome_unknown", error("Cannot persist action result; do not replay")));
+        }
     }
-
-    @Override
-    public void onError(WebSocket conn, Exception ex) {
-        LOGGER.log(Level.SEVERE, "LocalAutomationServer error", ex);
+    private static JsonObject response(String actionId, String status, JsonObject outcome) {
+        JsonObject response = new JsonObject(); response.addProperty("action_id", actionId);
+        response.addProperty("status", status);
+        if (outcome.has("error")) response.add("error", outcome.get("error")); else response.add("result", outcome);
+        return response;
     }
-
-    @Override
-    public void onStart() {
-        LOGGER.info("LocalAutomationServer ready to accept connections.");
+    private static JsonObject error(String message) {
+        JsonObject failure = new JsonObject(); failure.addProperty("error", message); return failure;
+    }
+    private static void send(WebSocket socket, JsonObject response) {
+        if (!socket.isOpen()) return;
+        try { socket.send(response.toString()); }
+        catch (WebsocketNotConnectedException disconnected) { LOGGER.fine("Phone client disconnected before result"); }
+    }
+    @Override public void onMessage(WebSocket socket, java.nio.ByteBuffer binary) { socket.close(1003, "Text JSON only"); }
+    @Override public void onOpen(WebSocket socket, ClientHandshake request) {
+        try {
+            JsonObject ready = new JsonObject(); ready.addProperty("type", "journal_ready");
+            ready.addProperty("epoch", ledger.currentEpoch()); send(socket, ready);
+        } catch (IOException failure) { socket.close(1011, "Action journal unavailable"); }
+    }
+    @Override public void onClose(WebSocket socket, int code, String reason, boolean remote) { }
+    @Override public void onError(WebSocket socket, Exception failure) { LOGGER.warning("Phone WebSocket failure: " + failure.getClass().getSimpleName()); }
+    @Override public void onStart() { LOGGER.info("Authenticated phone automation ready on loopback"); }
+    @Override public void close() {
+        deadlines.removeCallbacksAndMessages(null); journalWriter.shutdown();
+        try { stop(1000); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
     }
 }

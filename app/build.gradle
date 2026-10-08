@@ -2,6 +2,8 @@ plugins {
     id 'com.android.application'
 }
 
+def companionVersion = new groovy.json.JsonSlurper().parse(rootProject.file('server/version.json'))
+
 android {
     namespace 'com.antigravity.companion'
     compileSdk 34
@@ -10,20 +12,20 @@ android {
         applicationId "com.antigravity.companion"
         minSdk 24
         targetSdk 34
-        versionCode 5
-        versionName "1.2.2"
+        versionCode companionVersion.version_code as Integer
+        versionName companionVersion.version_name
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
         release {
-            def keystoreFile = file("keystore/antigravity-release-key.jks")
-            if (keystoreFile.exists()) {
-                storeFile keystoreFile
-                storePassword System.getenv("SIGNING_STORE_PASSWORD") ?: "antigravity2026"
-                keyAlias System.getenv("SIGNING_KEY_ALIAS") ?: "antigravity"
-                keyPassword System.getenv("SIGNING_KEY_PASSWORD") ?: "antigravity2026"
+            def configuredKeystore = System.getenv("SIGNING_KEYSTORE")
+            if (configuredKeystore) {
+                storeFile file(configuredKeystore)
+                storePassword System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword System.getenv("SIGNING_KEY_PASSWORD")
                 storeType "PKCS12"
                 v1SigningEnabled true
                 v2SigningEnabled true
@@ -38,10 +40,13 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         debug {
-            signingConfig signingConfigs.release
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
             debuggable true
         }
     }
+
+    sourceSets.main.assets.srcDirs = [layout.buildDirectory.dir("generated/companionAssets").get().asFile]
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -59,4 +64,32 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+}
+
+// Generate the APK assets from the canonical sources; legacy copies are excluded.
+def prepareCompanionWeb = tasks.register("prepareCompanionWeb", Exec) {
+    workingDir rootProject.projectDir
+    def pythonExecutable = System.getenv("PYTHON_EXECUTABLE") ?: "python3"
+    commandLine pythonExecutable, rootProject.file("scripts/prepare_web_release.py")
+}
+def companionAssets = tasks.register("syncCompanionAssets", Sync) {
+    dependsOn prepareCompanionWeb
+    into layout.buildDirectory.dir("generated/companionAssets")
+    from(rootProject.file("server")) {
+        into "server"
+        exclude "**/__pycache__/**", "**/*.pyc", "**/*tests.cjs"
+    }
+    from("src/main/assets/repair.html")
+    from(rootProject.file("requirements.txt")) { into "server" }
+    from(rootProject.file("scripts/install_release.py")) { into "server" }
+}
+tasks.named("preBuild").configure { dependsOn companionAssets }
+tasks.matching { it.name == "validateSigningRelease" }.configureEach {
+    doFirst {
+        ["SIGNING_KEYSTORE", "SIGNING_STORE_PASSWORD", "SIGNING_KEY_ALIAS", "SIGNING_KEY_PASSWORD"].each { name ->
+            if (!System.getenv(name)) {
+                throw new GradleException("Missing private release signing configuration: " + name)
+            }
+        }
+    }
 }
