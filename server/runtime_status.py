@@ -106,7 +106,8 @@ class CLIAdministration:
     async def version(self):
         help_text = await self.cli.command(["--help"])
         match = re.search(
-            r"^Antigravity CLI(?: version)?[ :]+v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)\s*$",
+            r"^Antigravity CLI(?: version)?[ :]+v?"
+            r"(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)\s*$",
             help_text,
             re.MULTILINE,
         )

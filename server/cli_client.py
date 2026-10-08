@@ -109,8 +109,10 @@ class CLI:
         except OSError as failure:
             raise CLIUnavailable("Cannot start agy executable") from failure
 
-    async def command(self, arguments, timeout=20):
-        process = await self.spawn(arguments, Path.home())
+    async def command(self, arguments, timeout=20, cwd=None):
+        process = await self.spawn(
+            arguments, Path(cwd) if cwd is not None else Path.home()
+        )
         process.stdin.close()
         readers = asyncio.gather(
             bounded_read(process.stdout), bounded_read(process.stderr)
@@ -179,7 +181,11 @@ class CLI:
             "commands": ["commands", "list"],
         }[kind]
         await self.command(arguments[:1] + ["--help"])
-        output = await self.command(arguments)
+        output = (
+            await self.command(arguments, cwd=cwd)
+            if kind == "mcp" and cwd is not None
+            else await self.command(arguments)
+        )
         rows = parse_listing(output, kind)
         if not rows and output.strip():
             raise CLIUnavailable("CLI output is not a supported list format")

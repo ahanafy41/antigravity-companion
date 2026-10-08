@@ -17,6 +17,7 @@
         </intent>
         <package android:name="com.termux" />
         <intent><action android:name="android.speech.RecognitionService" /></intent>
+        <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
         <intent>
             <action android:name="com.termux.RUN_COMMAND" />
         </intent>

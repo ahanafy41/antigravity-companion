@@ -57,6 +57,28 @@ public final class TermuxBridge {
             else callback.onState(state("failed", "Termux could not accept startup request"));
         }
     }
+    public static JsonObject startInteractive(Context context, String purpose, String workingDirectory) {
+        try {
+            String applicationDataDir = context.getPackageManager()
+                    .getApplicationInfo(TERMUX_PACKAGE, 0).dataDir;
+            Intent command = new Intent("com.termux.RUN_COMMAND")
+                    .setComponent(new ComponentName(TERMUX_PACKAGE, "com.termux.app.RunCommandService"))
+                    .putExtra("com.termux.RUN_COMMAND_PATH", TermuxLaunchContract.executable(applicationDataDir))
+                    .putExtra("com.termux.RUN_COMMAND_ARGUMENTS", TermuxLaunchContract.interactiveArguments(purpose))
+                    .putExtra("com.termux.RUN_COMMAND_WORKDIR", TermuxLaunchContract.interactiveWorkingDirectory(applicationDataDir, workingDirectory))
+                    .putExtra("com.termux.RUN_COMMAND_BACKGROUND", false);
+            if (context.startService(command) == null) throw new IllegalStateException("Termux command service unavailable");
+            Intent terminal = context.getPackageManager().getLaunchIntentForPackage(TERMUX_PACKAGE);
+            if (terminal != null) context.startActivity(terminal.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            JsonObject result = state("accepted", null);
+            result.add("authenticated", com.google.gson.JsonNull.INSTANCE);
+            result.addProperty("terminal_owned_by_user", true);
+            return result;
+        } catch (PackageManager.NameNotFoundException unavailable) {
+            throw new IllegalStateException("Install Termux and allow RUN_COMMAND", unavailable);
+        }
+    }
+
     private static Intent launcherIntent(Context context, String applicationDataDir, PendingIntent pending) {
         JsonObject credentials = new JsonObject();
         credentials.addProperty("android_token", NativeSecrets.androidToken(context));
@@ -106,7 +128,9 @@ public final class TermuxBridge {
             Bundle command = intent.getBundleExtra("result");
             Integer internalError = integerField(command, "err");
             Integer exitCode = integerField(command, "exitCode");
-            finish(nonce, TermuxLaunchContract.result(internalError, exitCode));
+            Object output = command == null ? null : command.get("stdout");
+            finish(nonce, TermuxLaunchContract.result(internalError, exitCode,
+                    output instanceof String ? (String) output : null));
         }
     }
 }

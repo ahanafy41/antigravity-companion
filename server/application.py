@@ -11,6 +11,13 @@ from aiohttp import web
 from android_client import AndroidClient
 from cli_client import CLI, CLIUnavailable
 from cli_settings import CLISettings
+from auth_flow import AuthFlow
+from mcp_probe import MCPProbe
+from mcp_settings import MCPSettings
+from task_runtime import TaskRuntime
+from local_tasks import LocalTasks
+from voice_agent import VoiceAgent
+from voice_planner import VoicePlanner
 from legacy_conversations import LegacyConversations
 from security import COOKIE, Pairing, error, isolation
 from sessions import RunConflict, Sessions, TERMINAL
@@ -73,15 +80,38 @@ def create_app(data_dir, port=7681):
     application["cli_settings"] = CLISettings()
     application["cli_admin"] = CLIAdministration(application["cli"], store)
     application["sessions"] = Sessions(store, application["cli"])
+    application["local_tasks"] = LocalTasks(
+        store,
+        application["sessions"],
+        ready=lambda: not application["cli_admin"].updating,
+    )
     application["android"] = AndroidClient(store)
+    application["auth_flow"] = AuthFlow(application["cli"].available)
+    application["mcp_probe"] = MCPProbe()
+    application["mcp_settings"] = MCPSettings(Path.home())
+    application["task_runtime"] = TaskRuntime(application["sessions"])
+    application["sessions"].observer = application["task_runtime"].observe
+    application["voice_agent"] = VoiceAgent(
+        store,
+        VoicePlanner(application["cli"], store.root),
+        application["android"],
+    )
+    application["visibility"] = {}
     application["legacy"] = LegacyConversations(Path.home())
+    application.on_startup.append(start_local_tasks)
     application.on_cleanup.append(close_app)
     application.on_response_prepare.append(response_headers)
     register_routes(application)
     return application
 
 
+async def start_local_tasks(application):
+    await application["local_tasks"].start()
+
+
 async def close_app(application):
+    await application["local_tasks"].close()
+    await application["voice_agent"].close()
     await application["sessions"].close()
 
 
@@ -92,6 +122,26 @@ def register_routes(application):
         web.post("/api/v1/android/bootstrap", android_bootstrap),
         web.get("/api/v1/auth/session", auth_session),
         web.get("/api/v1/auth/status", auth_status),
+        web.post("/api/v1/auth/login", auth_login),
+        web.post("/api/v1/auth/{request_id}/cancel", cancel_auth),
+        web.post("/api/v1/mcp/{name}/test", test_mcp),
+        web.post("/api/v1/mcp/{name}/authenticate", authenticate_mcp),
+        web.get("/api/v1/mcp/{name}/oauth", get_mcp_oauth),
+        web.patch("/api/v1/mcp/{name}/oauth", save_mcp_oauth),
+        web.get("/api/v1/local-tasks", list_local_tasks),
+        web.post("/api/v1/local-tasks", create_local_task),
+        web.get("/api/v1/local-tasks/{task_id}", local_task_detail),
+        web.post("/api/v1/local-tasks/{task_id}/cancel", cancel_local_task),
+        web.get("/api/v1/tasks", list_tasks),
+        web.post("/api/v1/tasks/{run_id}/cancel", cancel_task),
+        web.post(
+            "/api/v1/voice/requests/{request_id}/cancel", cancel_voice_request
+        ),
+        web.get("/api/v1/voice/runs", list_voice_runs),
+        web.post("/api/v1/voice/runs", start_voice_agent),
+        web.get("/api/v1/voice/runs/{voice_id}", voice_detail),
+        web.post("/api/v1/voice/runs/{voice_id}/cancel", cancel_voice_agent),
+        web.post("/api/v1/client/visibility", client_visibility),
         web.get("/api/v1/capabilities", capabilities),
         web.get("/api/v1/settings", get_settings),
         web.patch("/api/v1/settings", save_settings),
@@ -118,6 +168,7 @@ def register_routes(application):
         web.get("/api/v1/system/usage", local_usage),
         web.get("/api/v1/quota", account_quota),
         web.get("/api/v1/system/cli-version", cli_version),
+        web.get("/api/v1/system/versions", system_versions),
         web.post("/api/v1/system/cli-update", cli_update),
         web.get("/api/v1/doctor", doctor_status),
         web.post(
@@ -230,12 +281,172 @@ async def auth_session(request):
 
 
 async def auth_status(request):
+    return web.json_response(request.app["auth_flow"].status())
+
+
+async def auth_login(request):
+    return web.json_response(
+        request.app["auth_flow"].start(
+            "account",
+            cwd=str(trusted_cli_cwd(request, await object_body(request))),
+        )
+    )
+
+
+async def cancel_auth(request):
+    return web.json_response(
+        request.app["auth_flow"].cancel(request.match_info["request_id"])
+    )
+
+
+def trusted_cli_cwd(request, payload=None):
+    payload = payload or {}
+    if payload.get("session_id"):
+        return Path(
+            request.app["sessions"].sessions[payload["session_id"]]["cwd"]
+        )
+    settings = request.app["store"].read("settings")
+    return api_path(
+        request, payload.get("cwd", settings.get("cwd", str(Path.home())))
+    )
+
+
+async def test_mcp(request):
+    return web.json_response(
+        await request.app["mcp_probe"].test(
+            request.match_info["name"],
+            trusted_cli_cwd(request, await object_body(request)),
+        )
+    )
+
+
+async def authenticate_mcp(request):
+    name = request.match_info["name"]
+    request.app["mcp_settings"].read_oauth(
+        name, trusted_cli_cwd(request, await object_body(request))
+    )
+    return web.json_response(
+        request.app["auth_flow"].start(
+            "mcp",
+            name,
+            cwd=str(trusted_cli_cwd(request, await object_body(request))),
+        )
+    )
+
+
+async def get_mcp_oauth(request):
+    return web.json_response(
+        request.app["mcp_settings"].read_oauth(
+            request.match_info["name"],
+            trusted_cli_cwd(request, dict(request.query)),
+        )
+    )
+
+
+async def save_mcp_oauth(request):
+    payload = await object_body(request)
+    return web.json_response(
+        request.app["mcp_settings"].write_oauth(
+            request.match_info["name"],
+            trusted_cli_cwd(request, payload),
+            payload.get("oauth", {}),
+            payload.get("revision"),
+        )
+    )
+
+
+async def list_local_tasks(request):
+    return web.json_response(request.app["local_tasks"].listing())
+
+
+async def create_local_task(request):
+    return web.json_response(
+        request.app["local_tasks"].create(await object_body(request)),
+        status=202,
+    )
+
+
+async def local_task_detail(request):
+    return web.json_response(
+        request.app["local_tasks"].detail(request.match_info["task_id"])
+    )
+
+
+async def cancel_local_task(request):
+    return web.json_response(
+        await request.app["local_tasks"].cancel(request.match_info["task_id"])
+    )
+
+
+async def list_tasks(request):
+    return web.json_response(request.app["task_runtime"].listing())
+
+
+async def cancel_task(request):
+    return web.json_response(
+        await request.app["task_runtime"].cancel(request.match_info["run_id"])
+    )
+
+
+async def start_voice_agent(request):
+    if request.app["cli_admin"].updating:
+        raise RunConflict("CLI update is in progress")
+    payload = await object_body(request)
+    session = request.app["sessions"].sessions[payload["session_id"]]
+    return web.json_response(
+        request.app["voice_agent"].start(session, payload), status=202
+    )
+
+
+async def cancel_voice_request(request):
+    return web.json_response(
+        await request.app["voice_agent"].cancel_request(
+            request.match_info["request_id"]
+        )
+    )
+
+
+async def list_voice_runs(request):
     return web.json_response(
         {
-            "available": False,
-            "authenticated": None,
-            "reason": "Authentication belongs to agy; use Termux CLI",
+            "runs": [
+                {
+                    key: run.get(key)
+                    for key in ("voice_id", "state", "created_at")
+                }
+                for run in request.app["voice_agent"].runs.values()
+            ]
         }
+    )
+
+
+async def voice_detail(request):
+    return web.json_response(
+        request.app["voice_agent"].detail(request.match_info["voice_id"])
+    )
+
+
+async def cancel_voice_agent(request):
+    return web.json_response(
+        await request.app["voice_agent"].cancel(request.match_info["voice_id"])
+    )
+
+
+async def client_visibility(request):
+    payload = await object_body(request)
+    if type(payload.get("visible")) is not bool:
+        raise ValueError("visible must be boolean")
+    client_id = payload.get("client_id", "web")
+    if not isinstance(client_id, str) or not re.fullmatch(
+        r"[A-Za-z0-9._-]{1,128}", client_id
+    ):
+        raise ValueError("Invalid visibility client_id")
+    clients = request.app["visibility"]
+    if len(clients) >= 64 and client_id not in clients:
+        clients.pop(next(iter(clients)))
+    clients[client_id] = payload["visible"]
+    return web.json_response(
+        {"visible": payload["visible"], "client_id": client_id}
     )
 
 
@@ -255,9 +466,11 @@ async def capabilities(request):
         "skills",
         "commands",
         "auth",
+        "tasks",
+        "voice",
     ):
         available = (
-            kind in ("files", "settings")
+            kind in ("files", "settings", "tasks")
             or installed
             and kind
             in (
@@ -269,6 +482,7 @@ async def capabilities(request):
                 "skills",
                 "commands",
                 "quota",
+                "auth",
             )
         )
         if kind == "device":
@@ -284,7 +498,10 @@ async def capabilities(request):
                 "is checked by an action"
             )
         if kind == "auth":
-            reason = "No supported CLI inspection contract; use agy in Termux"
+            reason = "Native agy login handoff; account state remains unknown"
+        if kind == "voice":
+            available = installed and request.app["android"].available
+            reason = "Bounded voice planner; native device proof required"
         entry = {"id": kind, "available": bool(available), "reason": reason}
         if kind in ("plugins", "skills"):
             try:
@@ -430,11 +647,20 @@ async def close_session(request):
 
 
 async def start_run(request):
+    payload = await object_body(request)
     if request.app["cli_admin"].updating:
         raise RunConflict("CLI update is in progress")
-    run_id = request.app["sessions"].start(
-        request.match_info["session_id"], await object_body(request)
-    )
+    session_id = request.match_info["session_id"]
+    if any(
+        entry["session_id"] == session_id
+        and entry["mode"] == "queued"
+        and entry["state"] == "pending"
+        for entry in request.app["local_tasks"].entries.values()
+    ):
+        raise RunConflict(
+            "Saved messages are waiting; use the next-turn queue"
+        )
+    run_id = request.app["sessions"].start(session_id, payload)
     return web.json_response({"run_id": run_id}, status=202)
 
 
@@ -606,16 +832,44 @@ async def cli_version(request):
     )
 
 
+async def system_versions(request):
+    try:
+        version = await request.app["cli_admin"].version()
+    except CLIUnavailable:
+        version = None
+    document = json.loads(
+        Path(__file__).with_name("version.json").read_text(encoding="utf-8")
+    )
+    return web.json_response(
+        {
+            "server": {
+                "version": document["version_name"],
+                "version_code": document["version_code"],
+                "source": "server_version_json",
+            },
+            "cli": {"version": version, "source": "agy_help"},
+            "apk": {"version": None, "source": "native_get_app_version"},
+        }
+    )
+
+
 async def cli_update(request):
     payload = await object_body(request)
     sessions = request.app["sessions"]
 
     def can_update():
-        return not any(
-            run["state"] == "running" for run in sessions.runs.values()
-        ) and not any(
-            process.returncode is None
-            for process in sessions.processes.values()
+        return (
+            not any(
+                run["state"] == "running"
+                for run in request.app["voice_agent"].runs.values()
+            )
+            and not any(
+                run["state"] == "running" for run in sessions.runs.values()
+            )
+            and not any(
+                process.returncode is None
+                for process in sessions.processes.values()
+            )
         )
 
     return web.json_response(
@@ -752,6 +1006,10 @@ def instance_identity(store):
 
 def api_path(request, requested):
     path = workspaces(request).resolve(requested)
+    if path.parent.name == ".agents" and path.name.startswith(
+        ("mcp_config.json", ".companion-oauth-")
+    ):
+        raise PermissionError("Private MCP configuration is outside file API")
     home = request.app["legacy"].root.parents[2]
     private_roots = (
         request.app["store"].root,

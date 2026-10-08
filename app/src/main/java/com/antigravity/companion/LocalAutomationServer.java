@@ -76,8 +76,8 @@ public final class LocalAutomationServer extends WebSocketServer implements Auto
         AtomicBoolean completed = new AtomicBoolean();
         Runnable timeout = () -> completeOnce(
                 response(actionId, "outcome_unknown", error("Phone action timeout; do not replay")), completed, publish);
-        deadlines.postDelayed(timeout, 15000);
-        service.executeAction(action, args, outcome -> {
+        deadlines.postDelayed(timeout, action.equals("speak") ? 120000 : 15000);
+        service.executeAction(action, args, actionId, outcome -> {
             deadlines.removeCallbacks(timeout);
             String status = outcome.has("error") ? "failed" : "completed";
             completeOnce(response(actionId, status, outcome), completed, publish);

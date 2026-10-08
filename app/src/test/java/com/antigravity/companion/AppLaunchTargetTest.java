@@ -17,7 +17,7 @@ public class AppLaunchTargetTest {
     }
 
     @Test public void ambiguousOrUnknownNameCannotChooseAnApp() {
-        for (String target : new String[]{"Notes", "launch whatsapp now", "com.missing.app", "", "../com.whatsapp"}) {
+        for (String target : new String[]{"Notes", "launch whatsapp now", "com.missing.app", "", "../com.whatsapp", "\u0000com.whatsapp"}) {
             try { AppLaunchTarget.resolve(target, apps); fail("Unexpected launch selection: " + target); }
             catch (IllegalArgumentException expected) { assertNotNull(expected.getMessage()); }
         }

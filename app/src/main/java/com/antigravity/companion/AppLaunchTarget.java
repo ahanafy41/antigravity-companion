@@ -14,8 +14,8 @@ final class AppLaunchTarget {
         String normalized = normalize(target);
         if (normalized.isEmpty() || normalized.length() > 256)
             throw new IllegalArgumentException("Application target must contain 1 to 256 characters");
-        for (int index = 0; index < normalized.length(); index++)
-            if (Character.isISOControl(normalized.charAt(index)))
+        for (int index = 0; index < target.length(); index++)
+            if (Character.isISOControl(target.charAt(index)))
                 throw new IllegalArgumentException("Application target contains control characters");
         String shortcut = shortcut(normalized);
         for (App app : apps)

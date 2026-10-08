@@ -19,7 +19,10 @@ final class ServerConnection implements AutoCloseable {
     private final String origin;
     private final String token;
     ServerConnection(Context context) {
-        origin = new OriginPolicy(NativeSecrets.serverPort(context)).origin();
+        this(context, NativeSecrets.serverPort(context));
+    }
+    ServerConnection(Context context, int port) {
+        origin = new OriginPolicy(port).origin();
         token = NativeSecrets.androidToken(context);
     }
     boolean healthReady() {

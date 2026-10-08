@@ -38,6 +38,44 @@ public class TermuxLaunchContractTest {
         assertEquals("Termux: outcome_unknown", TermuxLaunchContract.summary(TermuxLaunchContract.result(null, null)));
     }
 
+    @Test public void successfulOutputReportsOnlyValidatedPort() {
+        JsonObject result = TermuxLaunchContract.result(-1, 0,
+                "private diagnostics\nCOMPANION_SERVER_PORT=8766\r\n");
+        assertEquals(8766, result.get("server_port").getAsInt());
+        assertFalse(result.toString().contains("private diagnostics"));
+        assertEquals(65535, TermuxLaunchContract.result(-1, 0,
+                "COMPANION_SERVER_PORT=65535\n").get("server_port").getAsInt());
+    }
+    @Test public void malformedDuplicateFailedAndOversizedOutputCannotChangePort() {
+        for (String output : new String[]{"COMPANION_SERVER_PORT=1023\n",
+                "COMPANION_SERVER_PORT=65536\n", "prefix COMPANION_SERVER_PORT=8766\n",
+                "COMPANION_SERVER_PORT=8766\nCOMPANION_SERVER_PORT=8767\n",
+                "COMPANION_SERVER_PORT=8766oops\n", null}) {
+            assertFalse(TermuxLaunchContract.result(-1, 0, output).has("server_port"));
+        }
+        assertFalse(TermuxLaunchContract.result(2, 0, "COMPANION_SERVER_PORT=8766\n").has("server_port"));
+        assertFalse(TermuxLaunchContract.result(-1, 1, "COMPANION_SERVER_PORT=8766\n").has("server_port"));
+        StringBuilder large = new StringBuilder("COMPANION_SERVER_PORT=8766\n");
+        while (large.length() <= 65536) large.append('x');
+        assertFalse(TermuxLaunchContract.result(-1, 0, large.toString()).has("server_port"));
+    }
+
+    @Test public void interactiveAuthenticationHasFixedArguments() {
+        assertArrayEquals(new String[]{"-l", "-c", "AGY_CLI_DISABLE_AUTO_UPDATE=true exec agy"},
+                TermuxLaunchContract.interactiveArguments("account"));
+        assertArrayEquals(new String[]{"-l", "-c", "AGY_CLI_DISABLE_AUTO_UPDATE=true exec agy --prompt-interactive /mcp"},
+                TermuxLaunchContract.interactiveArguments("mcp"));
+        assertThrows(IllegalArgumentException.class,
+                () -> TermuxLaunchContract.interactiveArguments("account; rm anything"));
+    }
+
+    @Test public void nativeWorkingDirectoryPreservesTrustedAbsolutePath() {
+        assertEquals("/work/selected folder", TermuxLaunchContract.interactiveWorkingDirectory("/fixture", "/work/selected folder"));
+        assertEquals("/fixture/files/home", TermuxLaunchContract.interactiveWorkingDirectory("/fixture", null));
+        assertThrows(IllegalArgumentException.class, () -> TermuxLaunchContract.interactiveWorkingDirectory("/fixture", "relative"));
+        assertThrows(IllegalArgumentException.class, () -> TermuxLaunchContract.interactiveWorkingDirectory("/fixture", "/work\nexec anything"));
+    }
+
     private static String state(Integer err, Integer exitCode) {
         return TermuxLaunchContract.result(err, exitCode).get("state").getAsString();
     }

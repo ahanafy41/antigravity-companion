@@ -36,9 +36,9 @@ def catalog_roots(kind, cwd=None):
 def skill_files(cwd=None):
     for root, mutable in catalog_roots("skills", cwd):
         linked = any(
-            path.is_symlink() or (
-                hasattr(path, "is_junction") and path.is_junction()
-            ) for path in (root, *root.parents)
+            path.is_symlink()
+            or (hasattr(path, "is_junction") and path.is_junction())
+            for path in (root, *root.parents)
         )
         if linked or not root.is_dir():
             continue

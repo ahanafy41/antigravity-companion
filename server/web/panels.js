@@ -3,7 +3,7 @@
   const companion = global.Companion;
   const ui = companion.ui;
   const state = companion.state;
-  const titles = {engine:'المحرك المستقل والمزودون', models:'النموذج والتفكير', agents:'فريق الوكلاء', settings:'الإعدادات والأمان', auth:'حساب agy', mcp:'بروتوكولات MCP', files:'ملفات المشروع', quota:'استهلاك النماذج', plugins:'الإضافات', skills:'المهارات', tasks:'المهام والمؤقتات', device:'التحكم بالهاتف', history:'المحادثات السابقة', updates:'إصدار التطبيق'};
+  const titles = {engine:'المحرك المستقل والمزودون', models:'النموذج والتفكير', agents:'فريق الوكلاء', settings:'الإعدادات والأمان', auth:'حساب agy', mcp:'بروتوكولات MCP', files:'ملفات المشروع', quota:'استهلاك النماذج', plugins:'الإضافات', skills:'المهارات', tasks:'المهام والمؤقتات',voice:'التحكم الصوتي والكلام', device:'التحكم بالهاتف', history:'المحادثات السابقة', updates:'إصدار التطبيق'};
   function unsupported(id) {
     const capability = companion.capability(id);
     return capability?.reason || (state.connected ? 'هذه الوظيفة غير متاحة في عقد الخادم الحالي.' : 'تحتاج هذه الوظيفة اتصالاً بالخادم.');
@@ -60,7 +60,7 @@
     state.settings = reply.settings;
     state.revision = reply.revision;
     parent.append(ui.element('p', 'مسودة محلية حتى الحفظ. الإغلاق يلغي المسودة؛ لا تستبدل القيم السرية المحجوبة. تبقى المفاتيح المجهولة.'));
-    parent.append(ui.element('p', 'أذونات agy وإعدادات أمانه تُدار في Termux؛ هذه الصفحة تحفظ إعدادات Companion فقط وترفض تغيير مفاتيح سياسة CLI.'));
+    parent.append(ui.element('p', 'إعدادات Companion مستقلة عن أذون agy؛ لكل منهما حفظ منفصل.'));
     const editor = ui.input(parent, 'الإعدادات JSON', {tag:'textarea', value:JSON.stringify(reply.settings,null,2), className:'json-editor'});
     const actions = ui.element('div', undefined, 'panel-actions');
     actions.append(ui.button('حفظ الإعدادات', async () => {
@@ -73,12 +73,40 @@
       ui.closeDialog(ui.byId('panel-dialog'));
     }, 'primary'), ui.button('إلغاء المسودة', () => ui.closeDialog(ui.byId('panel-dialog'))));
     parent.append(actions);
+    await policyEditor(parent);
+  }
+  async function policyEditor(parent) {
+    const policy = await companion.api.request('/cli/policy');
+    parent.append(ui.element('h3','أذون أدوات agy'),ui.element('p','قواعد allow وdeny وask في ملف agy الأصلي؛ تقرأها العملية التالية. قد يرفض headless الفعل الذي يحتاج سؤالًا.'));
+    const fields = {};
+    for (const kind of ['allow','deny','ask']) fields[kind] = ui.input(parent,'قواعد '+kind+'، قائمة JSON',{tag:'textarea',value:JSON.stringify(policy.permissions[kind] || [],null,2)});
+    parent.append(ui.button('حفظ أذون agy',async()=>{
+      const permissions = Object.fromEntries(Object.entries(fields).map(([kind,field])=>[kind,JSON.parse(field.value)]));
+      const saved = await companion.api.request('/cli/policy',{method:'PATCH',body:{permissions,revision:policy.revision}});
+      policy.revision = saved.revision; ui.announce('حُفظت أذون agy للعملية التالية.');
+    }));
+  }
+  async function nativeHandoff(flow,parent) {
+    if (flow.status !== 'native_launch') throw new Error('agy غير متاح لبدء الدخول.');
+    companion.app.authRequestId = flow.request_id;
+    if (companion.native.available()) {
+      await companion.native.request(flow.action,{cwd:flow.cwd});
+      parent.append(ui.element('p','فُتحت جلسة agy الأصلية؛ أكمل الدخول فيها. قبول الفتح لا يثبت تسجيل الدخول.'));
+    } else {
+      parent.append(ui.element('p','افتح الطرفية ونفّذ agy'+(flow.action === 'mcp_cli' ? ' ثم /mcp' : '')+'؛ يملك CLI إجراء الدخول واعتماده.'));
+    }
   }
   async function authPanel(parent) {
     const status = await companion.api.request('/auth/status');
-    parent.append(ui.element('p', status.reason || 'يتولى agy المصادقة في Termux.'));
-    if (status.authenticated !== null && status.authenticated !== undefined) parent.append(ui.element('p', status.authenticated ? 'الحساب مسجل الدخول.' : 'الحساب غير مسجل الدخول.'));
-    parent.append(ui.element('p', 'نفّذ agy auth في Termux عند الحاجة؛ لا تجمع هذه الصفحة رمز حساب Google أو تستحدث جلسة PTY.'));
+    parent.append(ui.element('p','يتولى agy الدخول في طرفيته الأصلية. حال الحساب لا تثبت من وجود ملف أو من نجاح فتح الطرفية.'));
+    if (status.authenticated !== null && status.authenticated !== undefined) parent.append(ui.element('p',status.authenticated ? 'الحساب مسجل الدخول.' : 'الحساب غير مسجل الدخول.'));
+    parent.append(ui.button('بدء دخول الحساب في agy',async()=>nativeHandoff(await companion.api.request('/auth/login',{method:'POST',body:{cwd:companion.app.sessionOptions.cwd || state.settings.cwd || '.'}}),parent)));
+    parent.append(ui.button('إلغاء طلب الإحالة',async()=>{
+      if (!companion.app.authRequestId) return;
+      await companion.api.request('/auth/'+encodeURIComponent(companion.app.authRequestId)+'/cancel',{method:'POST',body:{}});
+      companion.app.authRequestId = undefined;
+      ui.announce('ألغي طلب الإحالة؛ الطرفية الأصلية تحت يدك.');
+    }));
   }
   async function filesPanel(parent) {
     const path = ui.input(parent, 'مسار الملف أو المجلد داخل مجلد المشروع', {value:companion.app.sessionOptions.cwd || state.settings.cwd || '.'});
@@ -114,7 +142,7 @@
     return parsed;
   }
   async function mcpPanel(parent) {
-    const reply = await companion.api.request('/mcp');
+    const reply = await companion.api.request('/mcp?cwd='+encodeURIComponent(companion.app.sessionOptions.cwd || state.settings.cwd || '.'));
     for (const server of reply.servers) {
       const row = ui.element('section', undefined, 'panel-row');
       row.append(ui.element('h3',server.name),ui.element('p',server.enabled === false ? 'معطّل' : 'مفعّل'));
@@ -129,11 +157,36 @@
         await companion.app.refreshSuggestions();
         await open('mcp');
       }, 'danger'));
+      row.append(ui.button('فحص بروتوكول '+server.name,async()=>{
+        const result = await companion.api.request('/mcp/'+encodeURIComponent(server.name)+'/test',{method:'POST',body:{cwd:companion.app.sessionOptions.cwd || state.settings.cwd || '.'}});
+        row.append(ui.element('p','حال الفحص: '+result.status+(result.tool_count !== undefined ? '؛ عدد الأدوات: '+result.tool_count : '')+'؛ هذا لا يثبت اعتماد agy للخادم.'));
+      }),ui.button('مصادقة '+server.name+' في agy',async()=>nativeHandoff(await companion.api.request('/mcp/'+encodeURIComponent(server.name)+'/authenticate',{method:'POST',body:{cwd:companion.app.sessionOptions.cwd || state.settings.cwd || '.'}}),row)));
+      try { await oauthEditor(row,server.name); }
+      catch { row.append(ui.element('p','تعذر قراءة إعداد OAuth لهذا الخادم؛ الجرد باقٍ متاحًا.')); }
       parent.append(row);
     }
     if (!reply.servers.length) parent.append(ui.element('p','لم يعلن CLI خوادم MCP.'));
-    parent.append(ui.element('p','مصادقة MCP واختبار اتصاله غير متاحين في عقد هذه الصفحة؛ لا تُجمع رموز OAuth هنا.'));
+    parent.append(ui.element('p','OAuth يجري في agy؛ فحص الاتصال مستقل عن اعتماد حساب CLI.'));
     await mcpForm(parent);
+  }
+  async function oauthEditor(parent,name) {
+    const cwd = companion.app.sessionOptions.cwd || state.settings.cwd || '.';
+    const route = '/mcp/'+encodeURIComponent(name)+'/oauth';
+    const saved = await companion.api.request(route+'?cwd='+encodeURIComponent(cwd));
+    parent.append(ui.element('h4','إعداد OAuth الاختياري'),ui.element('p','يحفظ هذا حقول العميل للخوادم التي تحتاجها. السر الفارغ يبقي المحفوظ؛ لا تُعرض القيم المحفوظة.'));
+    const clientId = ui.input(parent,'Client ID الجديد؛ اتركه فارغًا لصون السابق');
+    const secret = ui.input(parent,'Client Secret الجديد؛ اتركه فارغًا لصون السابق',{secret:true,type:'password'});
+    parent.append(ui.button('حفظ عميل OAuth',async()=>{
+      const oauth = {};
+      if (clientId.value.trim()) oauth.client_id = clientId.value.trim();
+      if (secret.value) oauth.client_secret = secret.value;
+      const result = await companion.api.request(route,{method:'PATCH',body:{cwd,oauth,revision:saved.revision}});
+      saved.revision = result.revision; secret.value = ''; ui.announce('حُفظ إعداد OAuth؛ أعد تحميل MCP في agy.');
+    }),ui.button('مسح Client Secret المحفوظ',async()=>{
+      if (!global.confirm('مسح سر عميل OAuth لهذا الخادم؟')) return;
+      const result = await companion.api.request(route,{method:'PATCH',body:{cwd,oauth:{clear_client_secret:true},revision:saved.revision}});
+      saved.revision = result.revision; ui.announce('مُسح سر العميل المحدد.');
+    }));
   }
   async function mcpForm(parent) {
     parent.append(ui.element('h3','إضافة MCP'));
@@ -201,6 +254,9 @@
     if (!state.storageReady) ui.notice('قُرئ السجل؛ تعذر حفظ نسخة محلية لغياب IndexedDB.');
   }
   async function updatesPanel(parent) {
+    const versions = await companion.api.request('/system/versions');
+    parent.append(ui.element('p','نسخة الخادم: '+versions.server.version+'؛ الرقم: '+versions.server.version_code),
+      ui.element('p','نسخة agy: '+(versions.cli.version || 'غير معلومة')));
     if (!companion.native.available()) { parent.append(ui.element('p','فحص APK وتثبيته متاحان في تطبيق Android.')); return; }
     const version = await companion.native.request('get_app_version');
     parent.append(ui.element('p', 'الإصدار المركب: ' + (version.version_name || version.version || JSON.stringify(version))));
@@ -304,11 +360,113 @@
     }
   }
   async function tasksPanel(parent) {
-    parent.append(ui.element('p', state.settings.allow_schedule === false ? 'المؤقتات ممنوعة بإعداد allow_schedule.' : 'لا يعلن عقد الخادم الحالي جدولة مهام؛ لا يُعرض عداد أو تقدم مفترض.'));
+    const report = await companion.api.request('/tasks');
+    if (!report.tasks.length) parent.append(ui.element('p','لا أعمال مسجلة.'));
+    for (const task of report.tasks) {
+      const row = ui.element('section',undefined,'panel-row');
+      row.append(ui.element('p','العمل '+task.task_id+'؛ الحال: '+task.state));
+      if (task.cancellable) row.append(ui.button('إلغاء العمل '+task.task_id,async()=>{
+        await companion.api.request('/tasks/'+encodeURIComponent(task.task_id)+'/cancel',{method:'POST',body:{}}); await open('tasks');
+      }));
+      parent.append(row);
+    }
+    for (const agent of report.subagents) parent.append(ui.element('p','وكيل مرصود: '+agent.type_name+'؛ '+agent.conversation_id+'؛ حال العمل الأب: '+agent.parent_state+'؛ إلغاؤه مع العمل الأب.'));
+    parent.append(ui.element('h3','الأدوار المؤجلة والمواعيد المحلية'));
+    parent.append(ui.element('p','الرسالة المؤجلة تبدأ دورًا جديدًا بعد فراغ الجلسة؛ لا توجه الدور الجاري. الموعد مرة واحدة، ويبقى محفوظًا عند إعادة تشغيل الخادم. لا يثبت الاكتمال إلا بنتيجة الدور الفعلية.'));
+    const message = ui.input(parent,'رسالة الدور المؤجل أو الموعد',{tag:'textarea'});
+    const due = ui.input(parent,'موعد التنفيذ مرة واحدة بتوقيت UTC',{type:'datetime-local'});
+    const missed = selectField(parent,'إذا فات الموعد والخادم مغلق',[
+      {id:'skip',name:'تجاوز الموعد الفائت'},
+      {id:'run_once',name:'نفذ مرة واحدة بعد تشغيل الخادم'}
+    ],'skip');
+    let submitting = false;
+    async function saveLocal(mode) {
+      if (submitting) return;
+      const text = message.value.trim();
+      if (!text) throw new Error('اكتب رسالة للدور المؤجل.');
+      const body = {mode,message:text};
+      if (mode === 'scheduled') {
+        if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(due.value)) throw new Error('اختر موعدًا صحيحًا بتوقيت UTC.');
+        const moment = new Date(due.value+'Z');
+        if (!Number.isFinite(moment.getTime()) || moment.toISOString().slice(0,16) !== due.value)
+          throw new Error('الموعد غير صحيح.');
+        if (moment.getTime() <= Date.now()) throw new Error('اختر موعدًا في المستقبل.');
+        body.scheduled_at = moment.toISOString(); body.missed_policy = missed.value;
+      }
+      submitting = true; queueButton.disabled = true; scheduleButton.disabled = true;
+      try {
+        await companion.app.ensureSession(); body.session_id = state.sessionId;
+        const signature = JSON.stringify(body);
+        if (companion.app.localTaskSubmission?.signature !== signature)
+          companion.app.localTaskSubmission = {signature,request_id:global.crypto.randomUUID()};
+        body.request_id = companion.app.localTaskSubmission.request_id;
+        await companion.api.request('/local-tasks',{method:'POST',body});
+        companion.app.localTaskSubmission = undefined;
+        ui.announce(mode === 'queued' ? 'حفظت الرسالة لدور تالٍ بعد فراغ الجلسة.' : 'حفظ الموعد المحلي.');
+        if (parent.isConnected) await open('tasks');
+      } finally { submitting = false; queueButton.disabled = false; scheduleButton.disabled = false; }
+    }
+    const queueButton = ui.button('إرسال بعد انتهاء الدور الجاري',()=>saveLocal('queued'));
+    const scheduleButton = ui.button('حفظ موعد واحد',()=>saveLocal('scheduled'));
+    parent.append(queueButton,scheduleButton,ui.button('تجديد حال المهام',()=>open('tasks')));
+    const local = await companion.api.request('/local-tasks');
+    if (local.worker_error) parent.append(ui.element('p','توقف تنفيذ المهام: '+local.worker_error));
+    if (!local.tasks.length) parent.append(ui.element('p','لا أدوار مؤجلة أو مواعيد محلية.'));
+    for (const task of local.tasks) {
+      const row = ui.element('section',undefined,'panel-row');
+      row.append(ui.element('p','المؤجل '+task.task_id+'؛ الحال: '+task.state));
+      if (task.scheduled_at) row.append(ui.element('p','الموعد: '+task.scheduled_at+'؛ المنطقة: '+(task.timezone || 'UTC')+'؛ الفوات: '+task.missed_policy));
+      if (task.run_id) {
+        row.append(ui.element('p','معرّف الدور الفعلي: '+task.run_id));
+        row.append(ui.button('فتح محادثة المؤجل '+task.task_id,async()=>{
+          await companion.app.resume(task.session_id); ui.closeDialog(ui.byId('panel-dialog'));
+        }));
+      }
+      if (task.error) row.append(ui.element('p','سبب الحال: '+task.error));
+      if (task.cancellable) row.append(ui.button('إلغاء المؤجل '+task.task_id,async()=>{
+        await companion.api.request('/local-tasks/'+encodeURIComponent(task.task_id)+'/cancel',{method:'POST',body:{}});
+        if (parent.isConnected) await open('tasks');
+      }));
+      parent.append(row);
+    }
+  }
+  async function voicePanel(parent) {
+    parent.append(ui.element('p','التحكم الصوتي يرسل أمرًا صريحًا إلى وكيل محدود بأفعال الهاتف؛ الإملاء وحده لا يرسله. الكلام لا يُعلن مكتملًا حتى يجيب محرك Android.'));
+    const text = ui.input(parent,'الأمر المراد تنفيذه',{tag:'textarea',value:companion.app.voiceText || ''});
+    let captureGeneration = 0;
+    const status = ui.element('p','لا أمر جارٍ.'); status.setAttribute('role','status'); parent.append(status);
+    async function follow() {
+      for (let poll=0;poll<360 && parent.isConnected && companion.app.voiceRunId;poll++) {
+        const result = await companion.api.request('/voice/runs/'+encodeURIComponent(companion.app.voiceRunId));
+        status.textContent = 'حال الأمر: '+result.state+(result.outcome_unknown ? '؛ أثر فعل سابق غير معلوم' : '');
+        if (result.state !== 'running') return;
+        await new Promise(resolve=>global.setTimeout(resolve,1000));
+      }
+    }
+    parent.append(ui.button('تنفيذ أمر الهاتف',async()=>{await companion.app.startVoiceAgent(text.value);await follow();}),
+      ui.button('التقاط أمر صوتي وتنفيذه',async()=>{
+        const generation = ++captureGeneration;
+        const speech = await companion.native.request('start_voice');
+        if (generation !== captureGeneration) return;
+        if (typeof speech.text === 'string') {text.value=speech.text;await companion.app.startVoiceAgent(speech.text,speech.task_id);await follow();}
+      }),ui.button('إلغاء الأمر والكلام',async()=>{
+        captureGeneration++;
+        if (companion.native.available()) await companion.native.request('cancel_voice');
+        if (companion.app.pendingVoiceRequestId) await companion.api.request('/voice/requests/'+encodeURIComponent(companion.app.pendingVoiceRequestId)+'/cancel',{method:'POST',body:{}});
+        if (!companion.app.voiceRunId) return;
+        const result = await companion.api.request('/voice/runs/'+encodeURIComponent(companion.app.voiceRunId)+'/cancel',{method:'POST',body:{}});
+        status.textContent='حال الأمر: '+result.state+(result.outcome_unknown ? '؛ أثر فعل سابق غير معلوم' : '');
+      }));
+    if (!companion.app.voiceRunId) {
+      const listing = await companion.api.request('/voice/runs');
+      const active = listing.runs.find(run=>run.state === 'running');
+      if (active) companion.app.voiceRunId = active.voice_id;
+    }
+    if (companion.app.voiceRunId) void follow().catch(error=>ui.notice(error.message));
   }
   async function devicePanel(parent) {
     parent.append(ui.element('p','أفعال الهاتف لا تُعاد عند الانقطاع. استخرج tree حديثاً قبل select أو click أو text أو scroll؛ تبطل معرفات العناصر عند تغير النافذة. فتح التطبيق يثبت إرسال Intent، لا ظهوره في المقدمة.'));
-    const examples = {tree:{},select:{query:''},click:{snapshot_id:'',element_id:''},text:{snapshot_id:'',element_id:'',text:''},scroll:{snapshot_id:'',element_id:'',direction:'forward'},back:{},home:{},recents:{},notifications:{},launch_app:{target:''},screenshot:{}};
+    const examples = {tree:{},select:{query:''},click:{snapshot_id:'',element_id:''},text:{snapshot_id:'',element_id:'',text:''},scroll:{snapshot_id:'',element_id:'',direction:'forward'},back:{},home:{},recents:{},notifications:{},launch_app:{target:''},speak:{text:''},speech_cancel:{},screenshot:{}};
     const action = selectField(parent,'فعل الهاتف',Object.keys(examples).map(id=>({id})),'tree');
     const argumentsField = ui.input(parent,'وسائط الفعل JSON',{tag:'textarea',value:'{}'});
     action.addEventListener('change',()=>{argumentsField.value=JSON.stringify(examples[action.value],null,2);});
@@ -319,7 +477,7 @@
         const chosen = action.value;
         const args = jsonObject(argumentsField,'وسائط الفعل');
         let actionId = global.crypto.randomUUID();
-        if (['click','text','scroll','back','home','recents','notifications','launch_app'].includes(chosen)) {
+        if (['click','text','scroll','back','home','recents','notifications','launch_app','speak','speech_cancel'].includes(chosen)) {
           const journal = await companion.api.request('/device/epoch');
           if (typeof journal.epoch !== 'string' || !/^[0-9a-f]{32}$/.test(journal.epoch)) throw new Error('تعذر إثبات سجل أفعال الهاتف؛ لم يُرسل الفعل.');
           actionId = journal.epoch + ':' + actionId;
@@ -342,7 +500,7 @@
     download.addEventListener('click',()=>global.setTimeout(()=>URL.revokeObjectURL(url),60000),{once:true});
     parent.replaceChildren(ui.element('p','وردت صورة الشاشة من Android.'),download);
   }
-  const loaders = {models:modelsPanel,agents:agentsPanel,settings:settingsPanel,auth:authPanel,mcp:mcpPanel,files:filesPanel,history:historyPanel,updates:updatesPanel,tasks:tasksPanel,device:devicePanel,quota:quotaPanel,plugins:parent=>catalogPanel('plugins',parent),skills:parent=>catalogPanel('skills',parent)};
+  const loaders = {models:modelsPanel,agents:agentsPanel,settings:settingsPanel,auth:authPanel,mcp:mcpPanel,files:filesPanel,history:historyPanel,updates:updatesPanel,tasks:tasksPanel,voice:voicePanel,device:devicePanel,quota:quotaPanel,plugins:parent=>catalogPanel('plugins',parent),skills:parent=>catalogPanel('skills',parent)};
   async function open(id) {
     const container = ui.panel(titles[id],'');
     const parent = ui.element('div');

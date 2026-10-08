@@ -233,6 +233,7 @@ def main():
         if bootstrap is not None and len(bootstrap) > 1024 * 1024:
             raise ValueError("Bootstrap input is too large")
         start(options.root.expanduser().resolve(), options.port, bootstrap)
+        print(f"COMPANION_SERVER_PORT={options.port}")
         return 0
     except (
         OSError,

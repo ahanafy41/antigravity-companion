@@ -1,6 +1,9 @@
 """Exercise the actual server entry, pairing and single-owner process lock."""
 
 import json
+import io
+from contextlib import redirect_stdout, redirect_stderr
+from unittest.mock import patch
 import importlib.util
 import os
 from pathlib import Path
@@ -28,6 +31,30 @@ def free_port():
 
 
 class LauncherTests(unittest.TestCase):
+    def test_success_reports_saved_port_without_changing_settings(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            settings = '{"port": 8766, "unknown": 42}'
+            (root / "settings.json").write_text(settings)
+            output = io.StringIO()
+            with patch.object(sys, "argv", ["launcher", "--root", folder]):
+                with patch.object(launcher, "start") as start:
+                    with redirect_stdout(output):
+                        self.assertEqual(launcher.main(), 0)
+            start.assert_called_once_with(root.resolve(), 8766, None)
+            self.assertIn("COMPANION_SERVER_PORT=8766\n", output.getvalue())
+            self.assertEqual((root / "settings.json").read_text(), settings)
+
+    def test_failed_start_does_not_report_a_port(self):
+        output = io.StringIO()
+        with patch.object(sys, "argv", ["launcher", "--port", "8766"]):
+            with patch.object(
+                launcher, "start", side_effect=OSError("failed")
+            ):
+                with redirect_stdout(output), redirect_stderr(io.StringIO()):
+                    self.assertEqual(launcher.main(), 1)
+        self.assertNotIn("COMPANION_SERVER_PORT", output.getvalue())
+
     def test_actual_entry_respects_port_identity_assets_and_owner_lock(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

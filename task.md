@@ -1,4 +1,36 @@
-# سجل العمل
+﻿# سجل العمل
+
+## حفظ حصيلة الخطة 2026-10-08
+
+feat: restore Companion features and safe execution — complete؛ أذن المستخدم بجمع التغييرات المتراكمة في commit هذه الجلسة. تشمل الوظائف والإصلاحات والسجلات وحزمة المصدر، بعد فحوصها المحلية؛ لا push أو نشر أو هاتف أو متصفح.
+
+## استكمال وظائف الخطة 2026-10-08
+
+feat: restore approved feature contracts — complete locally؛ التنفيذ المستقل وفحوصه مكتملان. اعتمد المستخدم الخيار الأول ونفذ المجدول وصف الدور التالي. الحصيلة docs/feature-completion-report.md؛ لا هاتف أو متصفح أو حساب حي أو نشر أو commit.
+
+| الملفات والنطاق | الحال |
+|---|---|
+| auth_flow.py، mcp_probe.py، mcp_settings.py، run_auth_tests.py | complete locally |
+| task_runtime.py، run_task_tests.py | complete locally؛ إلغاء subagent عبر الأب المملوك |
+| NativeSpeech.java، SpeechRequest.java، PendingSpeech.java وأفعال Android وفحوصها | complete locally؛ قبول الهاتف باقٍ |
+| voice_agent.py، voice_planner.py، run_voice_tests.py، run_planner_tests.py | complete locally؛ قبول agy الحقيقي والصوت باقٍ |
+| application.py وMainActivity.java وTermuxBridge.java وواجهات الويب وrun_feature_tests.py وrun_features_tests.cjs | complete locally |
+| الجدولة وتوجيه الدور الجاري | complete locally؛ local_tasks.py وrun_schedule_tests.py وAPI والويب |
+| SKILL.md، CHANGELOG.md، project_state.md والتقرير وحزمة المصدر | complete؛ 66 ملف مصدر و46 أصل APK وصفحة الإصلاح مطابقة |
+
+## إصلاح نتائج المراجعة 2026-10-08
+
+fix: address local review findings — complete locally؛ أذن المستخدم بإصلاح كل العيوب المؤكدة. لا هاتف أو متصفح أو حساب حي أو نشر أو commit جديد.
+
+| الملفات | الحال |
+|---|---|
+| AppUpdateManager.java، UpdateTransfer.java، UpdateTransferTest.java | complete؛ إلغاء التنزيل والتحقق والتسليم |
+| MainActivity.java، NativeSecrets.java، ServerConnection.java، TermuxBridge.java، TermuxLaunchContract.java واختباره | complete؛ اكتشاف المنفذ المصادق |
+| server/launcher.py، scripts/run_launcher_tests.py | complete؛ إبلاغ المنفذ الفعلي |
+| ملفات Python ذات مآخذ Black وflake8 | complete؛ تصحيح المواضع المثبتة فقط |
+| SKILL.md، project_state.md، CHANGELOG.md، docs/review-fixes-report.md، حزمة المصدر | complete؛ التوثيق والتحقق النهائي |
+
+الحصيلة docs/review-fixes-report.md: 79 Python و35 JVM وNode وبناء Debug ناجحة؛ Black79 وflake8 نظيفان، وLint صفر أخطاء و24 ملحوظة سابقة. طابقت أصول APK المصدر، وطابقت حزمة المصدر وجردها 51 ملفًا. استرداد التكافؤ غير المكتمل باقٍ خارج إصلاح العيوب المثبتة. ملفات doctor.py وphone_acceptance.py: complete؛ ضبط فقط، دون تشغيل فاحص الهاتف.
 
 ## جمع التغييرات 2026-10-08
 
@@ -23,7 +55,7 @@ feat: feature parity restoration — in_progress؛ اعتمد المستخدم �
 | docs/main-feature-baseline.md، docs/feature-restoration-contracts.md | complete |
 | docs/feature-parity-spec.md، docs/feature-restoration-plan.md | complete؛ اعتمدت الخطة وفق سجل العمل أعلاه |
 | العقود والحصص والترقية والأذون والمهارات وأفعالAndroid | in_progress؛ تنفيذ وفحص محلي |
-| دخول الحساب وMCP والمهام والصوت وبقية التكافؤ | not_started؛ بعد المراحل السابقة |
+| دخول الحساب وMCP والمهام والصوت | complete locally؛ قبول التكامل الحقيقي باقٍ، والجدولة والتوجيه pending_decision |
 | قبول الحساب والهاتف وOTA الحقيقي | not_started؛ يحتاج فعلًا مأذونًا مخصوصًا |
 
 ## تدقيق 2026-10-07

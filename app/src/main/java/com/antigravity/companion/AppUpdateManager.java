@@ -44,7 +44,7 @@ public final class AppUpdateManager implements AutoCloseable {
     private final Handler mainThread = new Handler(Looper.getMainLooper());
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean downloading = new AtomicBoolean();
-    private final AtomicBoolean downloadCancelled = new AtomicBoolean();
+    private volatile UpdateTransfer activeTransfer = new UpdateTransfer();
     private final OkHttpClient client;
     private volatile String checkedAsset = "";
     private volatile Call activeDownload;
@@ -137,25 +137,34 @@ public final class AppUpdateManager implements AutoCloseable {
         String url = checkedAsset;
         if (!UpdatePolicy.trustedAsset(url)) { listener.failed("Check the trusted release before downloading"); return; }
         if (!downloading.compareAndSet(false, true)) { listener.failed("An update download is already active"); return; }
-        downloadCancelled.set(false); executor.execute(() -> downloadCheckedAsset(url, listener));
+        activeTransfer.cancel();
+        UpdateTransfer transfer = new UpdateTransfer(); activeTransfer = transfer;
+        executor.execute(() -> downloadCheckedAsset(url, listener, transfer));
     }
-    private void downloadCheckedAsset(String url, DownloadListener listener) {
+    private void downloadCheckedAsset(String url, DownloadListener listener, UpdateTransfer transfer) {
         File folder = new File(context.getCacheDir(), "apk_updates");
         File staging = new File(folder, "download.tmp");
         try {
             if (!folder.isDirectory() && !folder.mkdirs()) throw new IOException("Cannot create update cache");
-            if (downloadCancelled.get() || closed) throw new IOException("Download cancelled");
+            if (closed) throw new IOException("Download cancelled");
+            transfer.requireActive();
             activeDownload = client.newCall(new Request.Builder().url(url).build());
             try (Response response = activeDownload.execute()) {
                 if (!response.isSuccessful() || response.body() == null) throw new IOException("APK download failed: " + response.code());
-                streamApk(response.body(), staging, listener);
+                streamApk(response.body(), staging, listener, transfer);
             }
-            if (downloadCancelled.get() || closed) throw new IOException("Download cancelled");
-            verifyApk(staging);
+            if (closed) throw new IOException("Download cancelled");
+            transfer.requireActive();
             File apk = new File(folder, "app-release.apk");
-            if (apk.exists() && !apk.delete()) throw new IOException("Cannot replace cached APK");
-            if (!staging.renameTo(apk)) throw new IOException("Cannot publish verified APK");
-            mainThread.post(() -> { if (!closed) listener.downloaded(apk); });
+            transfer.verifyThenPublish(() -> verifyApk(staging), () -> {
+                if (apk.exists() && !apk.delete()) throw new IOException("Cannot replace cached APK");
+                if (!staging.renameTo(apk)) throw new IOException("Cannot publish verified APK");
+            });
+            mainThread.post(() -> {
+                if (closed) return;
+                try { transfer.deliver(() -> listener.downloaded(apk)); }
+                catch (IOException cancelled) { listener.failed(cancelled.getMessage()); }
+            });
         } catch (IOException | IllegalArgumentException | IllegalStateException failure) {
             mainThread.post(() -> { if (!closed) listener.failed(failure.getMessage()); });
         } finally {
@@ -163,13 +172,14 @@ public final class AppUpdateManager implements AutoCloseable {
             activeDownload = null; downloading.set(false);
         }
     }
-    private void streamApk(ResponseBody body, File destination, DownloadListener listener) throws IOException {
+    private void streamApk(ResponseBody body, File destination, DownloadListener listener, UpdateTransfer transfer) throws IOException {
         long total = body.contentLength(), count = 0, lastNotice = 0;
         if (total > MAX_APK_BYTES) throw new IOException("APK exceeds maximum size");
         try (InputStream input = body.byteStream(); FileOutputStream output = new FileOutputStream(destination)) {
             byte[] buffer = new byte[8192]; int read;
             while ((read = input.read(buffer)) != -1) {
-                if (closed || downloadCancelled.get() || Thread.currentThread().isInterrupted()) throw new IOException("Download cancelled");
+                if (closed) throw new IOException("Download cancelled");
+                transfer.requireActive();
                 count += read; if (count > MAX_APK_BYTES) throw new IOException("APK exceeds maximum size");
                 output.write(buffer, 0, read);
                 if (count - lastNotice >= 65536 || count == total) {
@@ -219,14 +229,18 @@ public final class AppUpdateManager implements AutoCloseable {
                 .setData(Uri.parse("package:" + context.getPackageName())));
     }
     void installVerifiedApk(Activity activity, File apk, ServerConnection server, Consumer<JsonObject> completion) {
+        UpdateTransfer transfer = activeTransfer;
         executor.execute(() -> {
             try {
+                transfer.requireActive();
                 verifyApk(apk);
+                transfer.requireActive();
                 server.requireUpdateCompatibility(embeddedServerVersion(apk));
+                transfer.requireActive();
                 mainThread.post(() -> {
                     if (closed || activity.isFinishing() || activity.isDestroyed()) return;
                     JsonObject outcome = new JsonObject();
-                    try { openVerifiedInstaller(activity, apk); outcome.addProperty("installer_opened", true); }
+                    try { transfer.deliver(() -> openVerifiedInstaller(activity, apk, transfer)); outcome.addProperty("installer_opened", true); }
                     catch (IOException failure) { outcome.addProperty("error", failure.getMessage()); }
                     completion.accept(outcome);
                 });
@@ -255,17 +269,18 @@ public final class AppUpdateManager implements AutoCloseable {
             }
         }
     }
-    private void openVerifiedInstaller(Activity activity, File apk) throws IOException {
+    private void openVerifiedInstaller(Activity activity, File apk, UpdateTransfer transfer) throws IOException {
         if (!canInstallUnknownApps()) throw new IOException("Install permission is required");
         File expected = new File(context.getCacheDir(), "apk_updates/app-release.apk");
         if (!expected.getCanonicalFile().equals(apk.getCanonicalFile())) throw new IOException("Unexpected APK path");
         verifyApk(apk);
+        transfer.requireActive();
         Uri uri = FileProvider.getUriForFile(context, context.getPackageName() + ".fileprovider", apk);
         try { activity.startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)); }
         catch (ActivityNotFoundException | SecurityException failure) { throw new IOException("Package installer unavailable", failure); }
     }
-    void cancelDownload() { downloadCancelled.set(true); Call download = activeDownload; if (download != null) download.cancel(); }
+    void cancelDownload() { activeTransfer.cancel(); Call download = activeDownload; if (download != null) download.cancel(); }
     @Override public void close() {
         closed = true; cancelDownload(); executor.shutdownNow(); mainThread.removeCallbacksAndMessages(null);
         client.dispatcher().cancelAll(); client.dispatcher().executorService().shutdown(); client.connectionPool().evictAll();

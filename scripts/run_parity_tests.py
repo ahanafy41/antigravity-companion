@@ -75,8 +75,11 @@ class CatalogTests(unittest.TestCase):
             workspace = root / "project"
             workspace.mkdir()
             try:
-                os.symlink(root / "outside", workspace / ".agents",
-                           target_is_directory=True)
+                os.symlink(
+                    root / "outside",
+                    workspace / ".agents",
+                    target_is_directory=True,
+                )
             except OSError:
                 self.skipTest("Directory symlinks are unavailable")
             with patch.object(Path, "home", return_value=root):

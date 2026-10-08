@@ -445,6 +445,9 @@ class Sessions:
     def consume(self, session, run, event):
         if not isinstance(event, dict):
             raise ValueError("CLI event must be an object")
+        observer = getattr(self, "observer", None)
+        if observer is not None:
+            observer(run, event)
         name = event.get("event")
         if name in ("step_update", "result") and not isinstance(
             event.get(name), dict

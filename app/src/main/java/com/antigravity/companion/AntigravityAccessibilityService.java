@@ -39,11 +39,12 @@ public class AntigravityAccessibilityService extends AccessibilityService {
     private final ScreenSnapshot snapshot = new ScreenSnapshot();
     private final Map<String, DeviceAction> actions = new HashMap<>();
     private LocalAutomationServer automationServer;
+    private NativeSpeech speech;
     private interface DeviceAction { void execute(JsonObject args, Consumer<JsonObject> completion); }
     public static AntigravityAccessibilityService getInstance() { return instance; }
     public static boolean isServiceRunning() { return instance != null; }
     @Override protected void onServiceConnected() {
-        super.onServiceConnected(); instance = this; registerActions();
+        super.onServiceConnected(); instance = this; speech = new NativeSpeech(this); registerActions();
         try {
             automationServer = new LocalAutomationServer(this); automationServer.start();
         } catch (IOException failure) {
@@ -63,10 +64,12 @@ public class AntigravityAccessibilityService extends AccessibilityService {
         actions.put("notifications", (args, callback) -> callback.accept(performed(performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS))));
         actions.put("launch_app", (args, callback) -> callback.accept(launchApp(args)));
         actions.put("screenshot", (args, callback) -> screenshot(callback));
+        actions.put("speech_cancel", (args, callback) -> callback.accept(speech.cancel(args)));
     }
-    public void executeAction(String action, JsonObject args, Consumer<JsonObject> completion) {
+    public void executeAction(String action, JsonObject args, String actionId, Consumer<JsonObject> completion) {
         mainThread.post(() -> {
             try {
+                if (action.equals("speak")) { speech.speak(args, actionId, completion); return; }
                 DeviceAction operation = actions.get(action);
                 if (operation == null) throw new IllegalArgumentException("Unsupported phone action");
                 operation.execute(args, completion);
@@ -202,6 +205,7 @@ public class AntigravityAccessibilityService extends AccessibilityService {
     @Override public void onDestroy() { releaseResources(); super.onDestroy(); }
     private void releaseResources() {
         instance = null; snapshot.close(); FloatingVoiceController.destroy();
+        if (speech != null) { speech.close(); speech = null; }
         mainThread.removeCallbacksAndMessages(null); screenshotExecutor.shutdownNow();
         if (automationServer != null) { automationServer.close(); automationServer = null; }
     }

@@ -48,7 +48,9 @@ public final class MainActivity extends AppCompatActivity {
     private volatile boolean destroyed;
     private boolean bridgeSupported;
     private boolean serverConnected;
+    private boolean activityVisible = true;
     private volatile String lastTermuxFailure = "";
+    private volatile int reportedServerPort;
     private interface NativeAction { void execute(NativeRequest request); }
     private static final class NativeRequest {
         final String id;
@@ -116,6 +118,7 @@ public final class MainActivity extends AppCompatActivity {
     }
     void navigationStarted() { pageGeneration++; requestIds.clear(); serverConnected = false; voice.cancel(); }
     void navigationFinished() {
+        reportVisibility();
         if (destroyed || !origins.allowsBridge(webView.getUrl())) return;
         int generation = pageGeneration;
         connectionExecutor.execute(() -> {
@@ -148,6 +151,8 @@ public final class MainActivity extends AppCompatActivity {
             voice.start(speech -> { voiceButton.setText("إملاء رسالة"); reply(request, speech); });
         });
         actions.put("cancel_voice", request -> { voice.cancel(); reply(request, new JsonObject()); });
+        actions.put("login_cli", request -> reply(request, TermuxBridge.startInteractive(this, "account", request.args.has("cwd") ? ScreenSnapshot.required(request.args, "cwd") : null)));
+        actions.put("mcp_cli", request -> reply(request, TermuxBridge.startInteractive(this, "mcp", request.args.has("cwd") ? ScreenSnapshot.required(request.args, "cwd") : null)));
         actions.put("start_server", this::connectServer); actions.put("bootstrap", this::connectServer);
     }
     private void receiveNativeRequest(String message) {
@@ -206,7 +211,11 @@ public final class MainActivity extends AppCompatActivity {
                 if (!server.healthReady()) {
                     runOnUiThread(this::launchTermux);
                     long deadline = SystemClock.elapsedRealtime() + 30000;
-                    while (!destroyed && SystemClock.elapsedRealtime() < deadline && !server.healthReady()) Thread.sleep(500);
+                    while (!destroyed && SystemClock.elapsedRealtime() < deadline) {
+                        adoptReportedServerPort();
+                        if (server.healthReady()) break;
+                        Thread.sleep(500);
+                    }
                     if (destroyed) return;
                     if (!server.healthReady()) throw new IOException("Server health check timed out; setup in Termux may be required");
                 }
@@ -227,7 +236,7 @@ public final class MainActivity extends AppCompatActivity {
             } catch (ServerConnection.BootstrapUnauthorized stillUnpaired) { manualPairing(request, stillUnpaired.getMessage()); }
         }
     }
-    private boolean configureRunningServer() throws InterruptedException {
+    private boolean configureRunningServer() throws InterruptedException, IOException {
         java.util.concurrent.CountDownLatch finished = new java.util.concurrent.CountDownLatch(1);
         AtomicBoolean configured = new AtomicBoolean();
         runOnUiThread(() -> {
@@ -241,7 +250,9 @@ public final class MainActivity extends AppCompatActivity {
                 configured.set(state.equals("finished")); finished.countDown();
             });
         });
-        return finished.await(32, java.util.concurrent.TimeUnit.SECONDS) && configured.get() && !destroyed;
+        boolean ready = finished.await(32, java.util.concurrent.TimeUnit.SECONDS) && configured.get() && !destroyed;
+        if (ready) adoptReportedServerPort();
+        return ready;
     }
     private void manualPairing(NativeRequest request, String reason) {
         runOnUiThread(() -> {
@@ -270,7 +281,26 @@ public final class MainActivity extends AppCompatActivity {
             lastTermuxFailure = TermuxLaunchContract.summary(launch);
         } else if (state.equals("finished")) {
             lastTermuxFailure = "";
+            if (launch.has("server_port")) reportedServerPort = launch.get("server_port").getAsInt();
         }
+    }
+    private void adoptReportedServerPort() throws IOException {
+        int port = reportedServerPort;
+        if (port == 0 || port == NativeSecrets.serverPort(this) || destroyed) return;
+        ServerConnection candidate = new ServerConnection(this, port);
+        boolean adopted = false;
+        try {
+            if (!candidate.authenticServer() || destroyed) return;
+            NativeSecrets.saveServerPort(this, port);
+            ServerConnection previous = server; server = candidate; adopted = true; previous.close();
+            runOnUiThread(() -> {
+                if (destroyed) return;
+                origins = new OriginPolicy(port); serverConnected = false;
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER))
+                    WebViewCompat.removeWebMessageListener(webView, "CompanionNative");
+                configureWebView();
+            });
+        } finally { if (!adopted) candidate.close(); }
     }
     private String connectionFailureReason(String reason) {
         String diagnostic = lastTermuxFailure;
@@ -325,6 +355,7 @@ public final class MainActivity extends AppCompatActivity {
     }
     private void acceptVoice(JsonObject speech) {
         if (speech.has("error")) { status.setText(speech.get("error").getAsString()); return; }
+        getIntent().putExtra("voice_agent", false);
         getIntent().putExtra("voice_text", speech.get("text").getAsString());
         getIntent().putExtra("voice_task_id", speech.get("task_id").getAsString()); deliverPendingVoice();
     }
@@ -333,8 +364,16 @@ public final class MainActivity extends AppCompatActivity {
         if (text == null || !serverConnected || !origins.allowsBridge(webView.getUrl())) return;
         JsonObject speech = new JsonObject(); speech.addProperty("text", text);
         speech.addProperty("task_id", getIntent().getStringExtra("voice_task_id"));
-        emit("companion-voice-input", speech, pageGeneration); getIntent().removeExtra("voice_text"); getIntent().removeExtra("voice_task_id");
+        speech.addProperty("mode", getIntent().getBooleanExtra("voice_agent", false) ? "agent" : "dictation");
+        emit("companion-voice-input", speech, pageGeneration); getIntent().removeExtra("voice_text"); getIntent().removeExtra("voice_task_id"); getIntent().removeExtra("voice_agent");
     }
+    private void reportVisibility() {
+        if (destroyed || !serverConnected || !origins.allowsBridge(webView.getUrl())) return;
+        JsonObject visibility = new JsonObject(); visibility.addProperty("visible", activityVisible);
+        emit("companion-native-visibility", visibility, pageGeneration);
+    }
+    @Override protected void onResume() { super.onResume(); activityVisible = true; reportVisibility(); }
+    @Override protected void onPause() { activityVisible = false; reportVisibility(); super.onPause(); }
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); deliverPendingVoice(); }
     private static JsonObject error(String message) { JsonObject failure = new JsonObject(); failure.addProperty("error", message); return failure; }
     @Override protected void onDestroy() {

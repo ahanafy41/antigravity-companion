@@ -11,8 +11,19 @@ from storage import StorageConflict
 from cli_client import CLIUnavailable
 
 ACTIONS = {
-    "tree", "select", "click", "text", "scroll", "back", "screenshot",
-    "home", "recents", "notifications", "launch_app",
+    "tree",
+    "select",
+    "click",
+    "text",
+    "scroll",
+    "back",
+    "screenshot",
+    "home",
+    "recents",
+    "notifications",
+    "launch_app",
+    "speak",
+    "speech_cancel",
 }
 READ_ACTIONS = {"tree", "select", "screenshot"}
 
@@ -69,7 +80,8 @@ class AndroidClient:
             async with client.ws_connect(
                 "ws://127.0.0.1:8765",
                 headers={
-                    "Authorization": "Bearer " + self.configuration["android_token"]
+                    "Authorization": "Bearer "
+                    + self.configuration["android_token"]
                 },
                 timeout=5,
                 max_msg_size=1024 * 1024,
@@ -92,12 +104,20 @@ class AndroidClient:
         try:
             async with self.journal_connection() as (_, epoch):
                 return {"epoch": epoch}
-        except (ClientError, OSError, asyncio.TimeoutError, ValueError) as failure:
-            raise CLIUnavailable("Android journal identity is unavailable") from failure
+        except (
+            ClientError,
+            OSError,
+            asyncio.TimeoutError,
+            ValueError,
+        ) as failure:
+            raise CLIUnavailable(
+                "Android journal identity is unavailable"
+            ) from failure
 
     def retire_completed(self, epoch):
         retired = {
-            key: record for key, record in self.actions.items()
+            key: record
+            for key, record in self.actions.items()
             if record["status"] in ("completed", "failed")
             and record.get("action") not in READ_ACTIONS
             and re.fullmatch(r"[a-f0-9]{32}:.+", key)
@@ -105,7 +125,8 @@ class AndroidClient:
         }
         if retired:
             retained = {
-                key: record for key, record in self.actions.items()
+                key: record
+                for key, record in self.actions.items()
                 if key not in retired
             }
             self.store.write("actions", {"actions": retained})
@@ -172,17 +193,20 @@ class AndroidClient:
         try:
             async with self.journal_connection() as (socket, epoch):
                 self.retire_completed(epoch)
-                if (
-                    request["action"] not in READ_ACTIONS
-                    and not request["action_id"].startswith(epoch + ":")
-                ):
+                if request["action"] not in READ_ACTIONS and not request[
+                    "action_id"
+                ].startswith(epoch + ":"):
                     outcome.update(
-                        status="failed", error="stale_epoch; action was not sent"
+                        status="failed",
+                        error="stale_epoch; action was not sent",
                     )
                     return
                 await socket.send_json(request)
                 sent = True
-                packet = await asyncio.wait_for(socket.receive(), 15)
+                packet = await asyncio.wait_for(
+                    socket.receive(),
+                    125 if request["action"] == "speak" else 15,
+                )
                 if packet.type != WSMsgType.TEXT:
                     raise ValueError("Android closed without an outcome")
                 response = json.loads(packet.data)
@@ -191,13 +215,17 @@ class AndroidClient:
                 if response.get("action_id") != request["action_id"]:
                     raise ValueError("Android action ID mismatch")
                 if response.get("status") not in (
-                    "completed", "failed", "outcome_unknown",
+                    "completed",
+                    "failed",
+                    "outcome_unknown",
                 ):
                     raise ValueError("Invalid Android action status")
-                outcome.update({
-                    key: response.get(key)
-                    for key in ("status", "result", "error")
-                })
+                outcome.update(
+                    {
+                        key: response.get(key)
+                        for key in ("status", "result", "error")
+                    }
+                )
         except (ClientError, OSError, asyncio.TimeoutError, ValueError):
             outcome.update(
                 status="outcome_unknown" if sent else "failed",

@@ -16,7 +16,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
 from legacy_conversations import LegacyConversations  # noqa: E402
 from sessions import Sessions, RunConflict, EventLog  # noqa: E402
-from cli_client import (
+from cli_client import (  # noqa: E402
     CLI,
     CLIUnavailable,
     parse_listing,
@@ -1386,7 +1386,8 @@ class CLIParsingTests(unittest.TestCase):
         for text in (
             "",
             "Login required",
-            "Gemini Models  Weekly Limit Remaining  101%  2026-10-07T00:00:00Z",
+            "Gemini Models  Weekly Limit Remaining  "
+            "101%  2026-10-07T00:00:00Z",
             "Gemini Models  Weekly Limit Remaining  80%  unknown",
         ):
             with self.subTest(text=text), self.assertRaises(CLIUnavailable):

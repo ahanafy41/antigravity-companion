@@ -1,5 +1,11 @@
 # سجل التغيير
 
+- 2026-10-08 — feat: add durable local once schedules and FIFO next-turn messages, recover dispatch safely, cancel owned work, and prevent duplicate session creation.
+
+- 2026-10-08 — feat: restore native auth handoff, MCP/OAuth, owned task inventory, bounded voice actions/TTS, visibility feedback and version display; scheduler and live-turn steering await an explicit decision.
+
+- 2026-10-08: fix: أصلح إلغاء ترقية APK واكتشاف منفذ الخادم المصادق، وضبط Python وصحح السجلات وجدد حزمة المصدر؛ نجحت الفحوص المحلية وبناء Debug دون هاتف أو متصفح.
+
 - 2026-10-08: chore: جُمعت أعمال إعادة الهيكلة والإصلاح والسيرفر والويب وسجلاتها في commit محلي واحد، مع استبعاد ملفات التوقيع الخاصة والمؤقتات؛ لا push.
 
 - 2026-10-08: chore: جُدّدت بصمة الويب ووُحّدت حال التنفيذ وأُعدّت حزمة مصدر للسيرفر والويب وجرد SHA256؛ نجح التحقق المحلي دون هاتف أو متصفح.

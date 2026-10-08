@@ -16,6 +16,12 @@ final class NativeSecrets {
             throw new IllegalStateException("Cannot persist Android authentication token");
         return token;
     }
+    static void saveServerPort(Context context, int port) throws java.io.IOException {
+        if (port < 1024 || port > 65535) throw new java.io.IOException("Invalid server port");
+        if (!context.getSharedPreferences("companion_settings", Context.MODE_PRIVATE)
+                .edit().putInt("server_port", port).commit())
+            throw new java.io.IOException("Cannot persist verified server port");
+    }
     static int serverPort(Context context) {
         return context.getSharedPreferences("companion_settings", Context.MODE_PRIVATE).getInt("server_port", 7681);
     }

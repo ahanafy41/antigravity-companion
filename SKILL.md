@@ -1,12 +1,22 @@
 # مرجع تشغيل Antigravity Companion
 
+## وظائف الخطة 2026-10-08
+
+مرجع الحال [حصيلة الوظائف](docs/feature-completion-report.md). API/v1 يضيف /auth/login و/auth/{id}/cancel، /mcp/{name}/test و/authenticate وGET/PATCH /oauth، /tasks وإلغاء run المملوك، /voice/runs وقراءة/إلغاء run، /voice/requests/{request_id}/cancel، /client/visibility و/system/versions. تبقى حراسة الاقتران وCSRF؛ OAuth لا يعرض السرّ، والحقل الفارغ يحفظه، clear_client_secret يمحوه صراحة، وrevision يحرس التعارض. ملفات MCP ونسخها المؤقتة محجوبة عن file API. native login_cli/mcp_cli يستعملان أمر agy ثابتًا مع cwd موثوق وAGY_CLI_DISABLE_AUTO_UPDATE=true؛ authenticated مجهول حتى دليل مستقل، وإلغاء handoff لا يقتل terminal المستخدم.
+
+voice planner يعمل في .tmp/voice-planner تحت جذر الحفظ، مع agent ثابت بلا أدوات ولا MCP ولا skills ولا plugins؛ prompt يرسل قبل init، ولا تقبل النتيجة قبل إثبات init.tools فارغًا. خمس دورات JSON محصورة، ومنع أثر مكرر بعد restart أو cancel. أفعال speak/speech_cancel عبر سجل Android وHMAC؛ speak ينتظر onDone، والإلغاء المقيد يأخذ utterance_id. أوضاع agent وdictation مستقلة. اعتمد المستخدم البديل المحلي: /local-tasks GET/POST وGET /{task_id} وPOST /{task_id}/cancel. payload mode queued/scheduled، session_id، message، request_id؛ scheduled يضيف scheduled_at ISO ذا offset وmissed_policy skip/run_once. موعد واحد؛ منطقة UTC معلنة في الويب. local-tasks.json محفوظ في جذر AtomicStore الخاص؛ حدود 256 سجلًا و64 منتظرًا لكل جلسة. العامل كل ثانية أثناء حياة السيرفر، ويحفظ occurrence قبل Sessions.start، ويستعيد المعلوم وحده؛ المجهول interrupted دون replay. الفوات عند الإنشاء أو إعادة التشغيل؛ ازدحام الجلسة يبقي pending. الإرسال المباشر لا يتجاوز queued، والإلغاء المملوك عبر TaskRuntime. توقف العامل يسبق Sessions.close. فحص run_schedule_tests.py جزء الفحص المحلي. فحوص الشفرة: run_auth_tests.py وrun_task_tests.py وrun_voice_tests.py وrun_planner_tests.py وrun_feature_tests.py، وفحص Node run_features_tests.cjs دون متصفح. قبول agy الحقيقي والحساب والهاتف منفصل.
+
+## إصلاح نتائج المراجعة 2026-10-08
+
+[الحصيلة](docs/review-fixes-report.md): 79 فحص Python و35 JVM وNode وبناء Debug ناجحة؛ Black79 وflake8 نظيفان؛ Lint بلا أخطاء وله 24 ملحوظة سابقة. الإلغاء يخص كل تنزيل ويُراعى قبل التحقق وبعده وقبل تسليم APK وفتح المثبت. launcher يطبع COMPANION_SERVER_PORT بعد نجاح التشغيل فقط؛ Termux يقبل علامة رقمية واحدة محدودة، والتطبيق يثبت HMAC قبل حفظ المنفذ وتقييد الأصل والجسر به. لا تعديل لمنفذ settings.json، ولا نقل stdout الخام إلى الويب. launcher القديم بلا علامة يبقى على المنفذ المحفوظ. الهاتف والمتصفح مستبعدان؛ لا تكافؤ كامل أو إصدار إنتاج جديد مستنتج من هذا الفحص.
+
 ## تسليم المصدر 2026-10-08
 
 حزمة السيرفر والويب وجرد SHA256 تحت deliverables/server-web-2026-10-08؛ هذه نسخة مصدر، وليست حزمة ترقية موقعة أو تثبيتًا جديدًا. الحصيلة docs/server-web-delivery.md. جُدّدت بصمة SW ونجح 77 فحص Python وفحص الويب الأساسي وصياغة JavaScript. الهاتف والمتصفح مستبعدان بأمر المستخدم؛ استرداد التكافؤ غير مكتمل. قبل أي إصدار إنتاج جديد يلزم رقم فريد متوافق مع APK وتوقيع وفق العقد القائم، دون استبدال الإصدار المحلي السابق.
 
 ## خطة التكافؤ 2026-10-07
 
-اختار المستخدم استرداد وظائف main؛ راجع [المعيار](docs/feature-parity-spec.md) و[الخطة](docs/feature-restoration-plan.md) قبل التنفيذ. البحث مكتمل والخطة تنتظر اعتماد المستخدم؛ هذه المرحلة وثائق فقط. أحكام التعذر القديمة ليست دليلًا على غياب العقد: update معلن وquota لها print مستقل وpermissions لها ملف رسمي. لا backend مستقل للمزودين مثبت فيmain؛ أفعال الجهاز والوكيل الصوتي/TTS وظائف أصلية. لا تغلق التكافؤ بوجود زر أورسالة تعذر أوحالة نجاح مفترضة. مصدر الإثبات وحدوده في [الأصل](docs/main-feature-baseline.md) و[العقود](docs/feature-restoration-contracts.md).
+اختار المستخدم استرداد وظائف main؛ راجع [المعيار](docs/feature-parity-spec.md) و[الخطة](docs/feature-restoration-plan.md) قبل التنفيذ. البحث والخطة مكتملان ومعتمدان؛ التنفيذ جارٍ وفق task.md. أحكام التعذر القديمة ليست دليلًا على غياب العقد: update معلن وquota لها print مستقل وpermissions لها ملف رسمي. لا backend مستقل للمزودين مثبت فيmain؛ أفعال الجهاز والوكيل الصوتي/TTS وظائف أصلية. لا تغلق التكافؤ بوجود زر أورسالة تعذر أوحالة نجاح مفترضة. مصدر الإثبات وحدوده في [الأصل](docs/main-feature-baseline.md) و[العقود](docs/feature-restoration-contracts.md).
 
 ## إصلاح تدقيق الفرع 2026-10-07
 

@@ -11,9 +11,13 @@
   let historyWrites = Promise.resolve();
   let connecting = false;
   let pendingSubmission;
+  let sessionCreation;
   let suggestionRange;
   const suggestionSources = new Map();
   const updateMilestones = new Map();
+  const feedbackSeen = new Set();
+  const visibilityClientId = global.crypto.randomUUID();
+  let nativeVisible = true;
   const terminalStates = ['completed','cancelled','failed','interrupted'];
   function connectionLabel() { return state.connected ? (state.paired ? 'متصل ومقترن' : 'يلزم الاقتران') : 'غير متصل'; }
   function refreshConnection() {
@@ -31,6 +35,7 @@
       state.settings = settings.settings;
       state.revision = settings.revision;
     }
+    void reportVisibility();
     ui.byId('active-model').textContent = state.settings.model || 'النموذج';
     ui.byId('connection-message').textContent = 'الخادم متصل ومقترن.';
     ui.notice('');
@@ -123,11 +128,15 @@
   }
   async function ensureSession() {
     if (state.sessionId) return;
-    const defaults = state.settings;
-    const options = {cwd:defaults.cwd || '.', model:defaults.model, agent:defaults.agent, effort:defaults.effort, mode:defaults.mode, sandbox:defaults.sandbox, project:defaults.project, ...app.sessionOptions};
-    const session = await companion.api.request('/sessions',{method:'POST',body:options});
-    state.sessionId = session.session_id;
-    state.savedRecordId = session.session_id;
+    if (!sessionCreation) {
+      const defaults = state.settings;
+      const options = {cwd:defaults.cwd || '.', model:defaults.model, agent:defaults.agent, effort:defaults.effort, mode:defaults.mode, sandbox:defaults.sandbox, project:defaults.project, ...app.sessionOptions};
+      sessionCreation = companion.api.request('/sessions',{method:'POST',body:options}).then(session=>{
+        state.sessionId = session.session_id;
+        state.savedRecordId = session.session_id;
+      }).finally(()=>{sessionCreation = undefined;});
+    }
+    await sessionCreation;
   }
   function startAssistant() {
     activeMessage = {role:'assistant',text:'',tools:[]};
@@ -205,9 +214,15 @@
     completionFeedback();
     void saveHistory();
   }
+  async function reportVisibility() {
+    if (!state.paired || !state.connected) return;
+    try { await companion.api.request('/client/visibility',{method:'POST',body:{client_id:visibilityClientId,visible:!document.hidden && nativeVisible}}); }
+    catch { /* The next visibility change or reconnection retries this state only. */ }
+  }
   function completionFeedback() {
-    if ((state.settings.haptics ?? state.settings.haptic_enabled) === true && global.navigator.vibrate) global.navigator.vibrate(40);
-    if ((state.settings.sound ?? state.settings.tones_enabled) !== true) return;
+    const feedback = companion.feedbackPolicy(state.runId,state.runState,!document.hidden && nativeVisible,state.settings,feedbackSeen);
+    if (feedback.vibration && global.navigator.vibrate) global.navigator.vibrate(40);
+    if (!feedback.sound) return;
     const AudioContext = global.AudioContext || global.webkitAudioContext;
     if (!AudioContext) return;
     const context = new AudioContext();
@@ -333,6 +348,14 @@
     if (event.key === 'Escape') ui.byId('suggestions').hidden = true;
     if (event.key === 'ArrowDown' && !ui.byId('suggestions').hidden) { event.preventDefault(); ui.byId('suggestions').querySelector('button')?.focus(); }
   }
+  async function startVoiceAgent(text, requestId) {
+    if (typeof text !== 'string' || !text.trim()) throw new Error('أمر الهاتف فارغ.');
+    const voiceRequestId = requestId || global.crypto.randomUUID();
+    app.pendingVoiceRequestId = voiceRequestId;
+    await ensureSession();
+    const reply = await companion.api.request('/voice/runs',{method:'POST',body:{session_id:state.sessionId,text,request_id:voiceRequestId}});
+    app.voiceRunId = reply.voice_id; app.voiceText = text; app.pendingVoiceRequestId = undefined; return reply;
+  }
   async function voice() {
     ui.byId('voice-start').disabled = true;
     ui.byId('voice-cancel').hidden = false;
@@ -357,6 +380,10 @@
     ui.byId('voice-start').disabled = !companion.native.available();
     ui.byId('voice-start').title = companion.native.available() ? 'إملاء الرسالة دون إرسال' : 'الإملاء يحتاج تطبيق Android';
     for (const control of document.querySelectorAll('[data-panel]')) control.addEventListener('click',()=>void companion.panels.open(control.dataset.panel));
+    document.addEventListener('visibilitychange',()=>void reportVisibility());
+    global.addEventListener('companion-native-visibility',event=>{
+      if (typeof event.detail?.visible === 'boolean') {nativeVisible=event.detail.visible;void reportVisibility();}
+    });
     ui.byId('chat-form').addEventListener('submit',event=>{event.preventDefault();void send();});
     ui.byId('prompt').addEventListener('keydown',keyboard);
     ui.byId('prompt').addEventListener('input',suggestions);
@@ -382,7 +409,10 @@
     global.Alpine.data('companion',()=>({connectionLabel:connectionLabel(),init(){void initialize();}}));
   });
   global.addEventListener('companion-voice-input',event=>{
-    if (typeof event.detail?.text === 'string') { ui.insertPrompt(event.detail.text);ui.announce('أضيف النص المملى؛ لم يُرسل.'); }
+    if (typeof event.detail?.text !== 'string') return;
+    if (event.detail.mode === 'agent') {
+      void startVoiceAgent(event.detail.text,event.detail.task_id).then(()=>companion.panels.open('voice')).catch(error=>ui.notice(error.message));
+    } else {ui.insertPrompt(event.detail.text);ui.announce('أضيف النص المملى؛ لم يُرسل.');}
   });
   global.addEventListener('companion-native-progress',event=>{
     const progress = ui.byId('update-progress');
@@ -397,6 +427,8 @@
       ui.announce('بلغ تنزيل التطبيق ' + milestone + ' بالمئة.');
     }
   });
+  app.ensureSession = ensureSession;
+  app.startVoiceAgent = startVoiceAgent;
   app.refreshSuggestions = refreshSuggestions;
   app.newChat = newChat;
   app.resume = resume;

@@ -125,7 +125,8 @@ class PhoneClient:
             identity = self.request("/api/v1/device/epoch")
             epoch = identity.get("epoch", "")
             require(
-                len(epoch) == 32 and all(char in "0123456789abcdef" for char in epoch),
+                len(epoch) == 32
+                and all(char in "0123456789abcdef" for char in epoch),
                 "device_journal_identity_invalid",
             )
             action_id = epoch + ":" + action_id
