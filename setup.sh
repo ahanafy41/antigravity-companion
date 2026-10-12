@@ -55,6 +55,7 @@ chmod +x "$SERVER_DIR/stop_server.sh" 2>/dev/null || true
 
 # تنزيل ملفات واجهة الويب
 curl -fsSL --retry 3 --connect-timeout 10 "$GITHUB_RAW/server/web/index.html" -o "$SERVER_DIR/web/index.html"
+curl -fsSL --retry 3 --connect-timeout 10 "$GITHUB_RAW/server/web/start.html" -o "$SERVER_DIR/web/start.html" 2>/dev/null || true
 curl -fsSL --retry 3 --connect-timeout 10 "$GITHUB_RAW/server/web/manifest.json" -o "$SERVER_DIR/web/manifest.json" 2>/dev/null || true
 curl -fsSL --retry 3 --connect-timeout 10 "$GITHUB_RAW/server/web/icon.svg" -o "$SERVER_DIR/web/icon.svg" 2>/dev/null || true
 curl -fsSL --retry 3 --connect-timeout 10 "$GITHUB_RAW/server/web/sw.js" -o "$SERVER_DIR/web/sw.js" 2>/dev/null || true

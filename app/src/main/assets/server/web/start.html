@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="theme-color" content="#090d13">
+    <title>لوحة تحكم وبدء تشغيل Antigravity</title>
+    <style>
+        :root {
+            --bg-app: #090d13;
+            --bg-card: #121820;
+            --bg-card-header: #1b222d;
+            --bg-input: #000000;
+            --text-main: #f0f6fc;
+            --text-muted: #8b949e;
+            --accent-cyan: #39c5bb;
+            --accent-green: #3fb950;
+            --accent-yellow: #d29922;
+            --accent-red: #f85149;
+            --accent-blue: #58a6ff;
+            --border-main: #26303d;
+            --border-glow: #39c5bb;
+        }
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Cairo", Tahoma, sans-serif;
+            background-color: var(--bg-app);
+            color: var(--text-main);
+            padding: 16px;
+            line-height: 1.6;
+            max-width: 720px;
+            margin: 0 auto;
+        }
+
+        /* Accessibility Screen Reader Utilities */
+        .sr-only {
+            position: absolute !important;
+            width: 1px !important;
+            height: 1px !important;
+            padding: 0 !important;
+            margin: -1px !important;
+            overflow: hidden !important;
+            clip: rect(0, 0, 0, 0) !important;
+            white-space: nowrap !important;
+            border: 0 !important;
+        }
+
+        header {
+            margin-bottom: 20px;
+            border-bottom: 2px solid var(--border-main);
+            padding-bottom: 14px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 1.45rem;
+            font-weight: 800;
+            color: var(--accent-cyan);
+            margin-bottom: 6px;
+        }
+
+        .subtitle {
+            font-size: 0.95rem;
+            color: var(--text-muted);
+        }
+
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-main);
+            border-radius: 10px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        h2 {
+            font-size: 1.15rem;
+            margin-bottom: 12px;
+            color: var(--text-main);
+            border-bottom: 1px solid var(--border-main);
+            padding-bottom: 6px;
+        }
+
+        .status-box {
+            padding: 12px 14px;
+            border-radius: 8px;
+            background-color: #0c1219;
+            border: 1px solid var(--border-main);
+            margin-bottom: 12px;
+            font-size: 0.95rem;
+            line-height: 1.8;
+        }
+
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .status-row:last-child {
+            border-bottom: none;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 0.85rem;
+        }
+
+        .badge-active {
+            background-color: #16261d;
+            color: var(--accent-green);
+            border: 1px solid var(--accent-green);
+        }
+
+        .badge-inactive {
+            background-color: #261619;
+            color: var(--accent-red);
+            border: 1px solid var(--accent-red);
+        }
+
+        .badge-pending {
+            background-color: #2a2215;
+            color: var(--accent-yellow);
+            border: 1px solid var(--accent-yellow);
+        }
+
+        /* Buttons WCAG 2.2 AAA */
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            min-height: 48px;
+            padding: 12px 16px;
+            background-color: var(--bg-card-header);
+            color: var(--text-main);
+            border: 2px solid var(--border-main);
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-align: center;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+
+        .btn:focus-visible, .btn:hover {
+            outline: 3px solid var(--accent-cyan) !important;
+            outline-offset: 2px !important;
+            border-color: var(--accent-cyan);
+            background-color: #222c3a;
+        }
+
+        .btn-primary {
+            background-color: #153245;
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        .btn-success {
+            background-color: #12331c;
+            border-color: var(--accent-green);
+            color: var(--accent-green);
+        }
+
+        .btn-danger {
+            background-color: #381519;
+            border-color: var(--accent-red);
+            color: var(--accent-red);
+        }
+
+        .btn-danger:focus-visible, .btn-danger:hover {
+            outline-color: var(--accent-red) !important;
+            background-color: #4a191f;
+        }
+
+        .diag-box {
+            margin-top: 12px;
+            padding: 10px;
+            background-color: #06090d;
+            border: 1px solid var(--border-main);
+            border-radius: 6px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        footer {
+            margin-top: 24px;
+            padding-top: 14px;
+            border-top: 1px solid var(--border-main);
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .footer-credit {
+            color: var(--accent-cyan);
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <header role="banner">
+        <h1>مساعد Antigravity المستقل</h1>
+        <p class="subtitle">لوحة التحكم وبدء التشغيل الذكية</p>
+    </header>
+
+    <main role="main">
+        <!-- Live region for Screen Reader announcements -->
+        <div id="live-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+        <!-- Section: Service Status -->
+        <section class="card" aria-labelledby="status-heading">
+            <h2 id="status-heading">حالة الاتصال والخدمة</h2>
+            <div id="status-text" class="status-box" role="status">
+                <div class="status-row">
+                    <span>خدمة إمكانية الوصول:</span>
+                    <span id="badge-a11y" class="status-badge badge-pending">جاري الفحص...</span>
+                </div>
+                <div class="status-row">
+                    <span>خادم الأتمتة الداخلي (8765):</span>
+                    <span id="badge-ws" class="status-badge badge-pending">جاري الفحص...</span>
+                </div>
+                <div class="status-row">
+                    <span>خادم تيرمكس للشات (7681):</span>
+                    <span id="badge-server" class="status-badge badge-pending">جاري الفحص...</span>
+                </div>
+            </div>
+            <button type="button" id="btn-refresh-status" class="btn" onclick="checkStatus()">تحديث الحالة الآن</button>
+        </section>
+
+        <!-- Section: Core Actions & Server Management -->
+        <section class="card" aria-labelledby="actions-heading">
+            <h2 id="actions-heading">الإجراءات والتحكم في الخادم</h2>
+            <div class="btn-group">
+                <button type="button" id="btn-go-chat" class="btn btn-primary" onclick="goToChat()">الانتقال لواجهة الشات والمحادثة</button>
+                <button type="button" id="btn-wake-server" class="btn btn-success" onclick="wakeServer()">تشغيل / إيقاظ خادم تيرمكس</button>
+                <button type="button" id="btn-stop-server" class="btn btn-danger" onclick="stopServer()">إيقاف خادم تيرمكس نهائياً</button>
+                <button type="button" id="btn-setup-termux" class="btn" onclick="setupTermux()">نسخ كود تجهيز Termux وفتح الطرفية</button>
+                <button type="button" id="btn-open-a11y" class="btn" onclick="openA11ySettings()">فتح إعدادات إمكانية الوصول</button>
+            </div>
+        </section>
+
+        <!-- Section: Self Diagnostics -->
+        <section class="card" aria-labelledby="diag-heading">
+            <h2 id="diag-heading">الفحص والتشخيص الذاتي (Doctor)</h2>
+            <div class="btn-group">
+                <button type="button" id="btn-run-diag" class="btn" onclick="runDiagnostics()">تشغيل الفحص الشامل للبيئة</button>
+            </div>
+            <div id="diag-output" class="diag-box" style="display:none;" tabindex="0" role="region" aria-label="نتائج التشخيص"></div>
+        </section>
+
+        <!-- Section: App Update -->
+        <section class="card" aria-labelledby="update-heading">
+            <h2 id="update-heading">تحديثات التطبيق</h2>
+            <div class="btn-group">
+                <button type="button" id="btn-check-update" class="btn" onclick="checkAppUpdate()">التحقق من وجود تحديثات</button>
+            </div>
+            <div id="update-status" style="margin-top: 10px; font-size: 0.9rem; color: var(--text-muted); text-align: center;"></div>
+        </section>
+    </main>
+
+    <footer role="contentinfo">
+        <div class="footer-credit">Developed by Ahmed Hanafy</div>
+        <div id="app-version-label">Antigravity Companion v1.2.7</div>
+    </footer>
+
+    <script>
+        function announce(text) {
+            const el = document.getElementById('live-announcer');
+            if (el) {
+                el.textContent = text;
+            }
+        }
+
+        function checkStatus() {
+            announce('جاري فحص حالة الخدمات...');
+            const badgeA11y = document.getElementById('badge-a11y');
+            const badgeWs = document.getElementById('badge-ws');
+            const badgeServer = document.getElementById('badge-server');
+
+            let a11yActive = false;
+            let ws8765Ready = false;
+            let py7681Ready = false;
+            const bridge = window.AntigravityBridge;
+
+            if (bridge) {
+                if (typeof bridge.isAccessibilityActive === 'function') {
+                    a11yActive = bridge.isAccessibilityActive();
+                }
+                if (typeof bridge.isAutomationServerReady === 'function') {
+                    ws8765Ready = bridge.isAutomationServerReady();
+                }
+                if (typeof bridge.isTermuxServerReady === 'function') {
+                    py7681Ready = bridge.isTermuxServerReady();
+                }
+            }
+
+            badgeA11y.className = 'status-badge ' + (a11yActive ? 'badge-active' : 'badge-inactive');
+            badgeA11y.textContent = a11yActive ? 'مفعلة' : 'معطلة';
+
+            badgeWs.className = 'status-badge ' + (ws8765Ready ? 'badge-active' : 'badge-inactive');
+            badgeWs.textContent = ws8765Ready ? 'متصل' : 'غير متصل';
+
+            badgeServer.className = 'status-badge ' + (py7681Ready ? 'badge-active' : 'badge-inactive');
+            badgeServer.textContent = py7681Ready ? 'نشط وجاهز' : 'غير نشط (متوقف)';
+
+            announce('حالة النظام: خدمة الوصول ' + (a11yActive ? 'مفعلة' : 'معطلة') +
+                     '، وخادم الأتمتة ' + (ws8765Ready ? 'متصل' : 'غير متصل') +
+                     '، وخادم تيرمكس ' + (py7681Ready ? 'نشط وجاهز' : 'متوقف'));
+        }
+
+        function openA11ySettings() {
+            if (window.AntigravityBridge && typeof window.AntigravityBridge.openSettings === 'function') {
+                window.AntigravityBridge.openSettings();
+                announce('تم فتح إعدادات إمكانية الوصول');
+            } else {
+                alert('الجسر الأصلي غير متوفر');
+            }
+        }
+
+        function setupTermux() {
+            if (window.AntigravityBridge && typeof window.AntigravityBridge.copySetupCommand === 'function') {
+                window.AntigravityBridge.copySetupCommand();
+                announce('تم نسخ كود التجهيز في الحافظة بنجاح، جاري فتح Termux...');
+                setTimeout(function() {
+                    if (typeof window.AntigravityBridge.openTermuxApp === 'function') {
+                        window.AntigravityBridge.openTermuxApp();
+                    }
+                }, 400);
+            } else {
+                navigator.clipboard.writeText('curl -fsSL https://raw.githubusercontent.com/ahanafy41/antigravity-companion/main/setup.sh | bash');
+                alert('تم نسخ كود التجهيز إلى الحافظة');
+            }
+        }
+
+        function wakeServer() {
+            if (window.AntigravityBridge && typeof window.AntigravityBridge.triggerServerWakeup === 'function') {
+                window.AntigravityBridge.triggerServerWakeup();
+                announce('تم إرسال أمر إيقاظ خادم تيرمكس في الخلفية');
+                setTimeout(checkStatus, 2000);
+            } else {
+                announce('الجسر الأصلي غير متوفر لإيقاظ الخادم');
+            }
+        }
+
+        function stopServer() {
+            if (!confirm('هل تريد إيقاف خادم تيرمكس نهائياً؟')) {
+                return;
+            }
+            announce('جاري إيقاف خادم تيرمكس نهائياً...');
+            const badgeServer = document.getElementById('badge-server');
+            if (badgeServer) {
+                badgeServer.className = 'status-badge badge-pending';
+                badgeServer.textContent = 'جاري الإيقاف...';
+            }
+            if (window.AntigravityBridge && typeof window.AntigravityBridge.stopServer === 'function') {
+                window.AntigravityBridge.stopServer();
+            }
+            fetch('http://127.0.0.1:7681/api/shutdown', { method: 'POST' }).catch(function() {});
+            let attempts = 0;
+            const pollInterval = setInterval(function() {
+                attempts++;
+                let ready = true;
+                if (window.AntigravityBridge && typeof window.AntigravityBridge.isTermuxServerReady === 'function') {
+                    ready = window.AntigravityBridge.isTermuxServerReady();
+                } else {
+                    ready = false;
+                }
+                if (!ready || attempts >= 8) {
+                    clearInterval(pollInterval);
+                    checkStatus();
+                    announce('تم إيقاف خادم تيرمكس بنجاح وهو متوقف الآن.');
+                }
+            }, 500);
+        }
+
+        let isNavigatingToChat = false;
+        function goToChat() {
+            if (isNavigatingToChat) return;
+
+            let bridgeAvailable = !!(window.AntigravityBridge);
+            let py7681Ready = false;
+            if (bridgeAvailable && typeof window.AntigravityBridge.isTermuxServerReady === 'function') {
+                py7681Ready = window.AntigravityBridge.isTermuxServerReady();
+            }
+
+            if (py7681Ready) {
+                announce('جاري فتح واجهة الشات والمحادثة...');
+                if (bridgeAvailable && typeof window.AntigravityBridge.loadChatUrl === 'function') {
+                    window.AntigravityBridge.loadChatUrl();
+                } else {
+                    window.location.href = 'http://127.0.0.1:7681';
+                }
+                return;
+            }
+
+            isNavigatingToChat = true;
+            announce('خادم تيرمكس غير نشط حالياً. جاري تشغيله تلقائياً والانتظار ثوانٍ...');
+            const badgeServer = document.getElementById('badge-server');
+            if (badgeServer) {
+                badgeServer.className = 'status-badge badge-pending';
+                badgeServer.textContent = 'جاري البدء...';
+            }
+
+            if (bridgeAvailable && typeof window.AntigravityBridge.triggerServerWakeup === 'function') {
+                window.AntigravityBridge.triggerServerWakeup();
+            }
+
+            let attempts = 0;
+            const maxAttempts = 15;
+            const pollInterval = setInterval(function() {
+                attempts++;
+                let readyNow = false;
+                if (window.AntigravityBridge && typeof window.AntigravityBridge.isTermuxServerReady === 'function') {
+                    readyNow = window.AntigravityBridge.isTermuxServerReady();
+                }
+
+                if (readyNow) {
+                    clearInterval(pollInterval);
+                    isNavigatingToChat = false;
+                    announce('تم تشغيل خادم تيرمكس بنجاح، جاري فتح الشات الآن...');
+                    if (window.AntigravityBridge && typeof window.AntigravityBridge.loadChatUrl === 'function') {
+                        window.AntigravityBridge.loadChatUrl();
+                    } else {
+                        window.location.href = 'http://127.0.0.1:7681';
+                    }
+                } else if (attempts >= maxAttempts) {
+                    clearInterval(pollInterval);
+                    isNavigatingToChat = false;
+                    announce('استغرق تشغيل الخادم وقتاً أطول. يمكنك نسخ كود التجهيز أو تشغيله يدوياً عبر Termux.');
+                    checkStatus();
+                }
+            }, 800);
+        }
+
+        function runDiagnostics() {
+            const out = document.getElementById('diag-output');
+            announce('جاري تشغيل الفحص والتشخيص الشامل...');
+            if (window.AntigravityBridge && typeof window.AntigravityBridge.runDiagnostics === 'function') {
+                const jsonStr = window.AntigravityBridge.runDiagnostics();
+                try {
+                    const parsed = JSON.parse(jsonStr);
+                    out.style.display = 'block';
+                    out.textContent = JSON.stringify(parsed, null, 2);
+                    announce('اكتمل التشخيص. الحالة العامة: ' + (parsed.status || 'مكتمل'));
+                } catch(e) {
+                    out.style.display = 'block';
+                    out.textContent = jsonStr;
+                }
+            } else {
+                out.style.display = 'block';
+                out.textContent = 'أداة التشخيص المدمجة غير متوفرة حالياً خارج التطبيق.';
+            }
+        }
+
+        function checkAppUpdate() {
+            announce('جاري التحقق من التحديثات...');
+            const statusEl = document.getElementById('update-status');
+            if (statusEl) statusEl.textContent = 'جاري الاتصال بخادم التحديثات...';
+
+            if (window.AntigravityBridge && typeof window.AntigravityBridge.checkForUpdate === 'function') {
+                window.AntigravityBridge.checkForUpdate();
+            } else {
+                if (statusEl) statusEl.textContent = 'خاصية التحديث متاحة فقط داخل تطبيق الأندرويد.';
+            }
+        }
+
+        window.onUpdateCheckResult = function(info) {
+            const statusEl = document.getElementById('update-status');
+            if (!info || !info.isUpdateAvailable) {
+                if (statusEl) statusEl.textContent = 'أنت تستخدم أحدث إصدار بالفعل (' + (info ? info.currentVersion : '') + ')';
+                announce('أنت تستخدم أحدث إصدار بالفعل.');
+                return;
+            }
+            if (statusEl) {
+                statusEl.innerHTML = '<strong style="color:var(--accent-green);">تحديث جديد متاح: ' + info.latestVersion + '</strong><br>' +
+                    '<button type="button" class="btn btn-success" style="margin-top:8px;" onclick="downloadUpdate(\'' + info.downloadUrl + '\')">تثبيت التحديث الآن</button>';
+            }
+            announce('يوجد تحديث جديد متاح: ' + info.latestVersion);
+        };
+
+        window.onUpdateCheckError = function(err) {
+            const statusEl = document.getElementById('update-status');
+            if (statusEl) statusEl.textContent = 'تعذر التحقق من التحديث: ' + (err.error || 'خطأ غير معروف');
+            announce('تعذر التحقق من التحديث.');
+        };
+
+        function downloadUpdate(url) {
+            announce('بدء تنزيل التحديث...');
+            if (window.AntigravityBridge && typeof window.AntigravityBridge.startUpdateDownload === 'function') {
+                window.AntigravityBridge.startUpdateDownload(url);
+            }
+        }
+
+        window.onUpdateProgress = function(percent) {
+            const statusEl = document.getElementById('update-status');
+            if (statusEl) statusEl.textContent = 'جاري تنزيل التحديث: ' + percent + '%';
+        };
+
+        window.addEventListener('load', function() {
+            if (window.AntigravityBridge && typeof window.AntigravityBridge.getAppVersion === 'function') {
+                try {
+                    const ver = window.AntigravityBridge.getAppVersion();
+                    if (ver) {
+                        const lbl = document.getElementById('app-version-label');
+                        if (lbl) lbl.textContent = 'Antigravity Companion v' + ver;
+                    }
+                } catch(e) {}
+            }
+            setTimeout(checkStatus, 400);
+        });
+    </script>
+</body>
+</html>

@@ -55,16 +55,13 @@ public class MainActivity extends AppCompatActivity {
         // 1. Request Termux RUN_COMMAND permission if needed
         checkAndRequestTermuxPermission();
 
-        // 2. Silent check & auto-start of local Termux server
-        TermuxBridge.ensureServerRunningAsync(this);
-
-        // 3. Start WebSocket bridge if service already connected
+        // 2. Start WebSocket bridge if service already connected
         LocalAutomationServer.startServer();
 
-        // 4. Initialize OTA update manager
+        // 3. Initialize OTA update manager
         mUpdateManager = AppUpdateManager.getInstance(this);
 
-        // 5. Load initial web dashboard
+        // 4. Load initial web dashboard (start.html)
         loadInitialPage();
     }
 
@@ -177,22 +174,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadInitialPage() {
-        new Thread(new Runnable() {
+        runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                final boolean serverReady = TermuxBridge.isPortOpen("127.0.0.1", 7681, 1000);
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        if (serverReady) {
-                            mWebView.loadUrl(LOCAL_URL);
-                        } else {
-                            mWebView.loadUrl(FALLBACK_ASSET_URL);
-                        }
-                    }
-                });
+                if (mWebView != null) {
+                    mWebView.loadUrl(START_PAGE_URL);
+                }
             }
-        }).start();
+        });
     }
 
     private void updateAccessibilityBanner() {
@@ -208,7 +197,9 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (mWebView != null && mWebView.canGoBack()) {
+        if (mWebView != null && mWebView.getUrl() != null && (mWebView.getUrl().startsWith("http://127.0.0.1:7681") || mWebView.getUrl().startsWith("http://localhost:7681"))) {
+            mWebView.loadUrl(START_PAGE_URL);
+        } else if (mWebView != null && mWebView.canGoBack()) {
             mWebView.goBack();
         } else {
             super.onBackPressed();

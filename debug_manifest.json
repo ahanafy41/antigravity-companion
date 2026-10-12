@@ -29,9 +29,10 @@
     "تحديث MainActivity.java لتعيين START_PAGE_URL = file:///android_asset/web/start.html كصفحة بديلة، وإضافة onReceivedError للتحويل التلقائي إليها، وتوفير دوال الجسر stopServer() و loadDashboardUrl().",
     "تحديث TermuxBridge.java لإضافة stopServerAsync لإيقاف السيرفر عبر Termux RUN_COMMAND بـ pkill مع طلب HTTP الإيقاف اللحظي.",
     "تحديث server/server.py لإضافة نقطة النهاية /api/shutdown، وإنشاء سكريبت stop_server.sh.",
-    "تحديث واجهة الشات server/web/index.html بإضافة زر لوحة التحكم وشاشة البدء وزر إيقاف السيرفر نهائياً في القائمة الجانبية.",
+    "تحديث واجهة الشات server/web/index.html بإضافة زر لوحة التحكم وشاشة البدء في الشريط العلوي والقائمة الجانبية وزر إيقاف السيرفر نهائياً.",
     "مزامنة ملفات الويب والسيرفر في assets و ~/.antigravity-server/.",
-    "رفع الإصدار إلى v1.2.6 (versionCode 9) في build.gradle و project_spec.json و build-apk.yml لتجهيز التحديث التلقائي OTA."
+    "تحديث MainActivity لتحميل شاشة البدء دائماً افتراضياً، وتحديث TermuxBridge لاستخدام مسارات tasker و bin الصالحة في Termux RUN_COMMAND.",
+    "رفع الإصدار إلى v1.2.7 (versionCode 10) في build.gradle و project_spec.json و build-apk.yml لتجهيز التحديث التلقائي OTA."
   ],
   "verification_test": "python3 /data/data/com.termux/files/home/.gemini/config/skills/universal-software-agency/scripts/validate_code.py --strict --manifest debug_manifest.json"
 }

@@ -100,7 +100,7 @@ public class TermuxBridge {
 
     /**
      * Ensures the local Python server is active. If port 7681 is unreachable,
-     * triggers silent background start in Termux.
+     * triggers silent background start in Termux via valid RUN_COMMAND executable.
      */
     public static void ensureServerRunningAsync(final Context context) {
         new Thread(new Runnable() {
@@ -109,16 +109,28 @@ public class TermuxBridge {
                 boolean running = isPortOpen("127.0.0.1", 7681, 600);
                 if (!running) {
                     LOGGER.info("Local Python server on 7681 not detected. Launching silently via Termux RUN_COMMAND...");
+                    String bashBin = "/data/data/com.termux/files/usr/bin/bash";
+                    String taskerScript = "/data/data/com.termux/files/home/.termux/tasker/launch_server.sh";
                     String hiddenScript = "/data/data/com.termux/files/home/.antigravity-server/launch_server.sh";
-                    String fallbackScript = "/data/data/com.termux/files/home/launch_server.sh";
-                    String launcherScript = new java.io.File(hiddenScript).exists() ? hiddenScript : fallbackScript;
 
-                    executeCommand(context, launcherScript, null, "/data/data/com.termux/files/home", new CommandCallback() {
-                        @Override
-                        public void onResult(int exitCode, String stdout, String stderr) {
-                            LOGGER.info("Silent server launch finished with exit code: " + exitCode);
-                        }
-                    });
+                    if (new java.io.File(taskerScript).exists()) {
+                        executeCommand(context, taskerScript, null, "/data/data/com.termux/files/home", new CommandCallback() {
+                            @Override
+                            public void onResult(int exitCode, String stdout, String stderr) {
+                                LOGGER.info("Silent server launch (tasker) finished with exit code: " + exitCode);
+                            }
+                        });
+                    } else if (new java.io.File(bashBin).exists()) {
+                        String cmd = "bash " + hiddenScript + " || bash /data/data/com.termux/files/home/launch_server.sh";
+                        executeCommand(context, bashBin, new String[]{"-c", cmd}, "/data/data/com.termux/files/home", new CommandCallback() {
+                            @Override
+                            public void onResult(int exitCode, String stdout, String stderr) {
+                                LOGGER.info("Silent server launch (bash) finished with exit code: " + exitCode);
+                            }
+                        });
+                    } else {
+                        executeCommand(context, hiddenScript, null, "/data/data/com.termux/files/home", null);
+                    }
                 } else {
                     LOGGER.info("Local Python server on 7681 is already running.");
                 }
@@ -148,16 +160,17 @@ public class TermuxBridge {
                     }
                 }
 
-                // 2. Kill via pkill or stop script
-                String hiddenScript = "/data/data/com.termux/files/home/.antigravity-server/stop_server.sh";
+                // 2. Kill via tasker stop script, bash -c, or pkill
+                String bashBin = "/data/data/com.termux/files/usr/bin/bash";
+                String taskerStopScript = "/data/data/com.termux/files/home/.termux/tasker/stop_server.sh";
                 String pkillBin = "/data/data/com.termux/files/usr/bin/pkill";
-                if (new java.io.File(hiddenScript).exists()) {
-                    executeCommand(context, hiddenScript, null, "/data/data/com.termux/files/home", null);
+
+                if (new java.io.File(taskerStopScript).exists()) {
+                    executeCommand(context, taskerStopScript, null, "/data/data/com.termux/files/home", null);
+                } else if (new java.io.File(bashBin).exists()) {
+                    executeCommand(context, bashBin, new String[]{"-c", "pkill -9 -f server.py || killall -9 python3 2>/dev/null || true"}, "/data/data/com.termux/files/home", null);
                 } else if (new java.io.File(pkillBin).exists()) {
                     executeCommand(context, pkillBin, new String[]{"-9", "-f", "server.py"}, "/data/data/com.termux/files/home", null);
-                } else {
-                    String bashBin = "/data/data/com.termux/files/usr/bin/bash";
-                    executeCommand(context, bashBin, new String[]{"-c", "pkill -9 -f server.py || killall -9 python3"}, "/data/data/com.termux/files/home", null);
                 }
             }
         }).start();

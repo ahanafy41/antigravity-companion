@@ -285,7 +285,7 @@
 
     <footer role="contentinfo">
         <div class="footer-credit">Developed by Ahmed Hanafy</div>
-        <div id="app-version-label">Antigravity Companion v1.2.6</div>
+        <div id="app-version-label">Antigravity Companion v1.2.7</div>
     </footer>
 
     <script>
@@ -372,15 +372,30 @@
                 return;
             }
             announce('جاري إيقاف خادم تيرمكس نهائياً...');
+            const badgeServer = document.getElementById('badge-server');
+            if (badgeServer) {
+                badgeServer.className = 'status-badge badge-pending';
+                badgeServer.textContent = 'جاري الإيقاف...';
+            }
             if (window.AntigravityBridge && typeof window.AntigravityBridge.stopServer === 'function') {
                 window.AntigravityBridge.stopServer();
             }
-            // Optional direct HTTP shutdown attempt if reachable
             fetch('http://127.0.0.1:7681/api/shutdown', { method: 'POST' }).catch(function() {});
-            setTimeout(function() {
-                checkStatus();
-                announce('تم إيقاف خادم تيرمكس بنجاح.');
-            }, 1500);
+            let attempts = 0;
+            const pollInterval = setInterval(function() {
+                attempts++;
+                let ready = true;
+                if (window.AntigravityBridge && typeof window.AntigravityBridge.isTermuxServerReady === 'function') {
+                    ready = window.AntigravityBridge.isTermuxServerReady();
+                } else {
+                    ready = false;
+                }
+                if (!ready || attempts >= 8) {
+                    clearInterval(pollInterval);
+                    checkStatus();
+                    announce('تم إيقاف خادم تيرمكس بنجاح وهو متوقف الآن.');
+                }
+            }, 500);
         }
 
         let isNavigatingToChat = false;

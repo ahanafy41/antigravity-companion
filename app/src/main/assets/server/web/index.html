@@ -2225,6 +2225,7 @@ dialog.accessible-dialog::backdrop {
 
 
     <div class="header-actions" role="toolbar" aria-label="الإجراءات">
+      <button type="button" id="btn-header-dashboard" class="btn" aria-label="لوحة التحكم وشاشة البدء" title="لوحة التحكم">الرئيسية</button>
       <button type="button" id="btn-header-auth" class="btn" aria-label="الحساب"><span id="header-auth-badge">الحساب</span></button>
       <button type="button" id="btn-header-model" class="btn btn-header-model" aria-label="تغيير النموذج"><span id="header-active-model-name">Gemini 3.8</span></button>
       <button type="button" id="btn-new-ai-chat" class="btn btn-primary" aria-label="محادثة جديدة">جديد</button>
@@ -2298,7 +2299,7 @@ dialog.accessible-dialog::backdrop {
     </div>
     <div class="drawer-footer" style="padding: 14px 16px; border-top: 1px solid var(--border-main); text-align: center;" aria-label="معلومات المطور">
       <div style="font-size: 0.88rem; font-weight: 600; color: var(--accent-cyan);">Developed by Ahmed Hanafy</div>
-      <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Antigravity Companion v1.2.6</div>
+      <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Antigravity Companion v1.2.7</div>
     </div>
   </nav>
 
@@ -8381,6 +8382,17 @@ dialog.accessible-dialog::backdrop {
       });
     }
 
+    const btnHeaderDashboard = document.getElementById('btn-header-dashboard');
+    if (btnHeaderDashboard) {
+      btnHeaderDashboard.addEventListener('click', () => {
+        if (window.AntigravityBridge && typeof window.AntigravityBridge.loadDashboardUrl === 'function') {
+          window.AntigravityBridge.loadDashboardUrl();
+        } else {
+          window.location.href = '/start.html';
+        }
+      });
+    }
+
     const btnOpenDashboard = document.getElementById('btn-open-dashboard');
     if (btnOpenDashboard) {
       btnOpenDashboard.addEventListener('click', () => {
@@ -8388,7 +8400,7 @@ dialog.accessible-dialog::backdrop {
         if (window.AntigravityBridge && typeof window.AntigravityBridge.loadDashboardUrl === 'function') {
           window.AntigravityBridge.loadDashboardUrl();
         } else {
-          window.location.href = 'file:///android_asset/web/start.html';
+          window.location.href = '/start.html';
         }
       });
     }
@@ -8407,7 +8419,7 @@ dialog.accessible-dialog::backdrop {
             if (window.AntigravityBridge && typeof window.AntigravityBridge.loadDashboardUrl === 'function') {
               window.AntigravityBridge.loadDashboardUrl();
             } else {
-              window.location.href = 'file:///android_asset/web/start.html';
+              window.location.href = '/start.html';
             }
           }, 450);
         }

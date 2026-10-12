@@ -4178,6 +4178,24 @@ def handle_client(client_sock, backend_port, index_bytes):
             client_sock.close()
             return
 
+        elif "/start.html" in path or "/start" in path or "/dashboard" in path:
+            start_path = os.path.join(BASE_DIR, "web", "start.html")
+            st_bytes = b""
+            if os.path.exists(start_path):
+                with open(start_path, "rb") as stf: st_bytes = stf.read()
+            else:
+                st_bytes = get_index_bytes()
+            header = (
+                b"HTTP/1.1 200 OK\r\n"
+                b"Content-Type: text/html; charset=utf-8\r\n"
+                b"Content-Length: " + str(len(st_bytes)).encode() + b"\r\n"
+                b"Cache-Control: no-cache, no-store, must-revalidate\r\n"
+                b"Connection: close\r\n\r\n"
+            )
+            client_sock.sendall(header + st_bytes)
+            client_sock.close()
+            return
+
 
         else:
             current_bytes = get_index_bytes()
