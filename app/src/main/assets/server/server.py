@@ -3714,6 +3714,15 @@ def handle_client(client_sock, backend_port, index_bytes):
             handle_ai_stream(client_sock, body_bytes)
             return
 
+        elif path.startswith("/api/shutdown"):
+            send_json_response(client_sock, {"status": "ok", "message": "Server shutting down cleanly"})
+            client_sock.close()
+            def _async_shutdown():
+                time.sleep(0.3)
+                os.kill(os.getpid(), signal.SIGTERM)
+            threading.Thread(target=_async_shutdown, daemon=True).start()
+            return
+
         elif path.startswith("/api/auth/status"):
             token_info = get_auth_token_info()
             wizard_state = auth_manager.get_state()

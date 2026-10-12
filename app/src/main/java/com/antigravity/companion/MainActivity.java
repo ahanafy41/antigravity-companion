@@ -43,7 +43,8 @@ public class MainActivity extends AppCompatActivity {
     private AppUpdateManager mUpdateManager;
 
     public static final String LOCAL_URL = "http://127.0.0.1:7681";
-    public static final String FALLBACK_ASSET_URL = "file:///android_asset/web/index.html";
+    public static final String START_PAGE_URL = "file:///android_asset/web/start.html";
+    public static final String FALLBACK_ASSET_URL = START_PAGE_URL;
     private static final int REQ_CODE_TERMUX_PERM = 2001;
 
     @Override
@@ -152,6 +153,26 @@ public class MainActivity extends AppCompatActivity {
                 startActivity(intent);
                 return true;
             }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request, android.webkit.WebResourceError error) {
+                super.onReceivedError(view, request, error);
+                if (request != null && request.isForMainFrame()) {
+                    String url = request.getUrl() != null ? request.getUrl().toString() : "";
+                    if (url.startsWith("http://127.0.0.1:7681") || url.startsWith("http://localhost:7681")) {
+                        view.loadUrl(START_PAGE_URL);
+                    }
+                }
+            }
+
+            @SuppressWarnings("deprecation")
+            @Override
+            public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                super.onReceivedError(view, errorCode, description, failingUrl);
+                if (failingUrl != null && (failingUrl.startsWith("http://127.0.0.1:7681") || failingUrl.startsWith("http://localhost:7681"))) {
+                    view.loadUrl(START_PAGE_URL);
+                }
+            }
         });
     }
 
@@ -245,6 +266,23 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
             });
+        }
+
+        @JavascriptInterface
+        public void loadDashboardUrl() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (mWebView != null) {
+                        mWebView.loadUrl(START_PAGE_URL);
+                    }
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void stopServer() {
+            TermuxBridge.stopServerAsync(MainActivity.this);
         }
 
         @JavascriptInterface

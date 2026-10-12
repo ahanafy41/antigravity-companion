@@ -126,6 +126,43 @@ public class TermuxBridge {
         }).start();
     }
 
+    /**
+     * Stops the local Python server permanently. Dispatches shutdown via HTTP and Termux RUN_COMMAND.
+     */
+    public static void stopServerAsync(final Context context) {
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                LOGGER.info("Stopping local Python server on 7681 via TermuxBridge...");
+
+                // 1. Send graceful shutdown HTTP request if reachable
+                if (isPortOpen("127.0.0.1", 7681, 400)) {
+                    try {
+                        java.net.URL url = new java.net.URL("http://127.0.0.1:7681/api/shutdown");
+                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                        conn.setRequestMethod("POST");
+                        conn.setConnectTimeout(800);
+                        conn.setReadTimeout(800);
+                        conn.getResponseCode();
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                // 2. Kill via pkill or stop script
+                String hiddenScript = "/data/data/com.termux/files/home/.antigravity-server/stop_server.sh";
+                String pkillBin = "/data/data/com.termux/files/usr/bin/pkill";
+                if (new java.io.File(hiddenScript).exists()) {
+                    executeCommand(context, hiddenScript, null, "/data/data/com.termux/files/home", null);
+                } else if (new java.io.File(pkillBin).exists()) {
+                    executeCommand(context, pkillBin, new String[]{"-9", "-f", "server.py"}, "/data/data/com.termux/files/home", null);
+                } else {
+                    String bashBin = "/data/data/com.termux/files/usr/bin/bash";
+                    executeCommand(context, bashBin, new String[]{"-c", "pkill -9 -f server.py || killall -9 python3"}, "/data/data/com.termux/files/home", null);
+                }
+            }
+        }).start();
+    }
+
     public static boolean isPortOpen(String host, int port, int timeoutMs) {
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress(host, port), timeoutMs);

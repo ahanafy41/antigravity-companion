@@ -2289,10 +2289,16 @@ dialog.accessible-dialog::backdrop {
       <button type="button" id="btn-clear-chat" class="drawer-btn btn-danger" aria-label="مسح المحادثة">
         <span>مسح المحادثة</span>
       </button>
+      <button type="button" id="btn-open-dashboard" class="drawer-btn" aria-label="لوحة التحكم وشاشة البدء">
+        <span>لوحة التحكم (شاشة البدء)</span>
+      </button>
+      <button type="button" id="btn-stop-server" class="drawer-btn btn-danger" aria-label="إيقاف الخادم نهائياً" style="color:var(--accent-red); border-color:rgba(248,81,73,0.5);">
+        <span>إيقاف الخادم نهائياً</span>
+      </button>
     </div>
     <div class="drawer-footer" style="padding: 14px 16px; border-top: 1px solid var(--border-main); text-align: center;" aria-label="معلومات المطور">
       <div style="font-size: 0.88rem; font-weight: 600; color: var(--accent-cyan);">Developed by Ahmed Hanafy</div>
-      <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Antigravity Companion v1.2.2</div>
+      <div style="font-size: 0.76rem; color: var(--text-muted); margin-top: 2px;">Antigravity Companion v1.2.6</div>
     </div>
   </nav>
 
@@ -3840,6 +3846,17 @@ dialog.accessible-dialog::backdrop {
       text = text.replace(/`([^`]+)`/g, '<bdi class="code-inline">$1</bdi>');
       text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
       text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+      // Markdown links: [text](url)
+      text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--accent-blue, #60a5fa); text-decoration:underline;">$1</a>');
+
+      // Plain URLs
+      text = text.replace(/(^|[\s\(\[\{])(https?:\/\/[^\s<>\)\]\}]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--accent-blue, #60a5fa); text-decoration:underline;">$2</a>');
+
+      // Restore safe audio tags: <audio controls ... src="..."></audio>
+      text = text.replace(/&lt;audio\s+controls(?:\s+autoplay)?\s+src="([^"]+)"[^&]*&gt;[\s\S]*?&lt;\/audio&gt;/gi, function(match, src) {
+        return '<audio controls autoplay src="' + src + '" style="width:100%; margin:8px 0;" preload="metadata"></audio>';
+      });
 
       // 4. Split into clean blocks
       const rawBlocks = text.split(/\n{2,}/);
@@ -8361,6 +8378,39 @@ dialog.accessible-dialog::backdrop {
       btnClearChat.addEventListener('click', () => {
         toggleAppDrawer(false);
         btnNewAiChat.click();
+      });
+    }
+
+    const btnOpenDashboard = document.getElementById('btn-open-dashboard');
+    if (btnOpenDashboard) {
+      btnOpenDashboard.addEventListener('click', () => {
+        toggleAppDrawer(false);
+        if (window.AntigravityBridge && typeof window.AntigravityBridge.loadDashboardUrl === 'function') {
+          window.AntigravityBridge.loadDashboardUrl();
+        } else {
+          window.location.href = 'file:///android_asset/web/start.html';
+        }
+      });
+    }
+
+    const btnStopServer = document.getElementById('btn-stop-server');
+    if (btnStopServer) {
+      btnStopServer.addEventListener('click', () => {
+        if (confirm('هل أنت متأكد من إيقاف خادم تيرمكس نهائياً؟ ستنتقل إلى شاشة البدء.')) {
+          toggleAppDrawer(false);
+          announce('جاري إيقاف خادم تيرمكس نهائياً...');
+          if (window.AntigravityBridge && typeof window.AntigravityBridge.stopServer === 'function') {
+            window.AntigravityBridge.stopServer();
+          }
+          fetch('/api/shutdown', { method: 'POST' }).catch(() => {});
+          setTimeout(() => {
+            if (window.AntigravityBridge && typeof window.AntigravityBridge.loadDashboardUrl === 'function') {
+              window.AntigravityBridge.loadDashboardUrl();
+            } else {
+              window.location.href = 'file:///android_asset/web/start.html';
+            }
+          }, 450);
+        }
       });
     }
 

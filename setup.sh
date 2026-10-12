@@ -50,6 +50,8 @@ GITHUB_RAW="https://raw.githubusercontent.com/ahanafy41/antigravity-companion/ma
 curl -fsSL --retry 3 --connect-timeout 10 "$GITHUB_RAW/server/server.py" -o "$SERVER_DIR/server.py"
 curl -fsSL --retry 3 --connect-timeout 10 "$GITHUB_RAW/server/launch_server.sh" -o "$SERVER_DIR/launch_server.sh"
 chmod +x "$SERVER_DIR/launch_server.sh"
+curl -fsSL --retry 3 --connect-timeout 10 "$GITHUB_RAW/server/stop_server.sh" -o "$SERVER_DIR/stop_server.sh" 2>/dev/null || true
+chmod +x "$SERVER_DIR/stop_server.sh" 2>/dev/null || true
 
 # تنزيل ملفات واجهة الويب
 curl -fsSL --retry 3 --connect-timeout 10 "$GITHUB_RAW/server/web/index.html" -o "$SERVER_DIR/web/index.html"
@@ -61,6 +63,8 @@ rm -f "$SERVER_DIR/web/youm7.html" 2>/dev/null || true
 # عمل روابط للمسارات لضمان التوافق مع Termux RUN_COMMAND
 ln -sf "$SERVER_DIR/launch_server.sh" "$HOME/launch_server.sh"
 ln -sf "$SERVER_DIR/launch_server.sh" "$HOME/.termux/tasker/launch_server.sh"
+ln -sf "$SERVER_DIR/stop_server.sh" "$HOME/stop_server.sh"
+ln -sf "$SERVER_DIR/stop_server.sh" "$HOME/.termux/tasker/stop_server.sh"
 
 # فحص سلامة كود بايثون
 python3 -m py_compile "$SERVER_DIR/server.py"
