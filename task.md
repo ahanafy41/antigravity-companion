@@ -1,4 +1,16 @@
-﻿# سجل العمل
+# سجل العمل
+
+## إصلاح مقابلة main 2026-10-14
+
+fix: address main comparison findings — complete locally؛ أذن المستخدم بحفظ التغييرات وفتح طلب السحب (Pull Request) إلى المستودع الأصلي. تشمل إصلاحات نطاق MCP ومجموعات POSIX وإلغاء الكلام وضبط خروج الحساب.
+
+| الملفات والنطاق | الحال |
+|---|---|
+| cli_client.py وmcp_probe.py وفحوص العمليات والنطاق | complete locally |
+| android_client.py وrun_tts_tests.py | complete locally |
+| auth_flow.py وAPI والويب وAndroid للخروج المثبت | complete locally |
+| الحزمة والسجلات وطلب السحب | in_progress |
+
 
 ## حفظ حصيلة الخطة 2026-10-08
 

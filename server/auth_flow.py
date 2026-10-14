@@ -23,7 +23,7 @@ class AuthFlow:
         }
 
     def start(self, purpose, name=None, cwd=None):
-        if purpose not in ("account", "mcp"):
+        if purpose not in ("account", "mcp", "logout"):
             raise ValueError("Invalid native authentication purpose")
         if purpose == "mcp" and (
             not isinstance(name, str) or not NAME.fullmatch(name)
@@ -36,13 +36,25 @@ class AuthFlow:
             "status": "native_launch",
             "request_id": self.pending,
             "authenticated": None,
-            "action": "login_cli" if purpose == "account" else "mcp_cli",
+            "action": {
+                "account": "login_cli",
+                "mcp": "mcp_cli",
+                "logout": "logout_cli",
+            }[purpose],
             "command": "agy",
         }
         if cwd is not None:
             result["cwd"] = str(cwd)
         if purpose == "mcp":
             result.update(server=name, interactive_command="/mcp")
+        elif purpose == "logout":
+            result.update(
+                interactive_command="/logout",
+                reason=(
+                    "Logout disconnects saved account profiles; "
+                    "API-key mode is unaffected"
+                ),
+            )
         return result
 
     def cancel(self, request_id):

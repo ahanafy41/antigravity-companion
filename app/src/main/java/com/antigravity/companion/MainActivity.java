@@ -153,6 +153,7 @@ public final class MainActivity extends AppCompatActivity {
         actions.put("cancel_voice", request -> { voice.cancel(); reply(request, new JsonObject()); });
         actions.put("login_cli", request -> reply(request, TermuxBridge.startInteractive(this, "account", request.args.has("cwd") ? ScreenSnapshot.required(request.args, "cwd") : null)));
         actions.put("mcp_cli", request -> reply(request, TermuxBridge.startInteractive(this, "mcp", request.args.has("cwd") ? ScreenSnapshot.required(request.args, "cwd") : null)));
+        actions.put("logout_cli", request -> reply(request, TermuxBridge.startInteractive(this, "logout", request.args.has("cwd") ? ScreenSnapshot.required(request.args, "cwd") : null)));
         actions.put("start_server", this::connectServer); actions.put("bootstrap", this::connectServer);
     }
     private void receiveNativeRequest(String message) {

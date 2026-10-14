@@ -69,6 +69,15 @@ public class TermuxLaunchContractTest {
                 () -> TermuxLaunchContract.interactiveArguments("account; rm anything"));
     }
 
+    @Test public void logoutUsesFixedNativeSlashCommandWithoutShellInputs() {
+        assertArrayEquals(new String[]{"-l", "-c", "AGY_CLI_DISABLE_AUTO_UPDATE=true exec agy --prompt-interactive /logout"},
+                TermuxLaunchContract.interactiveArguments("logout"));
+        assertThrows(IllegalArgumentException.class,
+                () -> TermuxLaunchContract.interactiveArguments("logout; exec arbitrary"));
+        assertEquals("/work/selected folder",
+                TermuxLaunchContract.interactiveWorkingDirectory("/fixture", "/work/selected folder"));
+    }
+
     @Test public void nativeWorkingDirectoryPreservesTrustedAbsolutePath() {
         assertEquals("/work/selected folder", TermuxLaunchContract.interactiveWorkingDirectory("/fixture", "/work/selected folder"));
         assertEquals("/fixture/files/home", TermuxLaunchContract.interactiveWorkingDirectory("/fixture", null));

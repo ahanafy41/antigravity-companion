@@ -34,6 +34,24 @@ class NativeAuthTests(unittest.TestCase):
         self.assertEqual(result["server"], "configured-server")
         self.assertNotIn("auth", result["command"])
 
+    def test_logout_handoff_preserves_unknown_account_and_selected_directory(
+        self,
+    ):
+        flow = AuthFlow(True)
+        result = flow.start("logout", cwd="/work/selected folder")
+        self.assertEqual(result["status"], "native_launch")
+        self.assertEqual(result["action"], "logout_cli")
+        self.assertEqual(result["interactive_command"], "/logout")
+        self.assertEqual(result["cwd"], "/work/selected folder")
+        self.assertIsNone(result["authenticated"])
+        self.assertIsNone(flow.status()["authenticated"])
+        self.assertTrue(flow.status()["pending"])
+        self.assertIn("account", result["reason"])
+        self.assertEqual(
+            flow.cancel(result["request_id"])["status"], "cancelled"
+        )
+        self.assertIsNone(flow.status()["authenticated"])
+
     def test_cancel_cannot_cancel_another_handoff(self):
         flow = AuthFlow(True)
         first = flow.start("account")

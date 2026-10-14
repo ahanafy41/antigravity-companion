@@ -15,6 +15,10 @@ LIMIT = 1024 * 1024
 NAME = re.compile(r"[\w.-]{1,128}")
 
 
+def configuration_revision(scope, raw):
+    return hashlib.sha256(scope.encode() + b"\0" + raw).hexdigest()
+
+
 def reject_linked_path(path):
     for component in (path, *path.absolute().parents):
         if component.is_symlink():
@@ -109,9 +113,7 @@ class MCPSettings:
             "configured": bool(oauth),
             "has_client_id": bool(oauth.get("clientId")),
             "has_client_secret": bool(oauth.get("clientSecret")),
-            "revision": hashlib.sha256(
-                scope.encode() + b"\0" + raw
-            ).hexdigest(),
+            "revision": configuration_revision(scope, raw),
             "owner": "agy",
             "scope": scope,
             "effective": "next_cli_reload",
@@ -121,8 +123,58 @@ class MCPSettings:
         scope, path, document, raw = self.owner(name, cwd)
         return self.view(scope, document, raw, name)
 
+    def listing(self, cwd):
+        rows = {}
+        for scope, path in (
+            ("global", self.home / ".gemini/config/mcp_config.json"),
+            ("workspace", Path(cwd) / ".agents/mcp_config.json"),
+        ):
+            loaded = document_at(path)
+            if loaded is None:
+                continue
+            document, raw = loaded
+            for name, server in document["mcpServers"].items():
+                if not NAME.fullmatch(name) or not isinstance(server, dict):
+                    raise ValueError("Invalid MCP server configuration")
+                rows[name] = {
+                    "name": name,
+                    "enabled": server.get("disabled") is not True,
+                    "scope": scope,
+                    "owner": "agy",
+                    "revision": configuration_revision(scope, raw),
+                }
+        return [rows[name] for name in sorted(rows)]
+
+    def change_server(self, name, cwd, action, revision):
+        if action not in ("enable", "disable", "delete"):
+            raise ValueError("Invalid MCP configuration action")
+
+        def change(document):
+            if action == "delete":
+                del document["mcpServers"][name]
+            else:
+                document["mcpServers"][name]["disabled"] = action == "disable"
+
+        self.write_owner(name, cwd, revision, change)
+        return self.listing(cwd)
+
     def write_oauth(self, name, cwd, payload, revision):
         patch, clear = oauth_patch(payload)
+
+        def change(document):
+            server = document["mcpServers"][name]
+            saved_oauth = server.get("oauth", {})
+            if not isinstance(saved_oauth, dict):
+                raise ValueError("Invalid MCP OAuth configuration")
+            oauth = {**saved_oauth, **patch}
+            if clear:
+                oauth.pop("clientSecret", None)
+            server["oauth"] = oauth
+
+        self.write_owner(name, cwd, revision, change)
+        return self.read_oauth(name, cwd)
+
+    def write_owner(self, name, cwd, revision, change):
         scope, path, document, raw = self.owner(name, cwd)
         lock = path.with_name(path.name + ".companion-lock")
         reject_linked_path(lock)
@@ -141,17 +193,11 @@ class MCPSettings:
             if selected[0:2] != (scope, path):
                 raise StorageConflict("MCP configuration owner changed")
             document, raw = selected[2:]
-            current = self.view(scope, document, raw, name)
-            if (
-                not isinstance(revision, str)
-                or revision != current["revision"]
-            ):
+            if not isinstance(
+                revision, str
+            ) or revision != configuration_revision(scope, raw):
                 raise StorageConflict("MCP configuration revision conflict")
-            server = document["mcpServers"][name]
-            oauth = {**server.get("oauth", {}), **patch}
-            if clear:
-                oauth.pop("clientSecret", None)
-            server["oauth"] = oauth
+            change(document)
             descriptor, staged = tempfile.mkstemp(
                 dir=path.parent, prefix=".companion-oauth-"
             )
@@ -159,7 +205,11 @@ class MCPSettings:
                 json.dump(document, stream, ensure_ascii=False)
                 stream.flush()
                 os.fsync(stream.fileno())
-            if self.read_oauth(name, cwd)["revision"] != revision:
+            selected = self.owner(name, cwd)
+            if (
+                selected[0:2] != (scope, path)
+                or configuration_revision(selected[0], selected[3]) != revision
+            ):
                 raise StorageConflict("MCP configuration changed during edit")
             backup = path.with_name(path.name + ".companion-bak")
             reject_linked_path(backup)
@@ -167,7 +217,6 @@ class MCPSettings:
             os.chmod(backup, 0o600)
             os.chmod(staged, 0o600)
             os.replace(staged, path)
-            return self.read_oauth(name, cwd)
         finally:
             if staged is not None:
                 Path(staged).unlink(missing_ok=True)

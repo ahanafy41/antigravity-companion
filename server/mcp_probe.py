@@ -364,6 +364,8 @@ class MCPProbe:
             limit=LIMIT + 1,
             **options
         )
+        if os.name == "posix":
+            process._companion_pgid = process.pid
         transport = StdioTransport(process)
         try:
             return await handshake(transport)

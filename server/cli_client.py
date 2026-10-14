@@ -9,6 +9,7 @@ from pathlib import Path
 from cli_catalog import local_catalog, toggle_skill
 
 MAX_LINE = 1024 * 1024
+GROUP_SHUTDOWN_TIMEOUT = 5
 ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
@@ -17,23 +18,58 @@ class CLIUnavailable(Exception):
 
 
 async def terminate_process(process):
-    if process.returncode is not None:
-        return
     if os.name == "nt":
-        await terminate_windows_tree(process)
+        if process.returncode is None:
+            await terminate_windows_tree(process)
         return
+    group_id = getattr(process, "_companion_pgid", None)
+    if group_id is None:
+        raise CLIUnavailable("Owned process group identity is unavailable")
+    if not getattr(process, "_companion_group_closed", False):
+        await terminate_posix_group(group_id)
+        # A retired group ID must never be signalled after reuse.
+        process._companion_group_closed = True
     try:
-        os.killpg(process.pid, signal.SIGTERM)
+        await asyncio.wait_for(process.wait(), GROUP_SHUTDOWN_TIMEOUT)
+    except asyncio.TimeoutError as failure:
+        raise CLIUnavailable("Owned process exit is unconfirmed") from failure
+
+
+async def terminate_posix_group(group_id):
+    try:
+        for requested_signal in (signal.SIGTERM, signal.SIGKILL):
+            if not process_group_alive(group_id):
+                return
+            try:
+                os.killpg(group_id, requested_signal)
+            except ProcessLookupError:
+                return
+            if await wait_for_group_exit(group_id):
+                return
+    except OSError as failure:
+        raise CLIUnavailable(
+            "Cannot inspect the owned process group"
+        ) from failure
+    raise CLIUnavailable("Owned process group cancellation is unconfirmed")
+
+
+def process_group_alive(group_id):
+    try:
+        os.killpg(group_id, 0)
     except ProcessLookupError:
-        return
-    try:
-        await asyncio.wait_for(process.wait(), 5)
-    except asyncio.TimeoutError:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            return
-        await process.wait()
+        return False
+    return True
+
+
+async def wait_for_group_exit(group_id):
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + GROUP_SHUTDOWN_TIMEOUT
+    while process_group_alive(group_id):
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            return False
+        await asyncio.sleep(min(0.05, remaining))
+    return True
 
 
 async def terminate_windows_tree(process):
@@ -95,7 +131,7 @@ class CLI:
         environment.pop("AGY_AUTO_UPDATE", None)
         options = {"start_new_session": True} if os.name == "posix" else {}
         try:
-            return await asyncio.create_subprocess_exec(
+            process = await asyncio.create_subprocess_exec(
                 self.executable,
                 *arguments,
                 cwd=str(cwd),
@@ -106,6 +142,10 @@ class CLI:
                 limit=MAX_LINE + 1,
                 **options
             )
+            if os.name == "posix":
+                # Keep group ownership after the CLI parent exits.
+                process._companion_pgid = process.pid
+            return process
         except OSError as failure:
             raise CLIUnavailable("Cannot start agy executable") from failure
 
@@ -191,13 +231,16 @@ class CLI:
             raise CLIUnavailable("CLI output is not a supported list format")
         return rows
 
-    async def mutate_mcp(self, action, request):
+    async def mutate_mcp(self, action, request, cwd=None):
         name = request.get("name", "")
         if not isinstance(name, str) or not re.fullmatch(r"[\w.-]+", name):
             raise ValueError("Invalid MCP server name")
         async with self.mutation_lock:
             verb = "remove" if action == "delete" else action
-            help_text = await self.command(["mcp", verb, "--help"])
+            command_options = {} if cwd is None else {"cwd": cwd}
+            help_text = await self.command(
+                ["mcp", verb, "--help"], **command_options
+            )
             arguments = ["mcp", verb]
             if verb == "add":
                 arguments += mcp_add_flags(request, help_text)
@@ -205,8 +248,12 @@ class CLI:
                 arguments += request.get("args", [])
             else:
                 arguments.append(name)
-            await self.command(arguments)
-            return await self.listing("mcp")
+            await self.command(arguments, **command_options)
+            return (
+                await self.listing("mcp", cwd)
+                if cwd is not None
+                else await self.listing("mcp")
+            )
 
 
 def mcp_add_flags(request, help_text):

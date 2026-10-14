@@ -301,7 +301,8 @@
         return;
       }
       try {
-        const reply = await companion.api.request('/' + id);
+        const cwd = app.sessionOptions.cwd || state.settings.cwd || '.';
+        const reply = await companion.api.request('/' + id + '?cwd=' + encodeURIComponent(cwd));
         const rows = reply[id === 'mcp' ? 'servers' : id];
         if (!Array.isArray(rows)) throw new Error('قائمة CLI غير صالحة.');
         const entries = rows.filter(row=>row && row.enabled !== false).map(row=>{

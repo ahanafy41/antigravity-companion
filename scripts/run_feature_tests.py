@@ -118,6 +118,83 @@ class FeatureTests(unittest.IsolatedAsyncioTestCase):
             "pending",
         )
 
+    async def test_mcp_mutation_preserves_selected_workspace_owner(self):
+        workspace = self.home / "selected"
+        global_file = self.home / ".gemini/config/mcp_config.json"
+        local_file = workspace / ".agents/mcp_config.json"
+        for path in (global_file, local_file):
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                json.dumps(
+                    {
+                        "mcpServers": {
+                            "same": {
+                                "command": "fixture",
+                                "env": {"TOKEN": "private"},
+                            }
+                        }
+                    }
+                )
+            )
+        original = global_file.read_bytes()
+        async with self.client.get(
+            self.url + "/mcp", params={"cwd": str(workspace)}
+        ) as response:
+            self.assertEqual(response.status, 200)
+            row = (await response.json())["servers"][0]
+            self.assertEqual(row["scope"], "workspace")
+        payload = {"cwd": str(workspace), "revision": row["revision"]}
+        async with self.client.post(
+            self.url + "/mcp/same/disable", headers=self.headers, json=payload
+        ) as response:
+            self.assertEqual(response.status, 200)
+            self.assertNotIn("private", await response.text())
+        self.assertEqual(global_file.read_bytes(), original)
+        self.assertTrue(
+            json.loads(local_file.read_text())["mcpServers"]["same"][
+                "disabled"
+            ]
+        )
+        async with self.client.delete(
+            self.url + "/mcp/same", headers=self.headers, json=payload
+        ) as response:
+            self.assertEqual(response.status, 409)
+        payload["revision"] = self.app["mcp_settings"].listing(workspace)[0][
+            "revision"
+        ]
+        async with self.client.delete(
+            self.url + "/mcp/same", headers=self.headers, json=payload
+        ) as response:
+            self.assertEqual(response.status, 200)
+        self.assertEqual(global_file.read_bytes(), original)
+
+    async def test_logout_requires_explicit_confirmation_and_reports_only_handoff(
+        self,
+    ):
+        with patch.dict(
+            self.app["voice_agent"].runs, {"active": {"state": "running"}}
+        ):
+            async with self.client.post(
+                self.url + "/auth/logout",
+                headers=self.headers,
+                json={"confirmed": True},
+            ) as response:
+                self.assertEqual(response.status, 409)
+        async with self.client.post(
+            self.url + "/auth/logout", headers=self.headers, json={}
+        ) as response:
+            self.assertEqual(response.status, 400)
+        async with self.client.post(
+            self.url + "/auth/logout",
+            headers=self.headers,
+            json={"confirmed": True},
+        ) as response:
+            self.assertEqual(response.status, 200)
+            reply = await response.json()
+            self.assertEqual(reply["action"], "logout_cli")
+            self.assertIsNone(reply["authenticated"])
+            self.assertEqual(reply["interactive_command"], "/logout")
+
     async def test_owned_task_inventory_is_real_and_empty_on_new_server(self):
         async with self.client.get(self.url + "/tasks") as response:
             self.assertEqual(response.status, 200)

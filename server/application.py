@@ -123,6 +123,7 @@ def register_routes(application):
         web.get("/api/v1/auth/session", auth_session),
         web.get("/api/v1/auth/status", auth_status),
         web.post("/api/v1/auth/login", auth_login),
+        web.post("/api/v1/auth/logout", auth_logout),
         web.post("/api/v1/auth/{request_id}/cancel", cancel_auth),
         web.post("/api/v1/mcp/{name}/test", test_mcp),
         web.post("/api/v1/mcp/{name}/authenticate", authenticate_mcp),
@@ -289,6 +290,29 @@ async def auth_login(request):
         request.app["auth_flow"].start(
             "account",
             cwd=str(trusted_cli_cwd(request, await object_body(request))),
+        )
+    )
+
+
+async def auth_logout(request):
+    payload = await object_body(request)
+    if payload.get("confirmed") is not True:
+        raise ValueError("Confirm native account logout explicitly")
+    if (
+        request.app["cli_admin"].updating
+        or any(
+            run["state"] == "running"
+            for run in request.app["sessions"].runs.values()
+        )
+        or any(
+            run["state"] == "running"
+            for run in request.app["voice_agent"].runs.values()
+        )
+    ):
+        raise RunConflict("Stop owned CLI work before native logout")
+    return web.json_response(
+        request.app["auth_flow"].start(
+            "logout", cwd=str(trusted_cli_cwd(request, payload))
         )
     )
 
@@ -780,6 +804,14 @@ async def list_cli(request):
     cwd = request.query.get("cwd")
     if cwd is not None:
         cwd = api_path(request, cwd)
+    if kind == "mcp":
+        return web.json_response(
+            {
+                "servers": request.app["mcp_settings"].listing(
+                    trusted_cli_cwd(request, dict(request.query))
+                )
+            }
+        )
     entries = (
         await request.app["cli"].listing(kind, cwd)
         if cwd
@@ -791,24 +823,34 @@ async def list_cli(request):
 
 
 async def add_mcp(request):
-    servers = await request.app["cli"].mutate_mcp(
-        "add", await object_body(request)
+    payload = await object_body(request)
+    cwd = trusted_cli_cwd(request, payload)
+    await request.app["cli"].mutate_mcp("add", payload, cwd=cwd)
+    return web.json_response(
+        {"servers": request.app["mcp_settings"].listing(cwd)}
     )
-    return web.json_response({"servers": redact(servers)})
 
 
 async def change_mcp(request):
-    servers = await request.app["cli"].mutate_mcp(
-        request.match_info["action"], {"name": request.match_info["name"]}
+    payload = await object_body(request)
+    servers = request.app["mcp_settings"].change_server(
+        request.match_info["name"],
+        trusted_cli_cwd(request, payload),
+        request.match_info["action"],
+        payload.get("revision"),
     )
-    return web.json_response({"servers": redact(servers)})
+    return web.json_response({"servers": servers})
 
 
 async def delete_mcp(request):
-    servers = await request.app["cli"].mutate_mcp(
-        "delete", {"name": request.match_info["name"]}
+    payload = await object_body(request)
+    servers = request.app["mcp_settings"].change_server(
+        request.match_info["name"],
+        trusted_cli_cwd(request, payload),
+        "delete",
+        payload.get("revision"),
     )
-    return web.json_response({"servers": redact(servers)})
+    return web.json_response({"servers": servers})
 
 
 async def local_usage(request):

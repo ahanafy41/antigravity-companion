@@ -32,6 +32,7 @@ class AndroidClient:
     def __init__(self, store):
         self.store = store
         self.lock = asyncio.Lock()
+        self.speech_control_lock = asyncio.Lock()
         self.configuration = {}
         self.reload_configuration()
         self.actions = store.read("actions").get("actions", {})
@@ -146,7 +147,13 @@ class AndroidClient:
         digest = hashlib.sha256(
             json.dumps(request, sort_keys=True).encode()
         ).hexdigest()
-        async with self.lock:
+        # Stop speech without waiting behind its completion callback.
+        lock = (
+            self.speech_control_lock
+            if action == "speech_cancel"
+            else self.lock
+        )
+        async with lock:
             previous = self.actions.get(action_id)
             if previous:
                 if not secrets.compare_digest(previous["fingerprint"], digest):
@@ -172,8 +179,24 @@ class AndroidClient:
             }
             if action not in READ_ACTIONS:
                 self.actions[action_id] = outcome
-                self.persist()
-            await self.exchange(dict(request, args=args), outcome)
+                try:
+                    self.persist()
+                except OSError:
+                    self.actions.pop(action_id, None)
+                    raise
+            try:
+                await self.exchange(dict(request, args=args), outcome)
+            except asyncio.CancelledError:
+                outcome.update(
+                    status="outcome_unknown",
+                    error=(
+                        "Android request cancelled; "
+                        "this action was not retried"
+                    ),
+                )
+                if action not in READ_ACTIONS:
+                    self.persist()
+                raise
             if action not in READ_ACTIONS:
                 self.persist()
             return {

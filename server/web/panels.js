@@ -87,13 +87,13 @@
     }));
   }
   async function nativeHandoff(flow,parent) {
-    if (flow.status !== 'native_launch') throw new Error('agy غير متاح لبدء الدخول.');
+    if (flow.status !== 'native_launch') throw new Error('agy غير متاح لهذا الإجراء.');
     companion.app.authRequestId = flow.request_id;
     if (companion.native.available()) {
       await companion.native.request(flow.action,{cwd:flow.cwd});
-      parent.append(ui.element('p','فُتحت جلسة agy الأصلية؛ أكمل الدخول فيها. قبول الفتح لا يثبت تسجيل الدخول.'));
+      parent.append(ui.element('p',flow.action === 'logout_cli' ? 'أُحيل طلب الخروج إلى agy؛ قبول الفتح لا يثبت تمام الخروج.' : 'فُتحت جلسة agy الأصلية؛ أكمل الإجراء فيها. قبول الفتح لا يثبت الدخول أو الاتصال.'));
     } else {
-      parent.append(ui.element('p','افتح الطرفية ونفّذ agy'+(flow.action === 'mcp_cli' ? ' ثم /mcp' : '')+'؛ يملك CLI إجراء الدخول واعتماده.'));
+      parent.append(ui.element('p','افتح الطرفية ونفّذ agy'+(flow.interactive_command ? ' ثم '+flow.interactive_command : '')+'؛ يملك CLI الإجراء واعتماده.'));
     }
   }
   async function authPanel(parent) {
@@ -101,6 +101,11 @@
     parent.append(ui.element('p','يتولى agy الدخول في طرفيته الأصلية. حال الحساب لا تثبت من وجود ملف أو من نجاح فتح الطرفية.'));
     if (status.authenticated !== null && status.authenticated !== undefined) parent.append(ui.element('p',status.authenticated ? 'الحساب مسجل الدخول.' : 'الحساب غير مسجل الدخول.'));
     parent.append(ui.button('بدء دخول الحساب في agy',async()=>nativeHandoff(await companion.api.request('/auth/login',{method:'POST',body:{cwd:companion.app.sessionOptions.cwd || state.settings.cwd || '.'}}),parent)));
+    parent.append(ui.element('p','الخروج يفصل الحساب المحفوظ في agy؛ لا يغير Gemini API key. فتح الطرفية لا يثبت تمام الخروج.'));
+    parent.append(ui.button('خروج الحساب في agy',async()=>{
+      if (!global.confirm('فصل حساب agy ومحو ملف دخوله المحفوظ بواسطة /logout الأصلي؟')) return;
+      await nativeHandoff(await companion.api.request('/auth/logout',{method:'POST',body:{confirmed:true,cwd:companion.app.sessionOptions.cwd || state.settings.cwd || '.'}}),parent);
+    }));
     parent.append(ui.button('إلغاء طلب الإحالة',async()=>{
       if (!companion.app.authRequestId) return;
       await companion.api.request('/auth/'+encodeURIComponent(companion.app.authRequestId)+'/cancel',{method:'POST',body:{}});
@@ -142,18 +147,19 @@
     return parsed;
   }
   async function mcpPanel(parent) {
-    const reply = await companion.api.request('/mcp?cwd='+encodeURIComponent(companion.app.sessionOptions.cwd || state.settings.cwd || '.'));
+    const cwd = companion.app.sessionOptions.cwd || state.settings.cwd || '.';
+    const reply = await companion.api.request('/mcp?cwd='+encodeURIComponent(cwd));
     for (const server of reply.servers) {
       const row = ui.element('section', undefined, 'panel-row');
-      row.append(ui.element('h3',server.name),ui.element('p',server.enabled === false ? 'معطّل' : 'مفعّل'));
+      row.append(ui.element('h3',server.name+'؛ النطاق: '+(server.scope === 'workspace' ? 'المشروع' : 'العام')),ui.element('p',server.enabled === false ? 'معطّل' : 'مفعّل'));
       row.append(ui.button(server.enabled === false ? 'تمكين ' + server.name : 'تعطيل ' + server.name, async () => {
-        await companion.api.request('/mcp/' + encodeURIComponent(server.name) + (server.enabled === false ? '/enable' : '/disable'), {method:'POST',body:{}});
+        await companion.api.request('/mcp/' + encodeURIComponent(server.name) + (server.enabled === false ? '/enable' : '/disable'), {method:'POST',body:{cwd,revision:server.revision}});
         await companion.app.refreshSuggestions();
         await open('mcp');
       }));
       row.append(ui.button('حذف ' + server.name, async () => {
         if (!global.confirm('حذف خادم MCP ' + server.name + '؟')) return;
-        await companion.api.request('/mcp/' + encodeURIComponent(server.name), {method:'DELETE'});
+        await companion.api.request('/mcp/' + encodeURIComponent(server.name), {method:'DELETE',body:{cwd,revision:server.revision}});
         await companion.app.refreshSuggestions();
         await open('mcp');
       }, 'danger'));
@@ -189,7 +195,8 @@
     }));
   }
   async function mcpForm(parent) {
-    parent.append(ui.element('h3','إضافة MCP'));
+    parent.append(ui.element('h3','إضافة MCP إلى الإعداد العام'));
+    parent.append(ui.element('p','الإضافة بأمر agy تكتب في الإعداد العام؛ التفعيل والحذف يتبعان مالك الخادم المعروض.'));
     const name = ui.input(parent,'اسم الخادم');
     const type = selectField(parent,'نوع النقل',[{id:'stdio'},{id:'http'}],'stdio');
     const address = ui.input(parent,'الأمر أو رابط الخادم');
@@ -199,7 +206,7 @@
     parent.append(ui.button('إضافة الخادم', async () => {
       const argumentsList = JSON.parse(args.value);
       if (!Array.isArray(argumentsList) || argumentsList.some(argument=>typeof argument !== 'string')) throw new Error('الوسائط قائمة JSON من النصوص.');
-      await companion.api.request('/mcp', {method:'POST',body:{name:name.value.trim(),type:type.value,commandOrUrl:address.value.trim(),args:argumentsList,env:jsonObject(env,'البيئة'),headers:jsonObject(headers,'الرؤوس')}});
+      await companion.api.request('/mcp', {method:'POST',body:{cwd:companion.app.sessionOptions.cwd || state.settings.cwd || '.',name:name.value.trim(),type:type.value,commandOrUrl:address.value.trim(),args:argumentsList,env:jsonObject(env,'البيئة'),headers:jsonObject(headers,'الرؤوس')}});
       await companion.app.refreshSuggestions();
       await open('mcp');
     },'primary'));

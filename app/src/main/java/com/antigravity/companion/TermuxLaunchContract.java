@@ -32,6 +32,7 @@ public final class TermuxLaunchContract {
     public static String[] interactiveArguments(String purpose) {
         if (purpose.equals("account")) return new String[]{"-l", "-c", "AGY_CLI_DISABLE_AUTO_UPDATE=true exec agy"};
         if (purpose.equals("mcp")) return new String[]{"-l", "-c", "AGY_CLI_DISABLE_AUTO_UPDATE=true exec agy --prompt-interactive /mcp"};
+        if (purpose.equals("logout")) return new String[]{"-l", "-c", "AGY_CLI_DISABLE_AUTO_UPDATE=true exec agy --prompt-interactive /logout"};
         throw new IllegalArgumentException("Unsupported native CLI purpose");
     }
 

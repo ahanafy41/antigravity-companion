@@ -1,5 +1,5 @@
 'use strict';
-const CACHE_NAME = 'antigravity-static-ccdea810136d67b9d283a1d3';
+const CACHE_NAME = 'antigravity-static-dfe565548ebec0781dab4a8f';
 const STATIC_PATHS = new Set(['/', '/styles.css', '/api.js', '/history.js', '/state.js', '/native.js', '/ui.js', '/panels.js', '/app.js', '/manifest.json', '/icon.svg', '/vendor/alpine-csp.min.js', '/vendor/marked.umd.js', '/vendor/purify.min.js', '/vendor/tailwind.min.css']);
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll([...STATIC_PATHS])).then(()=>self.skipWaiting()));

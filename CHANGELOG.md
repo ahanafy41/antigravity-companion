@@ -1,5 +1,7 @@
 # سجل التغيير
 
+- 2026-10-14 — fix: address main comparison findings across MCP scopes, process groups, speech cancel, and auth state.
+
 - 2026-10-08 — feat: add durable local once schedules and FIFO next-turn messages, recover dispatch safely, cancel owned work, and prevent duplicate session creation.
 
 - 2026-10-08 — feat: restore native auth handoff, MCP/OAuth, owned task inventory, bounded voice actions/TTS, visibility feedback and version display; scheduler and live-turn steering await an explicit decision.
