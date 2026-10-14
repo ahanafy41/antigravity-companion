@@ -1,5 +1,18 @@
 # حالة المشروع
 
+## chore: publish PR #1 fixes — 2026-10-14
+
+published؛ أذن المستخدم بالرفع، وحُفظت الإصلاحات في d017f8819574e23fe9bf9d45de979a2322105703 ثم رُفعت رفعًا عاديًا إلى origin/codex/refactor-phase-1. تحقق git ls-remote وGitHub PR #1 من الرأس نفسه. فحوص ما قبل الحفظ ناجحة: 79 Python وChromium/Node وBlack79 وflake8 وSW. لا force أو merge أو رد جديد أو تثبيت هاتف؛ قبول الهاتف وagy الحي باقٍ.
+
+
+## fix: implement all PR #1 maintainer comments — 2026-10-14
+
+complete_locally؛ [الحصيلة](docs/pr-1-maintainer-report.md) مرجع التغيير والفحص. جلسة تلقائية للتطبيق والمتصفح المحلي بلا PIN بأمر المستخدم الأخير؛ HttpOnly/SameSite وpeer loopback وHost/Origin/Fetch Metadata وCSRF باقية، وAndroid bootstrap يحتفظ بـHMAC/Bearer. الثقة تشمل كل عميل محلي؛ لا يدّعى إثبات هويته بالأصل.
+
+CLI يقرأ JSON الإضافات والقائمة الخالية وTAB/spinner و--version، ويكتشف slash من TOML والمهارات المفعلة المعلنة؛ الواجهة لا تعيد المهارات المحظورة أو أسماء مجلداتها. اقتراح الملفات والمجلدات بحسب cwd الفعلي يحرس الرد القديم والسباق؛ الحوارات تحفظ التركيز، والإعدادات والأذون حقول معنونة تحفظ المعدل وحده. requirements-dev.txt لفحوص التطوير فقط؛ runtime وهوية الإصدار وإعدادات المستخدم لم تتغير. SW مجددة.
+
+نجح 79 Python وفحصا Node وفحوص Chromium الشامل والاقتراحات والإعدادات وخادم aiohttp الحقيقي، وBlack79 وflake8 وgit diff --check. المراجعة المستقلة أصلحت Host المعطوب وإعادة مهارات slash المحظورة. قبول الهاتف/قارئات الشاشة وحساب agy وتوسيع المسارات المقتبسة في CLI باقٍ؛ لا build/install أو commit/push أو رد جديد. deliverables تبقى لقطاتها المؤرخة؛ لا مزامنة ضمنية. الخطوة التالية: مراجعة الفرق، ثم النشر أو قبول الهاتف عند الإذن.
+
 ## إصلاح مقابلة main 2026-10-14
 
 fix: address main comparison findings — complete locally؛ أذن المستخدم بحفظ جميع التغييرات وفتح طلب السحب (Pull Request) إلى المستودع الأصلي. نطاق الإصلاح يشمل MCP/POSIX/TTS وعقد خروج الحساب.

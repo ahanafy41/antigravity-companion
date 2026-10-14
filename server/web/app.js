@@ -12,18 +12,18 @@
   let connecting = false;
   let pendingSubmission;
   let sessionCreation;
-  let suggestionRange;
+  let suggestionRequest = 0;
+  let catalogRequest = 0;
   const suggestionSources = new Map();
   const updateMilestones = new Map();
   const feedbackSeen = new Set();
   const visibilityClientId = global.crypto.randomUUID();
   let nativeVisible = true;
   const terminalStates = ['completed','cancelled','failed','interrupted'];
-  function connectionLabel() { return state.connected ? (state.paired ? 'متصل ومقترن' : 'يلزم الاقتران') : 'غير متصل'; }
+  function connectionLabel() { return state.connected ? (state.paired ? 'متصل ومقترن' : 'تعذر إنشاء الجلسة المحلية') : 'غير متصل'; }
   function refreshConnection() {
     if (global.Alpine) global.Alpine.$data(document.body).connectionLabel = connectionLabel();
     ui.byId('connection-section').hidden = state.connected && state.paired;
-    ui.byId('pair-form').hidden = !state.connected || state.paired;
     ui.byId('start-server').hidden = !companion.native.available() || state.connected;
     ui.busyControls();
   }
@@ -52,7 +52,7 @@
       try { await companion.api.restoreSession(); state.paired = true; }
       catch (error) { if (error.status !== 401 && error.status !== 403) throw error; state.paired = false; }
       if (state.paired) await connectedResources();
-      else ui.byId('connection-message').textContent = 'أدخل رمز الاقتران الذي يعرضه الخادم.';
+      else ui.byId('connection-message').textContent = 'تعذر إنشاء الجلسة المحلية؛ أعد الاتصال بالخادم.';
     } catch (error) {
       state.connected = false;
       state.paired = false;
@@ -294,15 +294,20 @@
     download.click();
     global.setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
+  function suggestionCwd() { return app.sessionOptions.cwd || state.settings.cwd || '.'; }
   async function refreshSuggestions() {
+    const requestId = ++catalogRequest;
+    const cwd = suggestionCwd();
+    const current = () => requestId === catalogRequest && cwd === suggestionCwd();
     await Promise.all(['commands','skills','mcp'].map(async id => {
       if (!companion.allowed(id)) {
         suggestionSources.set(id,{entries:[],reason:companion.capability(id)?.reason || 'مصدر غير متاح دون اتصال مقترن.'});
         return;
       }
       try {
-        const cwd = app.sessionOptions.cwd || state.settings.cwd || '.';
+        suggestionSources.set(id,{entries:[],reason:'القائمة قيد الجلب.'});
         const reply = await companion.api.request('/' + id + '?cwd=' + encodeURIComponent(cwd));
+        if (!current()) return;
         const rows = reply[id === 'mcp' ? 'servers' : id];
         if (!Array.isArray(rows)) throw new Error('قائمة CLI غير صالحة.');
         const entries = rows.filter(row=>row && row.enabled !== false).map(row=>{
@@ -312,37 +317,115 @@
           return {id:prefix + name.replace(/^[/@]/,''),name:row.name || row.description || row.desc || name};
         }).filter(Boolean);
         suggestionSources.set(id,{entries,reason:''});
-      } catch (error) { suggestionSources.set(id,{entries:[],reason:error.message}); }
+      } catch (error) { if (current()) suggestionSources.set(id,{entries:[],reason:error.message}); }
     }));
-    if (!ui.byId('suggestions').hidden) suggestions();
+    if (current() && !ui.byId('suggestions').hidden) void suggestions();
   }
-  function suggestions() {
+  function suggestionContext() {
     const prompt = ui.byId('prompt');
-    const match = /(?:^|\s)([/@])([^\s]*)$/.exec(prompt.value.slice(0,prompt.selectionStart));
+    const before = prompt.value.slice(0,prompt.selectionStart);
+    const match = /(?:^|\s)([/@])(?:"([^"\n]*)"?|([^\s"]*))$/.exec(before);
+    if (!match) return undefined;
+    const token = match[2] ?? match[3];
+    return {prefix:match[1],token,cwd:suggestionCwd(),start:match.index + match[0].indexOf(match[1]),end:prompt.selectionStart};
+  }
+  function positionSuggestions() {
+    const popup = ui.byId('suggestions');
+    if (popup.hidden) return;
+    const prompt = ui.byId('prompt').getBoundingClientRect();
+    const viewport = global.visualViewport;
+    const top = viewport?.offsetTop || 0;
+    const bottom = top + (viewport?.height || global.innerHeight);
+    const width = viewport?.width || global.innerWidth;
+    const left = viewport?.offsetLeft || 0;
+    const above = Math.max(0,prompt.top - top - 8);
+    const below = Math.max(0,bottom - prompt.bottom - 8);
+    const upwards = above >= below;
+    const height = Math.min(280,upwards ? above : below);
+    popup.style.maxHeight = height + 'px';
+    popup.style.width = Math.min(prompt.width,Math.max(0,width - 16)) + 'px';
+    popup.style.left = Math.max(left + 8,Math.min(prompt.left,left + width - popup.offsetWidth - 8)) + 'px';
+    popup.style.top = (upwards ? Math.max(top + 8,prompt.top - popup.offsetHeight - 4) : prompt.bottom + 4) + 'px';
+  }
+  function insertSuggestion(entry, context) {
+    const prompt = ui.byId('prompt');
+    const current = suggestionContext();
+    if (!current || current.cwd !== context.cwd || current.start !== context.start || current.token !== context.token || current.prefix !== context.prefix) return;
+    prompt.setRangeText(entry.action ? '' : entry.id + (entry.directory ? '' : ' '),context.start,context.end,'end');
+    ui.byId('suggestions').hidden = true;
+    suggestionRequest++;
+    if (entry.action) return entry.action();
+    prompt.focus();
+    if (entry.directory) void suggestions();
+  }
+  function appendSuggestions(entries, context) {
+    const popup = ui.byId('suggestions');
+    const seen = new Set([...popup.querySelectorAll('button[data-suggestion]')].map(button=>button.dataset.suggestion));
+    for (const entry of entries) {
+      if (seen.has(entry.id)) continue;
+      seen.add(entry.id);
+      const button = ui.button(entry.name,()=>insertSuggestion(entry,context));
+      button.dataset.suggestion = entry.id;
+      popup.append(button);
+    }
+  }
+  async function fileSuggestions(context, requestId) {
+    const popup = ui.byId('suggestions');
+    if (!companion.allowed('files')) {
+      popup.append(ui.element('p',companion.capability('files')?.reason || 'الملفات غير متاحة دون اتصال مقترن.'));
+      return;
+    }
+    const normalized = context.token.replace(/\\/g,'/');
+    const slash = normalized.lastIndexOf('/');
+    const directory = normalized.slice(0,slash + 1);
+    const query = normalized.slice(slash + 1).toLowerCase();
+    const loading = ui.element('p','جلب ملفات مجلد العمل…');
+    popup.append(loading);
+    try {
+      const route = '/files?path=' + encodeURIComponent(context.cwd.replace(/[\\/]$/,'') + '/' + directory);
+      const reply = await companion.api.request(route);
+      if (!Array.isArray(reply.entries)) throw new Error('قائمة الملفات غير صالحة.');
+      if (!currentSuggestionRequest(context,requestId)) return;
+      loading.remove();
+      const entries = reply.entries.filter(entry=>typeof entry?.name === 'string' && !/["\n\r]/.test(entry.name) && entry.name.toLowerCase().includes(query)).map(entry=>{
+        const path = directory + entry.name + (entry.is_dir ? '/' : '');
+        const quoted = /\s/.test(path);
+        return {id:'@' + (quoted ? '"' + path + (entry.is_dir ? '' : '"') : path),name:(entry.is_dir ? 'مجلد: ' : 'ملف: ') + directory + entry.name,directory:entry.is_dir};
+      });
+      appendSuggestions(entries,context);
+      if (!entries.length) popup.append(ui.element('p','لا ملفات مطابقة في هذا المجلد.'));
+    } catch (error) {
+      if (!currentSuggestionRequest(context,requestId)) return;
+      loading.textContent = 'تعذر جلب الملفات: ' + error.message;
+    }
+    positionSuggestions();
+  }
+  function currentSuggestionRequest(context, requestId) {
+    const current = suggestionContext();
+    return requestId === suggestionRequest && !ui.byId('suggestions').hidden && current?.cwd === context.cwd && current?.token === context.token && current?.start === context.start;
+  }
+  async function suggestions() {
+    const context = suggestionContext();
+    const requestId = ++suggestionRequest;
     const popup = ui.byId('suggestions');
     const wasHidden = popup.hidden;
     popup.replaceChildren();
-    popup.hidden = !match;
-    if (!match) return;
+    popup.hidden = !context;
+    if (!context) return;
     if (wasHidden) ui.announce('ظهرت قائمة اقتراحات الكتابة؛ السهم الأسفل للدخول، وEscape للإغلاق.');
-    suggestionRange = {start:prompt.selectionStart - match[2].length - 1,end:prompt.selectionStart};
     const commands = [{id:'/new',name:'محادثة جديدة',action:newChat},{id:'/files',name:'ملفات',action:()=>companion.panels.open('files')},{id:'/settings',name:'الإعدادات',action:()=>companion.panels.open('settings')}];
-    const sources = match[1] === '/' ? ['commands','skills'] : ['mcp'];
-    const entries = match[1] === '/' ? [...commands] : [];
+    const sources = context.prefix === '/' ? ['commands'] : ['mcp'];
+    const entries = context.prefix === '/' ? [...commands] : [];
     for (const id of sources) {
       const source = suggestionSources.get(id);
       if (!companion.allowed(id)) popup.append(ui.element('p', companion.capability(id)?.reason || 'مصدر ' + id + ' غير متاح دون اتصال مقترن.'));
       else if (!source || source.reason) popup.append(ui.element('p', 'تعذر جلب ' + id + ': ' + (source?.reason || 'القائمة لم تُحمّل بعد.')));
       else entries.push(...source.entries);
     }
-    const seen = new Set();
-    for (const entry of entries.filter(entry=>{if (!entry.id.toLowerCase().includes(match[2].toLowerCase()) || seen.has(entry.id)) return false; seen.add(entry.id); return true;})) popup.append(ui.button(entry.name,async()=>{
-      prompt.setRangeText(entry.action ? '' : entry.id + ' ',suggestionRange.start,suggestionRange.end,'end');
-      popup.hidden = true;
-      if (entry.action) await entry.action();
-      else prompt.focus();
-    }));
-    popup.append(ui.button('إغلاق الاقتراحات',()=>{popup.hidden=true;prompt.focus();}));
+    appendSuggestions(entries.filter(entry=>entry.id.toLowerCase().includes(context.token.toLowerCase())),context);
+    popup.append(ui.button('إغلاق الاقتراحات',()=>{suggestionRequest++;popup.hidden=true;ui.byId('prompt').focus();}));
+    positionSuggestions();
+    if (context.prefix === '@') await fileSuggestions(context,requestId);
   }
   function keyboard(event) {
     if (event.key === 'Enter' && event.ctrlKey) { event.preventDefault(); ui.byId('chat-form').requestSubmit(); }
@@ -387,17 +470,18 @@
     });
     ui.byId('chat-form').addEventListener('submit',event=>{event.preventDefault();void send();});
     ui.byId('prompt').addEventListener('keydown',keyboard);
-    ui.byId('prompt').addEventListener('input',suggestions);
+    ui.byId('prompt').addEventListener('input',()=>void suggestions());
+    global.addEventListener('resize',positionSuggestions);
+    document.addEventListener('scroll',positionSuggestions,true);
+    global.visualViewport?.addEventListener('resize',positionSuggestions);
+    global.visualViewport?.addEventListener('scroll',positionSuggestions);
     ui.byId('suggestions').addEventListener('keydown',event=>{
       const controls = [...event.currentTarget.querySelectorAll('button')];
       const index = controls.indexOf(document.activeElement);
       if (event.key === 'Escape') { event.currentTarget.hidden=true;ui.byId('prompt').focus(); }
       if (['ArrowDown','ArrowUp'].includes(event.key)) { event.preventDefault();controls[(index + (event.key === 'ArrowDown' ? 1 : controls.length - 1)) % controls.length]?.focus(); }
     });
-    ui.byId('pair-form').addEventListener('submit',event=>{
-      event.preventDefault();
-      void companion.api.pair(ui.byId('pair-code').value.trim()).then(()=>{ui.byId('pair-code').value='';return connect();}).catch(error=>ui.notice(error.message));
-    });
+
   }
   async function initialize() {
     bind();

@@ -276,9 +276,28 @@ async def android_bootstrap(request):
 
 
 async def auth_session(request):
-    cookie = request.cookies[COOKIE]
-    csrf = request.app["pairing"].sessions[cookie][0]
-    return web.json_response({"authenticated": True, "csrf_token": csrf})
+    pairing = request.app["pairing"]
+    cookie = request.cookies.get(COOKIE, "")
+    if pairing.authorized(cookie):
+        csrf = pairing.sessions[cookie][0]
+        return web.json_response(
+            {"authenticated": True, "csrf_token": csrf},
+            headers={"Cache-Control": "no-store"},
+        )
+    cookie, csrf = pairing.new_session()
+    response = web.json_response(
+        {"authenticated": True, "csrf_token": csrf},
+        headers={"Cache-Control": "no-store"},
+    )
+    response.set_cookie(
+        COOKIE,
+        cookie,
+        httponly=True,
+        samesite="Strict",
+        max_age=86400,
+        path="/",
+    )
+    return response
 
 
 async def auth_status(request):

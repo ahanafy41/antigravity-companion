@@ -211,12 +211,13 @@ class CLI:
         if kind in ("skills", "commands"):
             if not self.available:
                 raise CLIUnavailable("agy executable is unavailable")
-            return local_catalog(kind, cwd)
+            plugins = await self.listing("plugins")
+            return local_catalog(kind, cwd, plugins)
         arguments = {
             "models": ["models"],
             "agents": ["agents"],
             "mcp": ["mcp", "list"],
-            "plugins": ["plugin", "list"],
+            "plugins": ["plugin", "list", "--json"],
             "skills": ["skills", "list"],
             "commands": ["commands", "list"],
         }[kind]
@@ -226,10 +227,7 @@ class CLI:
             if kind == "mcp" and cwd is not None
             else await self.command(arguments)
         )
-        rows = parse_listing(output, kind)
-        if not rows and output.strip():
-            raise CLIUnavailable("CLI output is not a supported list format")
-        return rows
+        return parse_listing(output, kind, strict=True)
 
     async def mutate_mcp(self, action, request, cwd=None):
         name = request.get("name", "")
@@ -288,20 +286,39 @@ def mcp_add_flags(request, help_text):
     return flags
 
 
-def parse_listing(output, kind):
+def parse_listing(output, kind, strict=False):
     import json
 
     try:
-        parsed = json.loads(output)
+        parsed = json.loads(output.lstrip("\ufeff"))
     except json.JSONDecodeError:
         parsed = None
     if isinstance(parsed, dict):
-        parsed = parsed.get(kind, parsed.get("servers", []))
+        parsed = parsed.get(kind, parsed.get("servers"))
     if isinstance(parsed, list):
-        return [entry for entry in parsed if isinstance(entry, dict)]
+        if not all(isinstance(entry, dict) for entry in parsed):
+            raise CLIUnavailable("CLI list contains an invalid entry")
+        if kind == "plugins":
+            for entry in parsed:
+                identifier = entry.get("id", entry.get("name"))
+                if (
+                    not isinstance(identifier, str)
+                    or not re.fullmatch(r"[\w.@:/-]{1,128}", identifier)
+                    or identifier.startswith("-")
+                ):
+                    raise CLIUnavailable("CLI plugin identifier is invalid")
+            return [
+                dict(entry, id=entry.get("id", entry.get("name")))
+                for entry in parsed
+            ]
+        return parsed
     rows = []
     for line in output.splitlines():
-        match = re.fullmatch(r"\s*([\w.:-]+)\s{2,}([^\x00-\x1f]+)", line)
+        if kind == "models" and "Fetching available models..." in line:
+            line = line.rsplit("Fetching available models...", 1)[-1]
+        match = re.fullmatch(
+            r"\s*([\w.:-]+)(?:\t+| {2,})([^\x00-\x1f]+)", line
+        )
         if not match:
             continue
         identifier, label = match.groups()
@@ -311,4 +328,6 @@ def parse_listing(output, kind):
         rows.append(
             {key: identifier, "name" if key == "id" else "status": label}
         )
+    if strict and (kind == "plugins" or (not rows and output.strip())):
+        raise CLIUnavailable("CLI output is not a supported list format")
     return rows

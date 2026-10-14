@@ -1,5 +1,39 @@
 # سجل العمل
 
+## chore: publish PR #1 fixes — 2026-10-14
+
+published؛ أذن المستخدم بالرفع، وحُفظت الإصلاحات في d017f8819574e23fe9bf9d45de979a2322105703 ثم رُفعت رفعًا عاديًا إلى origin/codex/refactor-phase-1. تحقق git ls-remote وGitHub PR #1 من الرأس نفسه. فحوص ما قبل الحفظ ناجحة: 79 Python وChromium/Node وBlack79 وflake8 وSW. لا force أو merge أو رد جديد أو تثبيت هاتف؛ قبول الهاتف وagy الحي باقٍ.
+
+
+## fix: implement all PR #1 maintainer comments — 2026-10-14
+
+complete_locally؛ أذن المستخدم بتنفيذ التعليقات جميعًا؛ التعقيب الأخير يجيز الجلسة التلقائية للتطبيق والمتصفح المحلي بلا PIN. اكتمل CLI والاقتراحات وحقول الإعدادات والسياسات وتركيز الحوارات وحراسة Host/Origin/CSRF، مع بقاء Android HMAC/Bearer. [الحصيلة](docs/pr-1-maintainer-report.md): 79 Python، وفحوص Node وChromium، وBlack79 وflake8 وبصمة SW وgit diff --check ناجحة. المراجعة المستقلة أغلقت عيبي Host وslash؛ لا عيب مؤكد باقٍ في نطاقها. لا commit أو push أو رد جديد أو APK؛ قبول Termux/TalkBack/Jieshuo وagy الحي باقٍ. المسارات المقتبسة مثبتة في المسودة، وتوسيعها في CLI غير مختبر.
+
+| الملف | الحال |
+|---|---|
+| server/cli_client.py | complete |
+| server/cli_catalog.py | complete |
+| server/runtime_status.py | complete |
+| server/security.py | complete |
+| server/application.py | complete |
+| server/server.py | complete |
+| server/web/app.js | complete |
+| server/web/panels.js | complete |
+| server/web/ui.js | complete |
+| server/web/styles.css | complete |
+| server/web/index.html | complete |
+| server/web/sw.js | complete |
+| scripts/run_backend_tests.py | complete |
+| scripts/run_parity_tests.py | complete |
+| scripts/run_pairing_tests.py | complete |
+| scripts/run_settings_panel_tests.py | complete |
+| server/web/run_ui_tests.cjs | complete |
+| server/web/run_mentions_tests.cjs | complete |
+| requirements-dev.txt | complete |
+| README.md وSKILL.md | complete |
+| docs/pr-1-maintainer-plan.md وdocs/pr-1-maintainer-report.md | complete |
+| task.md وproject_state.md وCHANGELOG.md | complete |
+
 ## إصلاح مقابلة main 2026-10-14
 
 fix: address main comparison findings — complete locally؛ أذن المستخدم بحفظ التغييرات وفتح طلب السحب (Pull Request) إلى المستودع الأصلي. تشمل إصلاحات نطاق MCP ومجموعات POSIX وإلغاء الكلام وضبط خروج الحساب.

@@ -1,5 +1,6 @@
 """Browser pairing and host/origin isolation; no remote binding."""
 
+from ipaddress import ip_address
 import secrets
 import time
 from urllib.parse import urlsplit
@@ -51,21 +52,58 @@ def error(code, message, status=400):
 @web.middleware
 async def isolation(request, handler):
     expected = {"127.0.0.1", "localhost"}
-    host = urlsplit("http://" + request.host)
-    if host.hostname not in expected or host.port != request.app["port"]:
+    try:
+        host = urlsplit("http://" + request.host)
+        valid_host = (
+            host.hostname in expected
+            and host.port == request.app["port"]
+            and host.username is None
+            and host.password is None
+            and not host.path
+            and not host.query
+            and not host.fragment
+        )
+    except ValueError:
+        valid_host = False
+    if not valid_host:
         return error("invalid_host", "Host is not the local server", 403)
     origin = request.headers.get("Origin")
     if origin:
-        parsed = urlsplit(origin)
-        if (
-            parsed.scheme != "http"
-            or parsed.hostname not in expected
-            or parsed.port != request.app["port"]
-        ):
+        try:
+            parsed = urlsplit(origin)
+            valid_origin = (
+                parsed.scheme == "http"
+                and parsed.hostname == host.hostname
+                and parsed.port == host.port
+                and parsed.username is None
+                and parsed.password is None
+                and not parsed.path
+                and not parsed.query
+                and not parsed.fragment
+            )
+        except ValueError:
+            valid_origin = False
+        if not valid_origin:
             return error(
                 "invalid_origin", "Origin is not the local server", 403
             )
     protected = request.path.startswith("/api/")
+    fetch_site = request.headers.get("Sec-Fetch-Site", "")
+    if protected and fetch_site not in ("", "same-origin", "none"):
+        return error(
+            "invalid_origin", "Cross-origin API access is forbidden", 403
+        )
+    if request.path == "/api/v1/auth/session" and request.method in (
+        "GET",
+        "HEAD",
+    ):
+        try:
+            local_peer = ip_address(request.remote or "").is_loopback
+        except ValueError:
+            local_peer = False
+        if not local_peer:
+            return error("unauthorized", "Local connection required", 403)
+        return await handler(request)
     if request.path == "/api/v1/android/bootstrap":
         request.app["android"].reload_configuration()
         token = request.app["android"].configuration.get("android_token", "")

@@ -17,8 +17,11 @@
     if (message) announce(message);
   }
   function showDialog(dialog) {
+    if (dialog.open) return;
     focusOrigins.set(dialog, document.activeElement);
     dialog.showModal();
+    const target = dialog.querySelector('[data-initial-focus]') || byId(dialog.getAttribute('aria-labelledby')) || dialog.querySelector('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)');
+    if (target) target.focus({preventScroll:true});
   }
   function closeDialog(dialog) { dialog.close(); }
   function dismissTopDialog() {
@@ -30,9 +33,13 @@
   function setupDialogs() {
     for (const dialog of document.querySelectorAll('dialog')) {
       dialog.addEventListener('close', () => {
+        if (dialog.open) return;
+        const activeDialog = document.activeElement?.closest('dialog[open]');
+        if (activeDialog && activeDialog !== dialog) return;
         const origin = focusOrigins.get(dialog);
-        if (origin && origin.closest('dialog')?.open !== false) origin.focus();
-        else byId('menu-open').focus();
+        focusOrigins.delete(dialog);
+        if (origin?.isConnected && !origin.disabled && origin.closest('dialog')?.open !== false) origin.focus({preventScroll:true});
+        else byId('menu-open').focus({preventScroll:true});
       });
     }
     for (const button of document.querySelectorAll('[data-close]')) {

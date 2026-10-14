@@ -82,7 +82,6 @@ def main():
             app = create_app(options.data_dir, options.port)
             if options.android_token_stdin:
                 app["android"].configure(bootstrap_configuration())
-            print("Pairing code: " + app["pairing"].code, flush=True)
             print(
                 "Local URL: http://127.0.0.1:" + str(options.port), flush=True
             )

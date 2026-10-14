@@ -40,6 +40,7 @@
     parent.append(ui.button('اعتماد الاختيار لمحادثة جديدة', async () => {
       await companion.app.newChat();
       companion.app.sessionOptions = {...companion.app.sessionOptions, model:model.value, cwd:cwd.value.trim(), effort:effort.disabled ? undefined : effort.value};
+      await companion.app.refreshSuggestions();
       ui.byId('active-model').textContent = model.options[model.selectedIndex]?.text || 'النموذج';
       ui.closeDialog(ui.byId('panel-dialog'));
     }, 'primary'));
@@ -55,33 +56,98 @@
       ui.closeDialog(ui.byId('panel-dialog'));
     }, 'primary'));
   }
+  function settingsFields(parent, settings) {
+    const edits = {};
+    const labels = {cwd:'مجلد العمل الافتراضي',model:'النموذج الافتراضي',agent:'الوكيل الافتراضي',effort:'درجة التفكير الافتراضية',mode:'وضع agy الافتراضي',project:'المشروع الافتراضي'};
+    for (const [key, label] of Object.entries(labels)) {
+      const field = ui.input(parent,label,{value:settings[key] ?? ''});
+      field.addEventListener('input',()=>{
+        if (field.value === (settings[key] ?? '')) delete edits[key];
+        else edits[key] = field.value;
+      });
+    }
+    for (const [key,label,legacy] of [['sound','نغمة انتهاء الرد','tones_enabled'],['haptics','اهتزاز انتهاء الرد','haptic_enabled']]) {
+      const field = ui.input(parent,label,{type:'checkbox'});
+      field.checked = (settings[key] ?? settings[legacy]) === true;
+      field.addEventListener('change',()=>{edits[key] = field.checked;});
+    }
+    const sandboxChoices = [{id:'true',name:'مفعّل'},{id:'false',name:'معطّل'}];
+    if (settings.sandbox === undefined) sandboxChoices.unshift({id:'',name:'اختيار agy الافتراضي'});
+    const sandbox = selectField(parent,'Sandbox للمحادثات الجديدة',sandboxChoices,settings.sandbox === undefined ? '' : String(settings.sandbox));
+    sandbox.addEventListener('change',()=>{
+      if (sandbox.value === '') delete edits.sandbox;
+      else edits.sandbox = sandbox.value === 'true';
+    });
+    return edits;
+  }
   async function settingsPanel(parent) {
     const reply = await companion.api.request('/settings');
     state.settings = reply.settings;
     state.revision = reply.revision;
-    parent.append(ui.element('p', 'مسودة محلية حتى الحفظ. الإغلاق يلغي المسودة؛ لا تستبدل القيم السرية المحجوبة. تبقى المفاتيح المجهولة.'));
-    parent.append(ui.element('p', 'إعدادات Companion مستقلة عن أذون agy؛ لكل منهما حفظ منفصل.'));
-    const editor = ui.input(parent, 'الإعدادات JSON', {tag:'textarea', value:JSON.stringify(reply.settings,null,2), className:'json-editor'});
+    parent.append(ui.element('p', 'مسودة محلية حتى الحفظ. الإغلاق يلغي المسودة. الحقول غير المعروضة والقيم السرية تبقى محفوظة.'));
+    parent.append(ui.element('p', 'إعدادات Companion مستقلة عن أذون agy؛ لكل منهما حفظ منفصل. الافتراضات تخص المحادثات الجديدة.'));
+    const draft = settingsFields(parent,reply.settings);
     const actions = ui.element('div', undefined, 'panel-actions');
     actions.append(ui.button('حفظ الإعدادات', async () => {
-      const draft = JSON.parse(editor.value);
-      if (!draft || Array.isArray(draft) || typeof draft !== 'object') throw new Error('يلزم كائن JSON للإعدادات.');
-      const saved = await companion.api.request('/settings', {method:'PATCH', headers:{'If-Match':String(state.revision)}, body:{settings:draft,revision:state.revision}});
+      const previousCwd = companion.app.sessionOptions.cwd || state.settings.cwd || '.';
+      const saved = await companion.api.request('/settings', {method:'PATCH', headers:{'If-Match':String(reply.revision)}, body:{settings:draft,revision:reply.revision}});
       state.settings = saved.settings;
       state.revision = saved.revision;
+      const selectedCwd = companion.app.sessionOptions.cwd || state.settings.cwd || '.';
+      if (selectedCwd !== previousCwd) await companion.app.refreshSuggestions();
       ui.announce('حُفظت الإعدادات.');
       ui.closeDialog(ui.byId('panel-dialog'));
     }, 'primary'), ui.button('إلغاء المسودة', () => ui.closeDialog(ui.byId('panel-dialog'))));
     parent.append(actions);
     await policyEditor(parent);
   }
+  function permissionRow(parent, rule, number) {
+    const row = ui.element('fieldset',undefined,'panel-row');
+    row.append(ui.element('legend','القاعدة '+number));
+    const text = ui.input(row,'القاعدة '+number,{value:rule.text});
+    text.maxLength = 512;
+    const kind = selectField(row,'حكم القاعدة '+number,[{id:'allow',name:'allow: السماح'},{id:'deny',name:'deny: المنع'},{id:'ask',name:'ask: السؤال'}],rule.kind);
+    text.addEventListener('input',()=>text.removeAttribute('aria-invalid'));
+    const remove = ui.button('حذف القاعدة '+number,()=>{
+      row.remove();
+      parent.nextElementSibling.focus();
+    });
+    row.append(remove);
+    parent.append(row);
+    return {row,text,kind};
+  }
+  function permissionDraft(rows) {
+    const permissions = {allow:[],deny:[],ask:[]};
+    for (const entry of rows.filter(entry=>entry.row.isConnected)) {
+      const text = entry.text.value.trim();
+      if (!text || text.length > 512 || /[\x00-\x1f]/.test(text)) {
+        entry.text.setAttribute('aria-invalid','true');
+        entry.text.focus();
+        throw new Error('اكتب قاعدة غير فارغة، في سطر واحد، لا تتجاوز 512 حرفًا.');
+      }
+      const rules = permissions[entry.kind.value];
+      rules.push(text);
+      if (rules.length > 256) throw new Error('الحد الأقصى 256 قاعدة لكل حكم.');
+    }
+    return permissions;
+  }
   async function policyEditor(parent) {
     const policy = await companion.api.request('/cli/policy');
-    parent.append(ui.element('h3','أذون أدوات agy'),ui.element('p','قواعد allow وdeny وask في ملف agy الأصلي؛ تقرأها العملية التالية. قد يرفض headless الفعل الذي يحتاج سؤالًا.'));
-    const fields = {};
-    for (const kind of ['allow','deny','ask']) fields[kind] = ui.input(parent,'قواعد '+kind+'، قائمة JSON',{tag:'textarea',value:JSON.stringify(policy.permissions[kind] || [],null,2)});
+    parent.append(ui.element('h3','أذون أدوات agy'),ui.element('p','قواعد allow وdeny وask في ملف agy الأصلي؛ تقرأها العملية التالية. قد يرفض headless الفعل الذي يحتاج سؤالًا. اكتب قاعدة واحدة في كل حقل، مثل command(git).'));
+    const listing = ui.element('section');
+    listing.setAttribute('aria-label','قواعد أذون agy');
+    const rows = [];
+    parent.append(listing);
+    parent.append(ui.button('إضافة قاعدة',()=>{
+      const entry = permissionRow(listing,{text:'',kind:'ask'},rows.length+1);
+      rows.push(entry);
+      entry.text.focus();
+    }));
+    for (const kind of ['allow','deny','ask']) {
+      for (const text of policy.permissions[kind] || []) rows.push(permissionRow(listing,{text,kind},rows.length+1));
+    }
     parent.append(ui.button('حفظ أذون agy',async()=>{
-      const permissions = Object.fromEntries(Object.entries(fields).map(([kind,field])=>[kind,JSON.parse(field.value)]));
+      const permissions = permissionDraft(rows);
       const saved = await companion.api.request('/cli/policy',{method:'PATCH',body:{permissions,revision:policy.revision}});
       policy.revision = saved.revision; ui.announce('حُفظت أذون agy للعملية التالية.');
     }));
@@ -139,7 +205,11 @@
     const preview = ui.element('pre',reply.content,'file-preview');
     preview.tabIndex = 0;
     preview.setAttribute('aria-label','محتوى الملف ' + reply.path);
-    parent.replaceChildren(ui.element('h3',reply.path),preview,ui.button('إدراج مسار الملف في الرسالة',()=>ui.insertPrompt('@' + reply.path + ' ')));
+    parent.replaceChildren(ui.element('h3',reply.path),preview,ui.button('إدراج مسار الملف في الرسالة',()=>{
+      if (/["\n\r]/.test(reply.path)) throw new Error('لا يمكن إدراج مسار يحوي علامة اقتباس أو سطرًا جديدًا.');
+      const reference = /\s/.test(reply.path) ? '"' + reply.path + '"' : reply.path;
+      ui.insertPrompt('@' + reference + ' ');
+    }));
   }
   function jsonObject(field, label) {
     const parsed = JSON.parse(field.value || '{}');
