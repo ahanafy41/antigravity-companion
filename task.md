@@ -9,7 +9,8 @@ fix: address main comparison findings — complete locally؛ أذن المستخ
 | cli_client.py وmcp_probe.py وفحوص العمليات والنطاق | complete locally |
 | android_client.py وrun_tts_tests.py | complete locally |
 | auth_flow.py وAPI والويب وAndroid للخروج المثبت | complete locally |
-| الحزمة والسجلات وطلب السحب | in_progress |
+| الحزمة والسجلات وطلب السحب | complete؛ أُنشئ PR #1 إلى ahanafy41/antigravity-companion:main |
+
 
 
 ## حفظ حصيلة الخطة 2026-10-08
