@@ -2,7 +2,7 @@
 
 ## chore: publish PR #1 fixes — 2026-10-14
 
-publication_in_progress؛ أذن المستخدم برفع التغييرات إلى PR #1. فرع origin/codex/refactor-phase-1 ورأس الطلب مطابقان للأصل 13fe4fb. فحوص ما قبل الحفظ ناجحة: 79 Python وChromium/Node وBlack79 وflake8 وSW. الحفظ والرفع العادي إلى الفرع القائم هما الخطوة التالية؛ لا force أو merge أو تثبيت هاتف.
+published؛ أذن المستخدم بالرفع، وحُفظت الإصلاحات في d017f8819574e23fe9bf9d45de979a2322105703 ثم رُفعت رفعًا عاديًا إلى origin/codex/refactor-phase-1. تحقق git ls-remote وGitHub PR #1 من الرأس نفسه. فحوص ما قبل الحفظ ناجحة: 79 Python وChromium/Node وBlack79 وflake8 وSW. لا force أو merge أو رد جديد أو تثبيت هاتف؛ قبول الهاتف وagy الحي باقٍ.
 
 
 ## fix: implement all PR #1 maintainer comments — 2026-10-14

@@ -1,6 +1,6 @@
 # fix: address PR #1 maintainer review
 
-Date: 2026-10-14. Status: complete_locally. User approved all maintainer comments, including the final local-browser session policy, on 2026-10-14.
+Date: 2026-10-14. Status: published; source commit d017f88 confirmed in PR #1 after explicit user authorization. User approved all maintainer comments, including the final local-browser session policy, on 2026-10-14.
 
 ## Scope and evidence
 

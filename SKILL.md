@@ -6,7 +6,7 @@
 
 CLI يستعمل plugin list --json مع حفظ metadata وقبول []، و--version؛ النماذج تقبل TAB والمسافات وspinner المثبت. مصادر / تُكتشف من TOML والمهارات المفعلة ومكونات الإضافات المعلنة، دون قائمة أوامر أساسية ثابتة. اقتراح @ يستعمل /files وفق cwd الفعلي مع حراسة الرد القديم؛ المسارات ذات الفراغات تحفظ مقتبسة في المسودة، وقبولها في agy الحقيقي يحتاج إثباتًا منفصلًا. الإعدادات تحفظ الحقول المعدلة وحدها؛ الأذون حقول قواعد معنونة مع allow/deny/ask؛ ملفات MCP وOAuth المركبة تبقى وفق عقدها.
 
-فحوص الإضافة: scripts/run_pairing_tests.py وscripts/run_settings_panel_tests.py وserver/web/run_mentions_tests.cjs؛ الفحص المتصفحي القائم run_ui_tests.cjs يشمل الدخول الآلي. مرجع الحصيلة [تقرير PR](docs/pr-1-maintainer-report.md). لا تثبيت هاتف أو إصدار إنتاج أو نشر ضمن هذا التنفيذ المحلي.
+فحوص الإضافة: scripts/run_pairing_tests.py وscripts/run_settings_panel_tests.py وserver/web/run_mentions_tests.cjs؛ الفحص المتصفحي القائم run_ui_tests.cjs يشمل الدخول الآلي. مرجع الحصيلة [تقرير PR](docs/pr-1-maintainer-report.md). أذن المستخدم لاحقًا بالرفع إلى فرع PR #1؛ الإصلاحات منشورة في d017f88 ومثبتة برأس الطلب البعيد. لا تثبيت هاتف أو إصدار إنتاج أو merge.
 
 ## وظائف الخطة 2026-10-08
 
