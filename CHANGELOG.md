@@ -1,5 +1,8 @@
 # سجل التغيير
 
+- 2026-10-14 — fix: implement PR #1 CLI discovery/version parsing, dynamic workspace mentions, accessible dialogs/settings/policy controls, and automatic loopback sessions with origin and CSRF guards.
+
+
 - 2026-10-14 — fix: address main comparison findings across MCP scopes, process groups, speech cancel, and auth state.
 
 - 2026-10-08 — feat: add durable local once schedules and FIFO next-turn messages, recover dispatch safely, cancel owned work, and prevent duplicate session creation.

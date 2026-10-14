@@ -6,8 +6,8 @@ const path = require('node:path');
 const { chromium } = require(process.env.CODEX_PLAYWRIGHT_MODULE || path.join(process.env.CODEX_NODE_MODULES, 'playwright'));
 const requests = [];
 const root = __dirname;
-let paired = false;
 let pluginEnabled = true;
+let runSequence = 0;
 const capabilities = ['chat','models','agents','mcp','files','settings','auth','commands','skills','plugins'].map(id=>({id,available:true}));
 capabilities.find(entry=>entry.id==='plugins').actions=['enable','disable'];
 capabilities.push({id:'quota',available:true},{id:'cli-update',available:true});
@@ -16,8 +16,7 @@ const server = http.createServer(async (request,response)=>{
   let body='';for await (const chunk of request) body+=chunk;
   requests.push({url:request.url,method:request.method,headers:request.headers,body:body ? JSON.parse(body) : null});
   if(request.url==='/health')return json(response,200,{service:'antigravity-companion',api_versions:[1]});
-  if(request.url==='/api/v1/auth/session')return json(response,paired?200:401,paired?{csrf_token:'csrf-ui'}:{message:'pair required'});
-  if(request.url==='/api/v1/pair'){paired=true;return json(response,200,{csrf_token:'csrf-ui'},{'Set-Cookie':'session=fixture; HttpOnly; SameSite=Strict; Path=/'});}
+  if(request.url==='/api/v1/auth/session')return json(response,200,{authenticated:true,csrf_token:'csrf-ui'},{'Set-Cookie':'session=fixture; HttpOnly; SameSite=Strict; Path=/'});
   if(request.url==='/api/v1/capabilities')return json(response,200,{capabilities});
   if(request.url==='/api/v1/settings')return json(response,200,{settings:{cwd:'.',model:'model-one',effort:'high',sound:false,haptics:false,allow_schedule:false},revision:1});
   if(request.url==='/api/v1/system/usage')return json(response,200,{memory:{max_rss_bytes:null},cpu:{user_seconds:12,system_seconds:3},disk:{total_bytes:100,free_bytes:70,used_bytes:30}});
@@ -27,23 +26,25 @@ const server = http.createServer(async (request,response)=>{
   if(request.url==='/api/v1/system/cli-update')return json(response,200,{status:'completed',version_after:'1.2.0',request_id:JSON.parse(body).request_id});
   if(request.url==='/api/v1/cli/policy')return json(response,200,{permissions:{allow:['command(git)'],deny:[],ask:[]},revision:1,owner:'agy',effect:'next_process'});
   if(request.url==='/api/v1/doctor')return json(response,200,{checks:[{name:'agy_executable',available:true},{name:'android_credentials',configured:false}],authentication:'unknown; configuration is not a live login check'});
-  if(request.url==='/api/v1/models')return json(response,200,{models:[{id:'model-one',name:'نموذج تجريبي'},{id:'model-two',name:'نموذج مختار'}]});
-  if(request.url==='/api/v1/commands')return json(response,200,{commands:[{id:'/real-command',name:'أمر CLI فعلي'}]});
-  if(request.url==='/api/v1/skills')return json(response,200,{skills:[{id:'real-skill',name:'مهارة فعلية',enabled:true}]});
-  if(request.url==='/api/v1/mcp')return json(response,200,{servers:[{name:'real-mcp',enabled:true}]});
-  if(request.url==='/api/v1/plugins')return json(response,200,{plugins:[{id:'real-plugin',enabled:pluginEnabled}]});
+  if(request.url.split('?')[0]==='/api/v1/models')return json(response,200,{models:[{id:'model-one',name:'نموذج تجريبي'},{id:'model-two',name:'نموذج مختار'}]});
+  if(request.url.split('?')[0]==='/api/v1/commands')return json(response,200,{commands:[{id:'/real-command',name:'أمر CLI فعلي'},{id:'/real-skill',name:'مهارة فعلية'}]});
+  if(request.url.split('?')[0]==='/api/v1/skills')return json(response,200,{skills:[{id:'real-skill',name:'مهارة فعلية',enabled:true}]});
+  if(request.url.split('?')[0]==='/api/v1/mcp')return json(response,200,{servers:[{name:'real-mcp',enabled:true}]});
+  if(request.url.split('?')[0]==='/api/v1/plugins')return json(response,200,{plugins:[{id:'real-plugin',enabled:pluginEnabled}]});
   if(request.url==='/api/v1/plugins/real-plugin/disable'&&request.method==='POST'){pluginEnabled=false;return json(response,200,{plugins:[{id:'real-plugin',enabled:false}]});}
-  if(request.url==='/api/v1/agents')return json(response,200,{agents:[{id:'default-agent',name:'وكيل افتراضي'},{id:'selected-agent',name:'وكيل مختار'}]});
+  if(request.url.split('?')[0]==='/api/v1/agents')return json(response,200,{agents:[{id:'default-agent',name:'وكيل افتراضي'},{id:'selected-agent',name:'وكيل مختار'}]});
   if(request.url==='/api/v1/sessions'&&request.method==='GET')return json(response,200,{sessions:[]});
   if(request.url==='/api/v1/legacy/conversations')return json(response,200,{conversations:[{conversation_id:'archive-one',title:'أرشيف الخادم',mtime:42}]});
   if(request.url==='/api/v1/legacy/conversations/archive-one')return json(response,200,{conversation_id:'archive-one',truncated:true,invalid_records:1,records:[{type:'USER_INPUT',content:'سؤال تاريخي'},{type:'UNKNOWN',content:'<script>window.archiveXss=true</script> **محفوظ**'}]});
   if(request.url==='/api/v1/sessions/session-one/close'&&request.method==='POST')return json(response,200,{session_id:'session-one',state:'idle'});
   if(request.url==='/api/v1/sessions'&&request.method==='POST')return json(response,201,{session_id:'session-one'});
-  if(request.url==='/api/v1/sessions/session-one/runs')return json(response,202,{run_id:'run-one'});
-  if(request.url==='/api/v1/runs/run-one/events'){
+  if(request.url==='/api/v1/sessions/session-one/runs')return json(response,202,{run_id:'run-' + (++runSequence)});
+  const runMatch = /^\/api\/v1\/runs\/(run-\d+)\/events$/.exec(request.url);
+  if(runMatch){
+    const runId = runMatch[1];
     response.writeHead(200,{'Content-Type':'text/event-stream'});
-    response.write('id: 1\nevent: delta\ndata: '+JSON.stringify({run_id:'run-one',state:'running',text_delta:'**رد** '})+'\n\n');
-    return setTimeout(()=>response.end('id: 2\nevent: result\ndata: '+JSON.stringify({run_id:'run-one',state:'completed',response:'**رد** <img src=x onerror="window.xss=true"> [link](javascript:alert(1))'})+'\n\n'),300);
+    response.write('id: 1\nevent: delta\ndata: '+JSON.stringify({run_id:runId,state:'running',text_delta:'**رد** '})+'\n\n');
+    return setTimeout(()=>response.end('id: 2\nevent: result\ndata: '+JSON.stringify({run_id:runId,state:'completed',response:'**رد** <img src=x onerror="window.xss=true"> [link](javascript:alert(1))'})+'\n\n'),300);
   }
   const file = path.join(root,request.url==='/'?'index.html':request.url.split('?')[0]);
   if(!file.startsWith(root+path.sep))return response.end();
@@ -58,12 +59,12 @@ const server = http.createServer(async (request,response)=>{
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const browser = await chromium.launch({headless:true,executablePath:process.env.COMPANION_BROWSER_EXECUTABLE});
   try{
-    const page=await browser.newPage({serviceWorkers:'block'});
+    const context=await browser.newContext({serviceWorkers:'block'});
+    const page=await context.newPage();
     const failures=[];page.on('pageerror',error=>failures.push(error.message));
     await page.addInitScript(()=>localStorage.setItem('antigravity_chats',JSON.stringify([{id:'old',title:'قديم',messages:[{role:'user',content:'رسالة قديمة'}]}])));
     await page.goto('http://127.0.0.1:'+server.address().port);
-    await page.locator('#pair-code').fill('fixture-code');
-    await page.getByRole('button',{name:'اقتران',exact:true}).click();
+    assert.equal(await page.locator('#pair-code').count(),0);
     await page.locator('#prompt').waitFor({state:'visible'});
     await page.waitForFunction(()=>!document.getElementById('prompt').disabled);
     await page.waitForFunction(()=>document.getElementById('connection-message').textContent.includes('متصل ومقترن'));
@@ -98,7 +99,7 @@ const server = http.createServer(async (request,response)=>{
     assert.equal(await page.evaluate(()=>window.Companion.ui.dismissTopDialog()),false);
     await page.locator('#menu-open').click();
     await page.getByRole('button',{name:'الإعدادات والأمان',exact:true}).click();
-    await page.getByLabel('الإعدادات JSON').fill('{"model":"changed"}');
+    await page.getByLabel('النموذج الافتراضي',{exact:true}).fill('changed');
     await page.getByRole('button',{name:'إلغاء المسودة'}).click();
     assert.equal(requests.some(request=>request.method==='PATCH'),false);
     assert.equal(await page.locator('#menu-open').evaluate(element=>element===document.activeElement),true);
@@ -190,7 +191,9 @@ const server = http.createServer(async (request,response)=>{
     });
     await page.locator('#prompt').fill('دور بعد اختيار النموذج');
     await page.keyboard.press('Control+Enter');
-    await page.waitForFunction(()=>window.Companion.state.runState==='completed'&&window.fixtureVibration===40);
+    await page.waitForFunction(()=>window.Companion.state.runState==='completed');
+    assert.equal(await page.evaluate(()=>document.hidden),false);
+    assert.equal(await page.evaluate(()=>window.fixtureVibration),undefined);
     const noEffortStart=requests.filter(request=>request.url==='/api/v1/sessions'&&request.method==='POST').at(-1);
     assert.equal(noEffortStart.body.agent,'selected-agent');
     assert.equal(noEffortStart.body.project,'chosen-project');
@@ -218,6 +221,6 @@ const server = http.createServer(async (request,response)=>{
     await offlinePage.waitForFunction(()=>window.Companion.state.connected===false && window.Companion.state.storageReady);
     assert.equal(await offlinePage.locator('#send').isDisabled(),true);
     await offlineContext.close();
-    console.log('PASS: real Chromium CSP startup, pairing, credentialed stream, focus retention, Markdown XSS removal, draft cancel, modal Escape/focus, unavailable reason, model/agent/workspace selection retained on panel reopening and session start/resume, legacy offline read-only and safe original NDJSON import/truncation/explicit identifier resume, real static cache with API exclusion and offline reload');
+    console.log('PASS: real Chromium CSP startup, automatic local session, credentialed stream, focus retention, Markdown XSS removal, draft cancel, modal Escape/focus, unavailable reason, model/agent/workspace selection retained on panel reopening and session start/resume, legacy offline read-only and safe original NDJSON import/truncation/explicit identifier resume, real static cache with API exclusion and offline reload');
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

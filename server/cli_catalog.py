@@ -1,9 +1,10 @@
 """Read-only discovery of CLI customization names, never account secrets."""
 
+import re
 from pathlib import Path
 
 
-def catalog_roots(kind, cwd=None):
+def catalog_roots(kind, cwd=None, plugins=None):
     gemini = Path.home() / ".gemini"
     profile = gemini / "antigravity-cli"
     roots = [
@@ -20,12 +21,25 @@ def catalog_roots(kind, cwd=None):
             workspace / ".agent" / kind,
         ]
         owned[0:0] = roots[:2]
-    for plugins in (profile / "plugins", gemini / "config" / "plugins"):
-        if plugins.is_symlink() or not plugins.is_dir():
+    if plugins is not None:
+        roots.extend(
+            Path(plugin["path"]) / kind
+            for plugin in plugins
+            if plugin.get("enabled") is True
+            and isinstance(plugin.get("path"), str)
+            and "\x00" not in plugin["path"]
+            and Path(plugin["path"]).is_absolute()
+        )
+        return [
+            (root, root in owned and "builtin" not in root.parts)
+            for root in dict.fromkeys(roots)
+        ]
+    for plugin_root in (profile / "plugins", gemini / "config" / "plugins"):
+        if plugin_root.is_symlink() or not plugin_root.is_dir():
             continue
         roots.extend(
             path / kind
-            for path in plugins.iterdir()
+            for path in plugin_root.iterdir()
             if path.is_dir() and not path.is_symlink()
         )
     return [
@@ -33,8 +47,21 @@ def catalog_roots(kind, cwd=None):
     ]
 
 
-def skill_files(cwd=None):
-    for root, mutable in catalog_roots("skills", cwd):
+def advertised_skills(root, plugins):
+    for plugin in plugins or []:
+        location = plugin.get("path")
+        if not isinstance(location, str) or "\x00" in location:
+            continue
+        if root == Path(location) / "skills":
+            skills = plugin.get("skills", [])
+            if not isinstance(skills, list):
+                return set()
+            return {name for name in skills if isinstance(name, str)}
+    return None
+
+
+def skill_files(cwd=None, plugins=None):
+    for root, mutable in catalog_roots("skills", cwd, plugins):
         linked = any(
             path.is_symlink()
             or (hasattr(path, "is_junction") and path.is_junction())
@@ -42,7 +69,10 @@ def skill_files(cwd=None):
         )
         if linked or not root.is_dir():
             continue
+        allowed = advertised_skills(root, plugins)
         for folder in root.iterdir():
+            if allowed is not None and folder.name not in allowed:
+                continue
             if folder.is_symlink() or not folder.is_dir():
                 continue
             for filename in ("SKILL.md", "SKILL.md.disabled"):
@@ -82,10 +112,10 @@ def toggle_skill(name, action, cwd=None):
     source.rename(target)
 
 
-def local_catalog(kind, cwd=None):
+def local_catalog(kind, cwd=None, plugins=None):
     entries = {}
     if kind == "skills":
-        files = list(skill_files(cwd))
+        files = list(skill_files(cwd, plugins))
         counts = {}
         for name, _, _ in files:
             counts[name] = counts.get(name, 0) + 1
@@ -102,7 +132,7 @@ def local_catalog(kind, cwd=None):
                 )
         return list(entries.values())
     pattern = "SKILL.md" if kind == "skills" else "*.toml"
-    for root, _ in catalog_roots(kind, cwd):
+    for root, _ in catalog_roots(kind, cwd, plugins):
         if root.is_symlink() or not root.is_dir():
             continue
         for path in root.rglob(pattern):
@@ -118,5 +148,29 @@ def local_catalog(kind, cwd=None):
             identifier = name if kind == "skills" else "/" + name
             entries[identifier] = {"id": identifier, "name": name}
     if kind == "commands":
-        entries.setdefault("/help", {"id": "/help", "name": "CLI help"})
+        for name, path, _ in skill_files(cwd, plugins):
+            if path.name != "SKILL.md":
+                continue
+            with path.open(encoding="utf-8-sig", errors="replace") as source:
+                text = source.read(8192)
+            frontmatter = text.split("---", 2)
+            if len(frontmatter) == 3 and not frontmatter[0].strip():
+                if re.search(
+                    r"^disable-slash-command:\s*true\s*$",
+                    frontmatter[1],
+                    re.MULTILINE | re.IGNORECASE,
+                ):
+                    continue
+                declared = re.search(
+                    r"^name:\s*[\"']?([\w.-]+)[\"']?\s*$",
+                    frontmatter[1],
+                    re.MULTILINE,
+                )
+                if declared:
+                    name = declared.group(1)
+            if re.fullmatch(r"[\w.-]+", name):
+                identifier = "/" + name
+                entries.setdefault(
+                    identifier, {"id": identifier, "name": name}
+                )
     return list(entries.values())

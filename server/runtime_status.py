@@ -104,14 +104,23 @@ class CLIAdministration:
         return report
 
     async def version(self):
-        help_text = await self.cli.command(["--help"])
-        match = re.search(
-            r"^Antigravity CLI(?: version)?[ :]+v?"
-            r"(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)\s*$",
-            help_text,
-            re.MULTILINE,
+        output = (await self.cli.command(["--version"])).strip()
+        number = r"(?:0|[1-9][0-9]*)"
+        prerelease = r"(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
+        semver = (
+            number
+            + r"\."
+            + number
+            + r"\."
+            + number
+            + r"(?:-"
+            + prerelease
+            + r"(?:\."
+            + prerelease
+            + r")*)?"
+            + r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
         )
-        return match.group(1) if match else None
+        return output if re.fullmatch(semver, output) else None
 
     async def update(self, request_id, can_update):
         if not isinstance(request_id, str) or not re.fullmatch(

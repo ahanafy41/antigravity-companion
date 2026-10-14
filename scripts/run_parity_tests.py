@@ -63,6 +63,112 @@ class PolicyHTTPTests(unittest.IsolatedAsyncioTestCase):
                 await runner.cleanup()
 
 
+class CLIContractTests(unittest.IsolatedAsyncioTestCase):
+    async def test_plugin_json_metadata_and_empty_catalog_are_accepted(self):
+        from cli_client import CLI, CLIUnavailable, parse_listing
+        from unittest.mock import AsyncMock
+
+        entry = {"name": "bundle", "enabled": False, "skills": ["review"]}
+        self.assertEqual(
+            parse_listing(json.dumps([entry]), "plugins"),
+            [dict(entry, id="bundle")],
+        )
+        cli = CLI()
+        cli.executable = sys.executable
+        cli.command = AsyncMock(return_value="[]")
+        self.assertEqual(await cli.listing("plugins"), [])
+        self.assertEqual(
+            cli.command.call_args.args[0], ["plugin", "list", "--json"]
+        )
+        cli.command.return_value = '{"unknown": []}'
+        with self.assertRaises(CLIUnavailable):
+            await cli.listing("plugins")
+
+    async def test_version_uses_explicit_command_and_strict_semver(self):
+        from runtime_status import CLIAdministration
+        from unittest.mock import AsyncMock
+        from types import SimpleNamespace
+
+        for value, expected in (
+            ("1.3.5\n", "1.3.5"),
+            ("1.3.5-rc.1+build.2", "1.3.5-rc.1+build.2"),
+            ("01.3.5", None),
+            ("1.3.5-01", None),
+            ("Antigravity CLI 1.3.5", None),
+        ):
+            cli = SimpleNamespace(command=AsyncMock(return_value=value))
+            admin = object.__new__(CLIAdministration)
+            admin.cli = cli
+            self.assertEqual(await admin.version(), expected)
+            self.assertEqual(cli.command.call_args.args[0], ["--version"])
+
+    def test_spinner_preserves_first_model_and_tab_columns(self):
+        from cli_client import parse_listing
+
+        for separator in ("\t", "  "):
+            output = (
+                "⠋ Fetching available models...⠙ Fetching available models..."
+                "gemini-3.8-flash-high" + separator + "Gemini High\n"
+                "gemini-3.8-flash-medium" + separator + "Gemini Medium"
+            )
+            self.assertEqual(
+                parse_listing(output, "models"),
+                [
+                    {"id": "gemini-3.8-flash-high", "name": "Gemini High"},
+                    {"id": "gemini-3.8-flash-medium", "name": "Gemini Medium"},
+                ],
+            )
+
+    def test_slash_catalog_includes_enabled_skills_from_plugin_json(self):
+        from cli_catalog import local_catalog
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            workspace = root / "workspace"
+            plugin = root / "plugin"
+            for folder in (
+                workspace / ".agents/skills/local-review",
+                workspace / ".agents/skills/disabled",
+                plugin / "skills/bundled-review",
+                plugin / "skills/not-advertised",
+            ):
+                folder.mkdir(parents=True)
+                filename = (
+                    "SKILL.md.disabled"
+                    if folder.name == "disabled"
+                    else "SKILL.md"
+                )
+                (folder / filename).write_text("fixture", encoding="utf-8")
+            hidden = workspace / ".agents/skills/hidden"
+            hidden.mkdir(parents=True)
+            (hidden / "SKILL.md").write_text(
+                "---\ndisable-slash-command: true\n---\nprivate",
+                encoding="utf-8",
+            )
+            plugins = [
+                {
+                    "name": "bundle",
+                    "path": str(plugin),
+                    "enabled": True,
+                    "skills": ["bundled-review", "../../hidden"],
+                }
+            ]
+            with patch.object(Path, "home", return_value=root):
+                entries = local_catalog("commands", workspace, plugins)
+                self.assertEqual(
+                    {x["id"] for x in entries},
+                    {"/local-review", "/bundled-review"},
+                )
+                plugins[0]["enabled"] = False
+                self.assertEqual(
+                    {
+                        x["id"]
+                        for x in local_catalog("commands", workspace, plugins)
+                    },
+                    {"/local-review"},
+                )
+
+
 class CatalogTests(unittest.TestCase):
     def test_linked_workspace_skill_root_does_not_escape(self):
         from cli_catalog import local_catalog, toggle_skill

@@ -1,5 +1,13 @@
 # مرجع تشغيل Antigravity Companion
 
+## مطالب صاحب PR #1 — 2026-10-14
+
+أذن المستخدم بتنفيذ التعليقات جميعًا؛ التعقيب الأخير ينسخ اشتراط كود المتصفح. GET /api/v1/auth/session يصدر جلسة محلية تلقائية بلا PIN، ويحفظ HttpOnly وSameSite=Strict وCache-Control:no-store؛ الحراسة تفحص peer loopback وHost الدقيق وOrigin المطابق وSec-Fetch-Site، وتبقي CSRF للتغيير وHMAC/Bearer لمسار Android bootstrap. الثقة تشمل العملاء المحليين؛ لا يُدّعى أن Origin يثبت هويتهم. /pair القديم باقٍ للتوافق فقط، بلا حقل رمز أو طبع رمز في التشغيل.
+
+CLI يستعمل plugin list --json مع حفظ metadata وقبول []، و--version؛ النماذج تقبل TAB والمسافات وspinner المثبت. مصادر / تُكتشف من TOML والمهارات المفعلة ومكونات الإضافات المعلنة، دون قائمة أوامر أساسية ثابتة. اقتراح @ يستعمل /files وفق cwd الفعلي مع حراسة الرد القديم؛ المسارات ذات الفراغات تحفظ مقتبسة في المسودة، وقبولها في agy الحقيقي يحتاج إثباتًا منفصلًا. الإعدادات تحفظ الحقول المعدلة وحدها؛ الأذون حقول قواعد معنونة مع allow/deny/ask؛ ملفات MCP وOAuth المركبة تبقى وفق عقدها.
+
+فحوص الإضافة: scripts/run_pairing_tests.py وscripts/run_settings_panel_tests.py وserver/web/run_mentions_tests.cjs؛ الفحص المتصفحي القائم run_ui_tests.cjs يشمل الدخول الآلي. مرجع الحصيلة [تقرير PR](docs/pr-1-maintainer-report.md). لا تثبيت هاتف أو إصدار إنتاج أو نشر ضمن هذا التنفيذ المحلي.
+
 ## وظائف الخطة 2026-10-08
 
 مرجع الحال [حصيلة الوظائف](docs/feature-completion-report.md). API/v1 يضيف /auth/login و/auth/{id}/cancel، /mcp/{name}/test و/authenticate وGET/PATCH /oauth، /tasks وإلغاء run المملوك، /voice/runs وقراءة/إلغاء run، /voice/requests/{request_id}/cancel، /client/visibility و/system/versions. تبقى حراسة الاقتران وCSRF؛ OAuth لا يعرض السرّ، والحقل الفارغ يحفظه، clear_client_secret يمحوه صراحة، وrevision يحرس التعارض. ملفات MCP ونسخها المؤقتة محجوبة عن file API. native login_cli/mcp_cli يستعملان أمر agy ثابتًا مع cwd موثوق وAGY_CLI_DISABLE_AUTO_UPDATE=true؛ authenticated مجهول حتى دليل مستقل، وإلغاء handoff لا يقتل terminal المستخدم.
@@ -38,7 +46,7 @@ server/ المصدر الوحيد لـPython والويب. Gradle يولد asset
 
 server/server.py يتيح --help و--host (127.0.0.1 فقط) و--port و--data-dir و--android-token-stdin. عند غياب --port تؤخذ port من settings.json أو7681. الأصل المحلي ~/.antigravity-server افتراضي قابل للتغيير. لا قتل عام لعمليات Python، ولا SIGSTOP، ولا dangerously-skip-permissions.
 
-API /api/v1 مع الاقتران وHttpOnly وCSRF؛ health ليس إثبات تسجيل دخول. فحوص الهوية وأصول WebView مقيدة بالمنفذ نفسه. ملكية الجلسة وقراءة CLI واحدة، والنتيجة المكتملة حدث result معلوم؛ EOF أو نتيجة مجهولة إخفاق. لا إعادة تلقائية لدور أو فعل هاتف مجهول. MCP يغيره agy وحده عبر CLI المثبت بالمساعدة؛ فشل القائمة لا يتحول إلى بيانات مختلقة.
+API /api/v1 مع الجلسة المحلية التلقائية وHttpOnly وCSRF؛ health ليس إثبات تسجيل دخول. فحوص الهوية وأصول WebView مقيدة بالمنفذ نفسه. ملكية الجلسة وقراءة CLI واحدة، والنتيجة المكتملة حدث result معلوم؛ EOF أو نتيجة مجهولة إخفاق. لا إعادة تلقائية لدور أو فعل هاتف مجهول. MCP يغيره agy وحده عبر CLI المثبت بالمساعدة؛ فشل القائمة لا يتحول إلى بيانات مختلقة.
 
 Android token ينقل في STDIN لأمر Termux ثابت ويُحفظ محلياً بملف خاص. لا يرسل Bearer إلى خادم قبل challenge HMAC صحيح. لا endpoint لتغيير token بلا مصادقة. ملفات بيانات الخادم واعتمادات CLI محجوبة عن file API، مع استقلال صلاحيات عملية agy نفسها. السجل السابق للقراءة المقترنة، والأصل لا يرحّل ولا يحذف؛ استئناف المعرف يحتاج اختياراً صريحاً.
 

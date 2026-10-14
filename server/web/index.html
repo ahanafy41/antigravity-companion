@@ -37,13 +37,8 @@
   </header>
   <main class="studio">
     <section id="connection-section" aria-labelledby="connection-title" class="connection-card">
-      <h2 id="connection-title">الاتصال والاقتران</h2>
+      <h2 id="connection-title">الاتصال المحلي</h2>
       <p id="connection-message">فحص الخادم المحلي.</p>
-      <form id="pair-form" hidden>
-        <label for="pair-code">رمز الاقتران الذي يظهر لدى الخادم</label>
-        <input id="pair-code" type="password" autocomplete="off" required maxlength="128">
-        <button type="submit" class="primary">اقتران</button>
-      </form>
       <button type="button" id="reconnect">إعادة فحص الاتصال</button>
       <button type="button" id="start-server" hidden>إيقاظ الخادم</button>
       <p>السجل المحفوظ متاح للقراءة عند انقطاع الاتصال. لا يعاد إرسال طلب معلّق تلقائياً.</p>
@@ -59,7 +54,7 @@
       <textarea id="prompt" rows="3" placeholder="اكتب رسالتك هنا..." aria-describedby="prompt-help" disabled></textarea>
       <p id="voice-help" class="composer-help">الإملاء الصوتي يحتاج تطبيق Android؛ النص المملى لا يُرسل تلقائياً.</p>
       <p id="prompt-help" class="composer-help">الإرسال بالزر أو Ctrl+Enter. افتح قائمة الأوامر بعلامة /، وقائمة الإشارات بعلامة @.</p>
-      <div id="suggestions" class="suggestions" hidden aria-label="اقتراحات الكتابة"></div>
+      <div id="suggestions" class="suggestions" role="region" hidden aria-label="اقتراحات الكتابة"></div>
       <div class="composer-actions flex gap-2">
         <button type="button" data-panel="files">ملفات</button>
         <button type="button" id="voice-start" aria-describedby="voice-help">إملاء صوتي</button>
@@ -71,7 +66,7 @@
     </form>
   </main>
   <dialog id="menu-dialog" class="menu-dialog" aria-labelledby="menu-title">
-    <header class="dialog-header"><h2 id="menu-title">القائمة</h2><button type="button" data-close>إغلاق القائمة</button></header>
+    <header class="dialog-header"><h2 id="menu-title" tabindex="-1">القائمة</h2><button type="button" data-close>إغلاق القائمة</button></header>
     <nav aria-label="خيارات Antigravity" class="drawer-options">
       <button type="button" data-panel="models">النموذج والتفكير</button>
       <button type="button" data-panel="auth">حساب agy</button>
@@ -93,7 +88,7 @@
     <footer>Developed by Ahmed Hanafy · Antigravity Companion 1.3.6</footer>
   </dialog>
   <dialog id="panel-dialog" aria-labelledby="panel-title" aria-describedby="panel-description">
-    <header class="dialog-header"><h2 id="panel-title"></h2><button type="button" data-close>إغلاق النافذة</button></header>
+    <header class="dialog-header"><h2 id="panel-title" tabindex="-1"></h2><button type="button" data-close>إغلاق النافذة</button></header>
     <p id="panel-description"></p>
     <div id="panel-content"></div>
   </dialog>
