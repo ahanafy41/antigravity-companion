@@ -4,6 +4,33 @@
   const api = companion.api;
   const encode = encodeURIComponent;
   const uuid = () => global.crypto.randomUUID();
+  const bundled = global.location.origin === 'https://appassets.androidplatform.net';
+  const dashboard = bundled || !!document.getElementById('btn-wake-server');
+  if (companion.native.available()) {
+    const native = (action, args) => companion.native.request(action, args);
+    global.AntigravityBridge = {
+      getAppVersion: async () => (await native('get_app_version')).version,
+      canInstallUnknownApps: async () => (await native('get_app_version')).can_install,
+      isAccessibilityActive: async () => (await native('is_accessibility_active')).active,
+      isAutomationServerReady: async () => (await native('get_connection_status')).automation_ready,
+      isTermuxServerReady: async () => (await native('probe_server')).server_available === true,
+      openSettings: () => native('open_settings'), openTermuxApp: () => native('open_termux_app'),
+      copySetupCommand: () => native('copy_setup_command'),
+      triggerServerWakeup: () => native('start_server'),
+      startServer: () => native('start_server'), stopServer: () => native('stop_server'),
+      openInstallPermissionSettings: () => native('open_install_permission'),
+      runDiagnostics: async () => JSON.stringify(await native('run_diagnostics')),
+      loadChatUrl: () => native('open_chat'), loadDashboardUrl: () => native('open_dashboard'),
+      checkForUpdate: async () => {
+        try { global.onUpdateCheckResult?.(await native('check_update')); }
+        catch (error) { global.onUpdateCheckError?.({error: error.message}); }
+      },
+      startUpdateDownload: async () => {
+        try { global.onUpdateDownloadComplete?.(await native('download_update')); }
+        catch (error) { global.onUpdateDownloadError?.({error: error.message}); report(error); }
+      }
+    };
+  }
   const mcpCatalog = [
   {
     "id": "fs",
@@ -127,7 +154,7 @@
   let authRequestId;
   let connection;
   let sessionCreation;
-  const historyReady = companion.history.open();
+  const historyReady = dashboard ? Promise.resolve() : companion.history.open();
   historyReady.catch(report);
   function persist() { global.sessionStorage.setItem(stateKey, JSON.stringify(current)); }
   function report(error) {
@@ -141,6 +168,7 @@
   }
   function unsupported(message) { throw new companion.ApiError(message, 409, 'native_cli_required'); }
   function connect() {
+    if (bundled) return Promise.reject(new Error('افتح المحادثة للاتصال بخادم Termux.'));
     if (!connection) connection = api.restoreSession().then(session => {
       const status = document.getElementById('chat-connection-status-text'); if (status) status.textContent = 'متصل';
       return session;
@@ -485,7 +513,7 @@
     }
   };
   // Startup stays usable offline; each action retries its own authenticated connection.
-  global.mainV1 = {ready: Promise.allSettled([connect(), historyReady]), healthy, mentions, preferences: () => settingsDocument?.settings || {}, currentConversation: () => current.conversationId};
+  global.mainV1 = {ready: dashboard ? Promise.resolve() : Promise.allSettled([connect(), historyReady]), healthy, mentions, preferences: () => settingsDocument?.settings || {}, currentConversation: () => current.conversationId};
   companion.ui = {dismissTopDialog() {
     const popup = document.getElementById('at-autocomplete-popup') || document.getElementById('slash-autocomplete-popup');
     if (popup) {
@@ -499,36 +527,13 @@
     return false;
   }};
   async function healthy() {
+    if (companion.native.available()) return global.AntigravityBridge.isTermuxServerReady();
+    if (bundled) return false;
     try { return (await global.fetch('/health', {cache: 'no-store'})).ok; }
     catch (error) { return false; }
-  }
-  if (companion.native.available()) {
-    const native = (action, args) => companion.native.request(action, args);
-    global.AntigravityBridge = {
-      getAppVersion: async () => (await native('get_app_version')).version,
-      canInstallUnknownApps: async () => (await native('get_app_version')).can_install,
-      isAccessibilityActive: async () => (await native('is_accessibility_active')).active,
-      isAutomationServerReady: async () => (await native('get_connection_status')).automation_ready,
-      isTermuxServerReady: healthy,
-      openSettings: () => native('open_settings'), openTermuxApp: () => native('open_termux_app'),
-      copySetupCommand: () => native('copy_setup_command'),
-      triggerServerWakeup: () => native('start_server'),
-      openInstallPermissionSettings: () => native('open_install_permission'),
-      runDiagnostics: async () => JSON.stringify(await native('run_diagnostics')),
-      loadChatUrl: () => { global.location.href = '/'; },
-      loadDashboardUrl: () => { global.location.href = '/start'; },
-      checkForUpdate: async () => {
-        try { global.onUpdateCheckResult?.(await native('check_update')); }
-        catch (error) { global.onUpdateCheckError?.({error: error.message}); }
-      },
-      startUpdateDownload: async () => {
-        try { global.onUpdateDownloadComplete?.(await native('download_update')); }
-        catch (error) { global.onUpdateDownloadError?.({error: error.message}); report(error); }
-      }
-    };
   }
   global.addEventListener('companion-native-progress', event => {
     global.onUpdateProgress?.(event.detail.percent);
   });
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(report);
+  if (!bundled && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(report);
 })(window);

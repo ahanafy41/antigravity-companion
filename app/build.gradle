@@ -72,11 +72,21 @@ def prepareCompanionWeb = tasks.register("prepareCompanionWeb", Exec) {
     def pythonExecutable = System.getenv("PYTHON_EXECUTABLE") ?: "python3"
     commandLine pythonExecutable, rootProject.file("scripts/prepare_web_release.py")
 }
-def companionAssets = tasks.register("syncCompanionAssets", Sync) {
+def syncAndroidWeb = tasks.register("syncAndroidWeb", Exec) {
     dependsOn prepareCompanionWeb
+    workingDir rootProject.projectDir
+    def pythonExecutable = System.getenv("PYTHON_EXECUTABLE") ?: "python3"
+    commandLine pythonExecutable, rootProject.file("scripts/sync_android_web.py")
+}
+def companionAssets = tasks.register("syncCompanionAssets", Sync) {
+    dependsOn syncAndroidWeb
     into layout.buildDirectory.dir("generated/companionAssets")
     from(rootProject.file("server")) {
         into "server"
+        exclude "**/__pycache__/**", "**/*.pyc", "**/*tests.cjs"
+    }
+    from("src/main/assets/web") {
+        into "web"
         exclude "**/__pycache__/**", "**/*.pyc", "**/*tests.cjs"
     }
     from("src/main/assets/repair.html")

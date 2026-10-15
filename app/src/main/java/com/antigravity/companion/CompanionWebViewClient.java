@@ -24,7 +24,10 @@ final class CompanionWebViewClient extends WebViewClient {
     }
     @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
         String url = request.getUrl().toString();
-        if (OriginPolicy.REPAIR_URL.equals(url)) return assets.shouldInterceptRequest(request.getUrl());
+        if (origins.allowsAsset(url)) {
+            WebResourceResponse asset = assets.shouldInterceptRequest(request.getUrl());
+            if (asset != null) return asset;
+        }
         if (origins.allowsBridge(url)) return null;
         return new WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden", Collections.emptyMap(),
                 new ByteArrayInputStream(new byte[0]));

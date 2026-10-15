@@ -13,6 +13,7 @@ import okhttp3.RequestBody;
 import okhttp3.MediaType;
 
 final class ServerConnection implements AutoCloseable {
+    enum Availability { MODERN, LEGACY, OFFLINE }
     private final OkHttpClient client = new OkHttpClient.Builder().connectTimeout(2, TimeUnit.SECONDS)
             .readTimeout(2, TimeUnit.SECONDS).callTimeout(3, TimeUnit.SECONDS)
             .followRedirects(false).build();
@@ -22,20 +23,48 @@ final class ServerConnection implements AutoCloseable {
         this(context, NativeSecrets.serverPort(context));
     }
     ServerConnection(Context context, int port) {
+        this(port, NativeSecrets.androidToken(context));
+    }
+    ServerConnection(int port, String token) {
         origin = new OriginPolicy(port).origin();
-        token = NativeSecrets.androidToken(context);
+        this.token = token;
     }
     boolean healthReady() {
+        return probe() != Availability.OFFLINE;
+    }
+    Availability probe() {
         try (Response response = client.newCall(new Request.Builder().url(origin + "/health").build()).execute()) {
-            if (!response.isSuccessful() || response.body() == null) return false;
-            JsonObject health = JsonParser.parseString(response.body().string()).getAsJsonObject();
+            if (!response.isSuccessful() || response.body() == null) return probeLegacyRoot();
+            okio.BufferedSource source = response.body().source();
+            source.request(65537);
+            if (source.buffer().size() > 65536) return probeLegacyRoot();
+            String body = source.buffer().readUtf8();
+            String contentType = response.header("Content-Type", "");
+            String beginning = body.trim().toLowerCase(java.util.Locale.ROOT);
+            if (response.code() == 200 && (contentType.toLowerCase(java.util.Locale.ROOT).contains("text/html")
+                    || beginning.startsWith("<!doctype html") || beginning.startsWith("<html")))
+                return Availability.LEGACY;
+            JsonObject health = JsonParser.parseString(body).getAsJsonObject();
             if (!health.has("service") || !health.get("service").isJsonPrimitive()
                     || !health.get("service").getAsJsonPrimitive().isString()
-                    || !"antigravity-companion".equals(health.get("service").getAsString())) return false;
-            if (!health.has("api_versions") || !health.get("api_versions").isJsonArray()) return false;
-            return health.getAsJsonArray("api_versions").contains(new com.google.gson.JsonPrimitive(1));
+                    || !"antigravity-companion".equals(health.get("service").getAsString())) return probeLegacyRoot();
+            if (!health.has("api_versions") || !health.get("api_versions").isJsonArray()) return probeLegacyRoot();
+            return health.getAsJsonArray("api_versions").contains(new com.google.gson.JsonPrimitive(1))
+                    ? Availability.MODERN : probeLegacyRoot();
         } catch (IOException | com.google.gson.JsonParseException | IllegalStateException | NumberFormatException invalid) {
-            return false;
+            return probeLegacyRoot();
+        }
+    }
+    private Availability probeLegacyRoot() {
+        try (Response response = client.newCall(new Request.Builder().url(origin + "/").build()).execute()) {
+            return response.code() == 200 ? Availability.LEGACY : Availability.OFFLINE;
+        } catch (IOException offline) { return Availability.OFFLINE; }
+    }
+    void stopLegacy() throws IOException {
+        Request request = new Request.Builder().url(origin + "/api/shutdown")
+                .post(RequestBody.create("{}", MediaType.get("application/json"))).build();
+        try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful()) throw new IOException("Legacy shutdown rejected: " + response.code());
         }
     }
     static final class BootstrapUnauthorized extends IOException {
