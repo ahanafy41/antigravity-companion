@@ -1,5 +1,15 @@
 # حصيلة التحقق المحلي
 
+## إصلاح القبول الجاري — 2026-10-15
+
+المصدر الجاري يفتح لوحة البدء المضمّنة عبر WebViewAssetLoader وHTTPS، في WebView لا يعلوها إلا تنبيه Accessibility عند تعطيلها. مفاتيح الهاتف المحلية مستقلة عن Python وIndexedDB. server/web المصدر؛ scripts/sync_android_web.py ينسخه إلى app/src/main/assets/web بعد إعداد SW، ثم يعبئ Gradle assets/web وassets/server/web. ملفات CJS المخصصة للفحص وذاكرة Python المؤقتة مستبعدة.
+
+جاهزية HTTP200 للخادم القديم تجيز عرضه ولا تثبت HMAC؛ الاستكشاف وإيقافه لا يرسلان Bearer. CompanionNative مقيد بالإطار الرئيس وصفحة البدء المضمّنة وأصل الخادم المعين؛ legacy-native.js يوفر واجهة توافق متزامنة فوق هذا النقل. الأفعال الخاصة بالخادم والـbootstrap تحفظ شرط الإثبات.
+
+نجحت 201 حالة Python و61 حالة JVM في20 suite بلا إخفاق، وفحوص Chromium للوحة المضمّنة والجسر القديم وNode وBlack79/flake8 وSW. نجح assembleDebug وlintDebug؛ صفر أخطاء و21 تحذيرًا في Lint. طابقت29 أصل ويب في النسخة المحلية ونسختَي APK، و51 أصل خادم وrepair.html المصدر حرفيًّا. scripts/sync_android_web.py --check يفحص النسخة المحلية، وscripts/run_android_web_asset_tests.py --apk يفحص نسختَي APK مقابل المصدر. فُحص ترتيب التركيز وأسماء الحقول والدلالة النصية؛ لا اتصال هاتف أو قبول TalkBack/Jieshuo لهذا الإصلاح. [خطة الإصلاح](field-acceptance-fix-plan.md) تبين النطاق.
+
+## سجل الفحص السابق — 2026-10-04
+
 تاريخ الفحص: 2026-10-04. الفرع: `codex/refactor-phase-1`. الإصدار: `1.3.2`، رقم APK: `8`.
 
 ## الأدلة
@@ -11,7 +21,7 @@
 | Android | testDebugUnitTest: 14 اختبارًا، صفر إخفاق؛ assembleDebug وassembleRelease ناجحان |
 | Android Lint | صفر أخطاء، 24 تحذيرًا؛ لا ادعاء بخلو المصدر من التحذير |
 | الويب | Node وChromium فعلي: CSP، الاقتران وCSRF، SSE، التركيز، XSS، إلغاء الإعدادات، السجل، وSW والعمل دون شبكة |
-| APK | 34 أصلًا من server/ طابقت المصدر؛ repair.html مطابق؛ لا assets/web القديمة ولا ملفات فحص CJS في APK |
+| APK السابق في 2026-10-04 | 34 أصلًا من server/ طابقت المصدر؛ repair.html مطابق؛ استُبعدت assets/web حينئذ وملفات فحص CJS؛ هذا سجل البناء السابق |
 | Release | com.antigravity.companion، versionCode 8، versionName 1.3.2؛ شهادة SHA256 الأصلية |
 | Debug | شهادة تطوير مختلفة وهوية منفصلة بلاحقة .debug |
 | التعافي | توقيع أصلي وتثبيت فعلي، رفض بيان عابث وملف Python زائد قبل الرجوع، رجوع فعلي مع حفظ settings.json حرفيًا |

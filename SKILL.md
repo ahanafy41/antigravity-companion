@@ -1,12 +1,22 @@
 # مرجع تشغيل Antigravity Companion
 
+## fix: bundled dashboard and legacy server readiness — 2026-10-15
+
+التنفيذ الجاري يفتح OriginPolicy.DASHBOARD_URL، أي HTTPS /assets/web/start.html، عبر WebViewAssetLoader قبل الحاجة إلى Python. MainActivity يعرض WebView وبانر Accessibility وحده عند تعطيل الخدمة. main-v1-adapter.js يتيح AntigravityBridge مبكرًا؛ مفاتيح الصفحة المحلية لا تنتظر API أو جلسة أو IndexedDB.
+
+server/web المصدر الوحيد؛ prepareCompanionWeb يجدد SW، ثم syncAndroidWeb يشغل scripts/sync_android_web.py، ثم syncCompanionAssets يعبئ assets/web وassets/server/web. النسخة app/src/main/assets/web حرفية؛ لا تعدّلها مستقلة. استبعاد *tests.cjs و__pycache__ و*.pyc لازم. sync_android_web.py --help يبين --source و--destination؛ --check يفحص دون نسخ؛ run_android_web_asset_tests.py --apk يفحص النسختين داخل APK.
+
+ServerConnection.probe يميز MODERN وLEGACY وOFFLINE؛ HTML200 في /health، أو رد health قديم أو مخالف مع /200، يجيزان عرض القديم دون Bearer. healthReady يعني إمكان الاتصال؛ server_authenticated لا يصدق إلا بإثبات HMAC. bootstrap والحراسة الخاصة باقيان. CompanionNative يقبل الإطار الرئيس من أصل appassets لصفحة البدء المضمّنة أو أصل الخادم المعين؛ أوامر الهاتف المحلية محدودة ولا تحتاج مصادقة الخادم. legacy-native.js يوفر واجهة AntigravityBridge المتزامنة للخادم القديم فوق النقل المقيد؛ لا Java bridge غير مقيد ولا إرسال سر إليه.
+
+[خطة الإصلاح](docs/field-acceptance-fix-plan.md) مرجع النطاق. الفحص المحلي complete: 201 Python و61 JVM/20 suite وChromium/Node وBlack79/flake8 وSW؛ assembleDebug وlintDebug ناجحان (صفر أخطاء،21 تحذيرًا). طابقت29 أصل ويب في النسخة المحلية ونسختَي APK و51 أصل خادم وrepair.html المصدر حرفيًّا. قبول الهاتف وTalkBack/Jieshuo pending؛ لا تستنتجه من الفحص المحلي.
+
 ## feat: approved main UI and headless controls — 2026-10-15
 
 اعتماد المطور: PR #1، التعليق 6180568312. المصدر المثبت upstream/main@05470d6. index.html وstart.html المدخلان الوحيدان النشطان في / و/start؛ main-ui/start-ui CSS/JS محلية تحت CSP القائم، وmain-v1-adapter.js يستعمل api.js/native.js/history.js دون تبديل fetch العام. لا تعد تحميل أي أصل قديم رجوعًا إلى واجهة PR؛ لا تحذف الأصول المحفوظة المشروطة بقبول الهاتف.
 
 POST /api/v1/system/shutdown يحتاج الجلسة وCSRF، ويرد 202 stopping ثم يستدعي callback يملكه server.py مرة واحدة؛ create_app المضمّن بلا callback يرد 503. لا kill عام. VoiceCommandActivity يسلم إلى FloatingVoiceController وينتهي بلا MainActivity؛ HeadlessVoiceCommand يختار cwd المحفوظ أو أول workspace root، ويستعمل HMAC ثم Cookie/CSRF وإلغاء request_id عند الشك. النطق من NativeSpeech القائم بعد نتيجة الخلفية؛ الإملاء في المحرر المفتوح فقط.
 
-WebSocket 127.0.0.1:8765 يثق بعنوان peer الحقيقي دون Bearer، ويرفض Origin الأجنبي وغير loopback؛ العقد WS journal_ready_epoch_v1 باقٍ. لا تفترض وجود HTTP serve أو مصدر /usr/bin/phone. الجسر async عبر CompanionNative، مع Origin والإطار الرئيس وHMAC قبل الأفعال الخاصة. get_connection_status يميز automation_ready عن server_authenticated. الترقية تستعمل الحزمة التي تحقق منها Android؛ URL من JavaScript لا يختار APK.
+WebSocket 127.0.0.1:8765 يثق بعنوان peer الحقيقي دون Bearer، ويرفض Origin الأجنبي وغير loopback؛ العقد WS journal_ready_epoch_v1 باقٍ. لا تفترض وجود HTTP serve أو مصدر /usr/bin/phone. الجسر async عبر CompanionNative، مع Origin والإطار الرئيس؛ HMAC قبل الأفعال الخاصة بالخادم، والأوامر المحلية المحدودة مستقلة عنه. get_connection_status يميز automation_ready عن server_authenticated. الترقية تستعمل الحزمة التي تحقق منها Android؛ URL من JavaScript لا يختار APK.
 
 أذون CLI لا تحفظ في settings: whitelist/command(*) عبر /cli/policy مع revision وصون deny/ask؛ بقية الأذون غير الموصولة معطلة. OAuth GET/PATCH /mcp/{name}/oauth يحفظ المالك وrevision والفارغ يصون السر. المصادقة إحالة إلى agy، بلا ادعاء authenticated. SSE يحفظ cursor ويعيد GET مرة، ثم snapshot؛ لا يعيد POST مجهولًا. الرسالة الجارية queued للدور التالي، ومعرّفها ومعرّف ترقية CLI يبقيان عند غموض النتيجة. ظهور الوظيفة لا يثبت قبول الهاتف أو حساب agy.
 
@@ -52,7 +62,7 @@ sessions.json وruns.json يبقيان بصيغتهما وحقولهما الم�
 
 ## مصدر الإنتاج
 
-server/ المصدر الوحيد لـPython والويب. Gradle يولد assets من هذا المصدر ومن repair.html؛ نسخ assets/server وassets/web القديمة مستبعدة من البناء وباقية حتى قبول الهاتف. server/version.json مرجع الاسم والرقم؛ لا تتغير هوية release. كل إصدار APK للترقية يحتاج version_code أعلى وشهادة التوقيع الأصلية؛ debug له لاحقة منفصلة وشهادة تطوير.
+server/ المصدر الوحيد لـPython والويب. Gradle يولد assets/server من هذا المصدر، ويضم repair.html وassets/web المنسوخة حرفيًّا من server/web بواسطة scripts/sync_android_web.py؛ نسخة assets/server القديمة وحدها مستبعدة من البناء. server/version.json مرجع الاسم والرقم؛ لا تتغير هوية release. كل إصدار APK للترقية يحتاج version_code أعلى وشهادة التوقيع الأصلية؛ debug له لاحقة منفصلة وشهادة تطوير.
 
 ## التشغيل
 

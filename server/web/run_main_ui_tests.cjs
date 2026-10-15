@@ -79,7 +79,8 @@ const server = http.createServer(async(request,response)=>{
     const page=await context.newPage();
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
     await page.addInitScript(()=>{window.CompanionNative={postMessage(raw){const request=JSON.parse(raw);const outcomes={
-      get_app_version:{version:'2.0.0',can_install:true},is_accessibility_active:{active:false},get_connection_status:{server_authenticated:true,automation_ready:true},
+      get_app_version:{version:'2.0.0',can_install:true},is_accessibility_active:{active:false},get_connection_status:{server_available:true,server_authenticated:true,automation_ready:true},
+      probe_server:{server_available:true,server_authenticated:true,legacy:false},
       run_diagnostics:{status:'ok'},check_update:{hasUpdate:true,latestVersion:'2.1.0'}};
       setTimeout(()=>window.dispatchEvent(new CustomEvent('companion-native-result',{detail:{request_id:request.request_id,success:true,result:outcomes[request.action]||{}}})),0);
     }};window.cspFailures=[];document.addEventListener('securitypolicyviolation',event=>window.cspFailures.push(event.violatedDirective));});
@@ -177,6 +178,51 @@ const server = http.createServer(async(request,response)=>{
     assert.equal(await page.locator('[onclick]').count(),0);
     assert.deepEqual(await page.evaluate(()=>window.cspFailures),[]);
     assert.deepEqual(errors,[]);
-    console.log('PASS main UI + actual v1 adapter: CSP, settings/revision/policy, tool safety, request retry identity, history/offline, native dictation, async dashboard');
+    const bundled=await browser.newContext({serviceWorkers:'allow'});
+    const bundledRequests=[];
+    await bundled.route('https://appassets.androidplatform.net/**',async route=>{
+      const pathname=new URL(route.request().url()).pathname;
+      bundledRequests.push(pathname);
+      const relative=pathname==='/assets/web/start.html'?'start.html':pathname.slice(1);
+      const file=path.resolve(__dirname,relative);
+      if(!file.startsWith(__dirname+path.sep)||!fs.existsSync(file))return route.fulfill({status:404,body:'Unavailable'});
+      return route.fulfill({path:file,contentType:file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html'});
+    });
+    const dashboard=await bundled.newPage();
+    const bundledErrors=[];dashboard.on('pageerror',error=>bundledErrors.push(error.message));
+    await dashboard.addInitScript(()=>{
+      Object.defineProperty(window,'indexedDB',{get(){throw new Error('IndexedDB unavailable');}});
+      window.nativeActions=[];window.serverAvailable=false;
+      window.CompanionNative={postMessage(raw){
+        const request=JSON.parse(raw);window.nativeActions.push(request.action);
+        const outcomes={get_app_version:{version:'2.0.0',can_install:true},is_accessibility_active:{active:false},
+          get_connection_status:{server_available:window.serverAvailable,server_authenticated:false,automation_ready:true},
+          probe_server:{server_available:window.serverAvailable,server_authenticated:false,legacy:true},run_diagnostics:{status:'ok'}};
+        setTimeout(()=>window.dispatchEvent(new CustomEvent('companion-native-result',{detail:{request_id:request.request_id,success:true,result:outcomes[request.action]||{}}})),0);
+      }};
+    });
+    await dashboard.goto('https://appassets.androidplatform.net/assets/web/start.html');
+    await dashboard.waitForFunction(()=>document.getElementById('badge-server').textContent==='غير نشط (متوقف)');
+    await dashboard.locator('#btn-wake-server').click();
+    await dashboard.waitForFunction(()=>window.nativeActions.includes('start_server'));
+    await dashboard.locator('#btn-open-a11y').click();
+    await dashboard.waitForFunction(()=>window.nativeActions.includes('open_settings'));
+    await dashboard.evaluate(()=>{window.serverAvailable=true;});
+    await dashboard.locator('#btn-refresh-status').click();
+    await dashboard.waitForFunction(()=>document.getElementById('badge-server').textContent==='نشط وجاهز');
+    await dashboard.locator('#btn-go-chat').click();
+    await dashboard.waitForFunction(()=>window.nativeActions.includes('open_chat'));
+    dashboard.on('dialog',dialog=>dialog.accept());
+    await dashboard.locator('#btn-stop-server').click();
+    await dashboard.waitForFunction(()=>window.nativeActions.includes('stop_server'));
+    await dashboard.evaluate(async()=>{await window.AntigravityBridge.startServer();await window.AntigravityBridge.loadDashboardUrl();});
+    assert.equal(await dashboard.evaluate(()=>window.nativeActions.filter(action=>action==='start_server').length),2);
+    assert.equal(await dashboard.evaluate(()=>window.nativeActions.includes('open_dashboard')),true);
+    assert.equal(await dashboard.evaluate(()=>window.AntigravityBridge.isTermuxServerReady()),true);
+    assert.equal(await dashboard.evaluate(()=>window.location.pathname),'/assets/web/start.html');
+    assert.deepEqual(bundledRequests.filter(route=>route.startsWith('/api/')||route==='/health'||route==='/sw.js'),[]);
+    assert.deepEqual(bundledErrors,[]);
+    await bundled.close();
+    console.log('PASS main UI + actual v1 adapter: CSP, settings/revision/policy, tool safety, request retry identity, history/offline, native dictation, bundled dashboard without API/IndexedDB, native lifecycle/navigation aliases');
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;server.close();});

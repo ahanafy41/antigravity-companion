@@ -1,5 +1,4 @@
 (async function () {
-await window.mainV1.ready;
 function reportError(error) {
   announce('تعذر الفعل: ' + error.message);
 }
@@ -19,7 +18,7 @@ function reportError(error) {
 
             let a11yActive = false;
             let ws8765Ready = false;
-            let py7681Ready = await window.mainV1.healthy();
+            let py7681Ready = false;
             const bridge = window.AntigravityBridge;
 
             if (bridge) {
@@ -32,6 +31,8 @@ function reportError(error) {
                 if (typeof bridge.isTermuxServerReady === 'function') {
                     py7681Ready = await bridge.isTermuxServerReady();
                 }
+            } else {
+                py7681Ready = await window.mainV1.healthy();
             }
 
             badgeA11y.className = 'status-badge ' + (a11yActive ? 'badge-active' : 'badge-inactive');
@@ -92,8 +93,12 @@ function reportError(error) {
                 badgeServer.className = 'status-badge badge-pending';
                 badgeServer.textContent = 'جاري الإيقاف...';
             }
-            const stopped = await window.mainV1Fetch('/api/shutdown', { method: 'POST' });
-            if (!stopped.ok) { reportError(new Error((await stopped.json()).error)); return; }
+            if (window.AntigravityBridge?.stopServer) {
+                await window.AntigravityBridge.stopServer();
+            } else {
+                const stopped = await window.mainV1Fetch('/api/shutdown', { method: 'POST' });
+                if (!stopped.ok) { reportError(new Error((await stopped.json()).error)); return; }
+            }
             let attempts = 0;
             const pollInterval = setInterval(async function() {
                 attempts++;
@@ -116,9 +121,11 @@ function reportError(error) {
             if (isNavigatingToChat) return;
 
             let bridgeAvailable = !!(window.AntigravityBridge);
-            let py7681Ready = await window.mainV1.healthy();
+            let py7681Ready = false;
             if (bridgeAvailable && typeof window.AntigravityBridge.isTermuxServerReady === 'function') {
                 py7681Ready = await window.AntigravityBridge.isTermuxServerReady();
+            } else {
+                py7681Ready = await window.mainV1.healthy();
             }
 
             if (py7681Ready) {
@@ -150,6 +157,8 @@ function reportError(error) {
                 let readyNow = false;
                 if (window.AntigravityBridge && typeof window.AntigravityBridge.isTermuxServerReady === 'function') {
                     readyNow = await window.AntigravityBridge.isTermuxServerReady();
+                } else {
+                    readyNow = await window.mainV1.healthy();
                 }
 
                 if (readyNow) {

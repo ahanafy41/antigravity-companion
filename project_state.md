@@ -1,5 +1,21 @@
 # حالة المشروع
 
+## fix: address maintainer field acceptance blockers — 2026-10-15
+
+complete_locally؛ أُصلحت مطالب التعليق 6192013512 الأربعة وفق [الخطة](docs/field-acceptance-fix-plan.md): WebView كامل مع تنبيه الوصول ولوحة HTTPS مضمّنة، mirror حرفي لأصول الويب داخل المصدر وAPK، قبول الخادم القديم دون منحه HMAC أو Bearer، وAntigravityBridge متزامن للصفحات القديمة فوق CompanionNative المحدود بالإطار والأصل. لا انتظار Python أو IndexedDB في لوحة البدء. قُيّدت نتائج الاتصال بجيل الصفحة، وتُعلن أخطاء Native داخل الواجهة.
+
+| النطاق | الحال |
+|---|---|
+| MainActivity وCompanionWebViewClient وOriginPolicy وNativeBridgePolicy وServerConnection وNativeActionArguments | complete_locally |
+| start.html وstart-ui.js وmain-v1-adapter.js وlegacy-native.js وفحوص Chromium | complete_locally |
+| Gradle وsync_android_web.py وrun_android_web_asset_tests.py وapp/src/main/assets/web وSW | complete_locally |
+| README وSKILL والخطة وسجل التحقق وCHANGELOG | complete |
+| الفحص | complete؛ 201 Python و61 JVM/20 suite وChromium/Node وBlack79/flake8 وSW؛ Debug وLint ناجحان |
+| تطابق APK | complete؛ 29 أصل ويب في assets/web وassets/server/web، و51 أصل خادم وrepair.html حرفيًّا |
+| الرفع والرد على PR #1 | complete؛ التنفيذ12c6040 مرفوع إلىorigin/codex/refactor-phase-1 ومثبت فيPR؛ الرد: https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6193094988 |
+| قبول TalkBack/Jieshuo والخادم القديم على الهاتف والصوت والترقية الحية | pending؛ يحتاج إعادة قبول المطور؛ لا تثبيت أو نشر Release |
+
+
 ## feat: implement approved main UI and headless controls — 2026-10-15
 
 complete_locally؛ اعتمد المطور الخطة في التعليق 6180568312، وأذن المستخدم بإتمامها والرفع والرد. اكتملت المطالب الأربعة: الصوت بلا فتح MainActivity، loopback WS، واجهة main تحت CSP مع API v1، والجسر والإيقاف المملوك. [حصيلة التنفيذ](docs/ui-main-adaptation-report.md) مرجع العقود وحدود القبول. 199 Python و53 JVM وChromium/Node وDebug ناجحة؛ الإملاء لا يرسل، والبث يستعاد دون إعادة POST، والأذون/OAuth تحفظ المالك والمراجعة. قبول الهاتف وagy/Termux/OTA الحي pending. النشر published؛ رُفع تنفيذ b6d47f3 إلى origin/codex/refactor-phase-1 وحُدّث وصف PR #1 وأُرسل الرد: https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6182599115 . لا Release أو تثبيت هاتف.
