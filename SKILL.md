@@ -1,5 +1,13 @@
 # مرجع تشغيل Antigravity Companion
 
+## fix: scoped maintainer follow-up — review snapshot — 2026-10-15
+
+اقرأ [خطة الحصر](docs/scoped-maintainer-follow-up-plan.md) و[حصيلة الجولة](docs/scoped-maintainer-follow-up-report.md) قبل الاستكمال. التعليق6195796462 يحصر الجولة؛ لا تغيير لملكية الإعدادات أو حذف للإرث أو إعادة هيكلة عامة. FloatingVoiceController يختار LEGACY بعد probe، ويرسل command/ui_tree إلى /api/device_agent/turn دون Bearer أو Cookie؛ الأفعال تحويل حرفي محصور، وCONTINUE حتى خمس خطوات مع history لأفعال مؤكدة. الإلغاء يغلق HTTP الجاري، وRequestBody one-shot يمنع replay حتى503 Retry-After:0. MODERN يحفظ HMAC؛ والإملاء لا يرسل ولا يفتح MainActivity.
+
+SSE GET يعاد ثلاث مرات بفواصل1/2/4ثوانٍ، مع ثبات run/cursor وdedup وإلغاء الانتظار. لا POST retry ولا إعادة prompt؛ هذا لا يصلح socket الفاشل داخل agy. فاحص run_ui_tests المصحح يكشف plugins/undefined؛ والمستخدم منع إصلاح الإضافات خارج الحصر. run_mentions_tests قديم وخارج النطاق، ويرسب عند #prompt. أُبلغ المطور بالموانع في6196172654.
+
+نجحت201 Python و66 JVM وDebug/Lint والفحوص المستقلة؛ لا نجاح شامل أو قبول هاتف جديد. أذن المستخدم لاحقًا برفع الشفرة للمراجعة رغم الموانع؛ هذا الإذن يجيز commit/push للعرض فقط، ولا يجيز إصلاح الإضافات أو ادعاء جاهزية الدمج والإصدار.
+
 ## fix: bundled dashboard and legacy server readiness — 2026-10-15
 
 التنفيذ الجاري يفتح OriginPolicy.DASHBOARD_URL، أي HTTPS /assets/web/start.html، عبر WebViewAssetLoader قبل الحاجة إلى Python. MainActivity يعرض WebView وبانر Accessibility وحده عند تعطيل الخدمة. main-v1-adapter.js يتيح AntigravityBridge مبكرًا؛ مفاتيح الصفحة المحلية لا تنتظر API أو جلسة أو IndexedDB.

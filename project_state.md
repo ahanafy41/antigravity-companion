@@ -1,5 +1,22 @@
 # حالة المشروع
 
+## fix: scoped maintainer follow-up — 2026-10-15
+
+review_snapshot_published؛ أذن المستخدم لاحقًا برفع الشفرة لفحص المطور رغم الفحوص الراسبة، مع بقاء قراره بعدم إصلاح الإضافات. نُفذ محليًا الحصر في التعليقين6195701813 و6195796462 دون إعادة كتابة أو حذف مسارات عاملة. [حصيلة الجولة](docs/scoped-maintainer-follow-up-report.md) مرجع العقود والفحوص والموانع. اعتماد الهاتف السابق تقرير المطور عن12c6040/ef04a14، لا قبولًا جديدًا لهذه الجولة.
+
+| النطاق | الحال |
+|---|---|
+| Legacy floating voice وTTS والأفعال المحصورة/Escalation حتى5خطوات والإلغاء | complete_locally؛ يحتاج قبول الهاتف |
+| Loopback8765 دونBearer | already_implemented؛ أعيد فحص الحراسة دون تغيير الإنتاج |
+| run_ui_tests.cjs وrun_phone_tests.py | updated_locally؛ XML للهاتف ناجح؛ browser يكشف عيب الإضافات السابق |
+| SSE GET reconnect بثلاث محاولات1/2/4s | complete_locally؛ نفسrun/cursor دونPOSTreplay |
+| انقطاعstreamGenerateContent داخلagy | blocked؛ يلزم عقد استئناف الطلب نفسه؛ لا إعادةprompt مجهول الأثر |
+| --help المهمل وتكرارprobe | complete_locally؛ بقيت mutation help وHMAC |
+| الفحص | 201Python و66JVM وDebug/Lint وNode/Chromium المستقل وXML وSW/mirror ناجحة؛ ليس الكل ناجحًا |
+| فاحصا browser الراسبان | run_ui_tests:178 plugins/undefined؛ run_mentions_tests:42 #prompt قديم خارج الحصر |
+| قرار المستخدم في الإضافات | التزم بالحصر وأبلغ المطور؛ لا إصلاح إضافات |
+| الرفع والرد | complete_for_review؛ رُفعت الشفرة في3a00eaf إلىorigin/codex/refactor-phase-1 بأمر المستخدم رغم الفحوص الراسبة؛ الرد: https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6199776507 ؛ الموانع التقنية باقية |
+
 ## fix: address maintainer field acceptance blockers — 2026-10-15
 
 complete_locally؛ أُصلحت مطالب التعليق 6192013512 الأربعة وفق [الخطة](docs/field-acceptance-fix-plan.md): WebView كامل مع تنبيه الوصول ولوحة HTTPS مضمّنة، mirror حرفي لأصول الويب داخل المصدر وAPK، قبول الخادم القديم دون منحه HMAC أو Bearer، وAntigravityBridge متزامن للصفحات القديمة فوق CompanionNative المحدود بالإطار والأصل. لا انتظار Python أو IndexedDB في لوحة البدء. قُيّدت نتائج الاتصال بجيل الصفحة، وتُعلن أخطاء Native داخل الواجهة.

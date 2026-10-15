@@ -77,6 +77,7 @@ class CLIContractTests(unittest.IsolatedAsyncioTestCase):
         cli.executable = sys.executable
         cli.command = AsyncMock(return_value="[]")
         self.assertEqual(await cli.listing("plugins"), [])
+        cli.command.assert_awaited_once_with(["plugin", "list", "--json"])
         self.assertEqual(
             cli.command.call_args.args[0], ["plugin", "list", "--json"]
         )
