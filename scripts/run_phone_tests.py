@@ -15,7 +15,8 @@ import wave
 import xml.etree.ElementTree as ET
 
 PACKAGE = "com.antigravity.companion"
-START_VOICE = "إملاء رسالة"
+START_VOICE = "إملاء رسالة للمساعد"
+OPEN_CHAT = "الانتقال لواجهة الشات والمحادثة"
 CANCEL_VOICE = "إلغاء الإملاء"
 DEFAULT_SPEECH = "هذه رسالة اختبار صوتي لا ترسلها"
 SAFE_PATH = re.compile(r"/[A-Za-z0-9_./-]+\Z")
@@ -357,7 +358,8 @@ def control(hierarchy, label):
             for node in hierarchy.iter("node")
             if node.get("package") == PACKAGE
             and node.get("class") == "android.widget.Button"
-            and node.get("text") == label
+            and label in (node.get("text"), node.get("content-desc"))
+            and node.get("enabled") == "true"
         ),
         None,
     )
@@ -375,22 +377,44 @@ def composer_text(hierarchy):
     return composers[0].get("text", "")
 
 
+def open_chat(adb):
+    hierarchy = adb.hierarchy()
+    dashboard_button = control(hierarchy, OPEN_CHAT)
+    if dashboard_button is not None:
+        adb.tap(dashboard_button)
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        hierarchy = adb.hierarchy()
+        try:
+            composer_text(hierarchy)
+            return hierarchy
+        except AcceptanceError:
+            time.sleep(0.2)
+    raise AcceptanceError("chat_composer_unavailable")
+
+
 def activate_voice(adb, source, target):
     hierarchy = adb.hierarchy()
     node = control(hierarchy, source)
     if node is None:
         raise AcceptanceError("voice_control_unavailable")
     adb.tap(node)
-    time.sleep(0.3)
-    if control(adb.hierarchy(), target) is not None:
-        return
-    # An active screen reader may focus the first tap rather than activate it.
-    adb.tap(node)
-    time.sleep(0.08)
-    adb.tap(node)
-    time.sleep(0.3)
-    if control(adb.hierarchy(), target) is None:
-        raise AcceptanceError("voice_control_transition_failed")
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        hierarchy = adb.hierarchy()
+        if source == START_VOICE:
+            if control(hierarchy, target) is not None:
+                return
+        elif control(hierarchy, CANCEL_VOICE) is None:
+            # The overlay remains visible during capture; its presence alone
+            # cannot prove that cancellation closed the capture Activity.
+            try:
+                composer_text(hierarchy)
+                return
+            except AcceptanceError:
+                pass
+        time.sleep(0.2)
+    raise AcceptanceError("voice_control_transition_failed")
 
 
 def microphone_stopped(adb):
@@ -470,7 +494,13 @@ def dictation(adb, options, initial_draft):
 
 def observed_dictation(adb, expected, initial_draft, deadline):
     while time.monotonic() < deadline:
-        draft = composer_text(adb.hierarchy())
+        hierarchy = adb.hierarchy()
+        try:
+            draft = composer_text(hierarchy)
+        except AcceptanceError:
+            # The capture Activity hides the editor until recognition ends.
+            time.sleep(0.5)
+            continue
         if draft != initial_draft and expected.issubset(
             normalized_words(draft)
         ):
@@ -482,12 +512,13 @@ def observed_dictation(adb, expected, initial_draft, deadline):
 def voice_phase(adb, options, checkpoint):
     adb.open_companion()
     adb.shell("wm", "size")
-    initial_draft = composer_text(adb.hierarchy())
+    initial_draft = composer_text(open_chat(adb))
     audit_before = phone_phase(adb, options, "voice-before")
     for case in audit_before:
         checkpoint(case)
     if any(case["status"] != "pass" for case in audit_before):
         return
+    open_chat(adb)
     activate_voice(adb, START_VOICE, CANCEL_VOICE)
     activate_voice(adb, CANCEL_VOICE, START_VOICE)
     unchanged = composer_text(adb.hierarchy()) == initial_draft

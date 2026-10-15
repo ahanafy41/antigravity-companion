@@ -221,7 +221,6 @@ class CLI:
             "skills": ["skills", "list"],
             "commands": ["commands", "list"],
         }[kind]
-        await self.command(arguments[:1] + ["--help"])
         output = (
             await self.command(arguments, cwd=cwd)
             if kind == "mcp" and cwd is not None

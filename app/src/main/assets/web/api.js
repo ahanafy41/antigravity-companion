@@ -45,19 +45,37 @@
     csrfToken = paired.csrf_token;
     return paired;
   }
-  async function events(runId, options) {
+  async function streamTransport(operation) {
+    try { return await operation(); }
+    catch (error) {
+      if (!(error instanceof TypeError)) throw error;
+      throw new ApiError('انقطع اتصال بث الرد.', 0, 'stream_disconnected');
+    }
+  }
+  function reconnectDelay(milliseconds, signal) {
+    if (signal?.aborted) return Promise.reject(signal.reason);
+    return new Promise((resolve, reject) => {
+      const abort = () => { global.clearTimeout(timer); reject(signal.reason); };
+      const timer = global.setTimeout(() => {
+        signal?.removeEventListener('abort', abort);
+        resolve();
+      }, milliseconds);
+      signal?.addEventListener('abort', abort, {once: true});
+    });
+  }
+  async function readEvents(runId, options) {
     const headers = {Accept: 'text/event-stream'};
     if (options.cursor) headers['Last-Event-ID'] = options.cursor;
-    const response = await global.fetch('/api/v1/runs/' + encodeURIComponent(runId) + '/events', {
+    const response = await streamTransport(() => global.fetch('/api/v1/runs/' + encodeURIComponent(runId) + '/events', {
       credentials: 'same-origin', cache: 'no-store', headers, signal: options.signal
-    });
+    }));
     if (!response.ok) throw new ApiError('تعذر استعادة بث الرد.', response.status, 'stream_failed');
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     try {
       while (true) {
-        const chunk = await reader.read();
+        const chunk = await streamTransport(() => reader.read());
         if (chunk.done) break;
         buffer += decoder.decode(chunk.value, {stream: true});
         const parsed = parseSseFrames(buffer);
@@ -65,6 +83,29 @@
         for (const event of parsed.events) options.onEvent(event);
       }
     } finally { reader.releaseLock(); }
+  }
+  async function events(runId, options) {
+    let cursor = options.cursor || '';
+    let completed = false;
+    const onEvent = event => {
+      if (event.id && Number(event.id) <= Number(cursor)) return;
+      options.onEvent(event);
+      if (event.id) cursor = event.id;
+      if (event.event === 'result' || event.event === 'replay_unavailable') completed = true;
+    };
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await readEvents(runId, {...options, cursor, onEvent});
+        if (completed || attempt === 3) return;
+        throw new ApiError('انقطع بث الرد قبل تمامه.', 0, 'stream_disconnected');
+      } catch (error) {
+        const retryable = error instanceof ApiError && (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500);
+        if (options.signal?.aborted) throw error;
+        if (completed && retryable) return;
+        if (!retryable || attempt === 3) throw error;
+        await reconnectDelay(1000 * 2 ** attempt, options.signal);
+      }
+    }
   }
   companion.parseSseFrames = parseSseFrames;
   companion.ApiError = ApiError;

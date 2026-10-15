@@ -269,18 +269,20 @@ public final class MainActivity extends AppCompatActivity {
         showStatus("فحص هوية الخادم");
         connectionExecutor.execute(() -> {
             try {
-                if (!server.healthReady()) {
+                ServerConnection.Availability availability = server.probe();
+                if (availability == ServerConnection.Availability.OFFLINE) {
                     runOnUiThread(this::launchTermux);
                     long deadline = SystemClock.elapsedRealtime() + 30000;
                     while (!destroyed && SystemClock.elapsedRealtime() < deadline) {
                         adoptReportedServerPort();
-                        if (server.healthReady()) break;
+                        availability = server.probe();
+                        if (availability != ServerConnection.Availability.OFFLINE) break;
                         Thread.sleep(500);
                     }
                     if (destroyed) return;
-                    if (!server.healthReady()) throw new IOException("Server health check timed out; setup in Termux may be required");
+                    if (availability == ServerConnection.Availability.OFFLINE)
+                        throw new IOException("Server health check timed out; setup in Termux may be required");
                 }
-                ServerConnection.Availability availability = server.probe();
                 if (availability == ServerConnection.Availability.LEGACY) {
                     runOnUiThread(() -> {
                         if (destroyed || request != null && request.generation != pageGeneration) return;

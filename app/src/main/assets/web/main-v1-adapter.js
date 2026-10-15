@@ -343,23 +343,21 @@
           if (converted) emit(converted);
         };
         (async () => {
-          for (let attempt = 0; attempt < 2; attempt++) {
-            let streamFailure;
-            try { await api.events(runId, {signal: controller.signal, cursor: current.cursor, onEvent}); }
-            catch (error) {
-              if (controller.signal.aborted) throw error;
-              streamFailure = error;
-            }
-            const snapshot = await request('/runs/' + encode(runId));
-            if (terminal.has(snapshot.state)) {
-              if (snapshot.conversation_id) emit({type: 'init', conversation_id: snapshot.conversation_id});
-              if (snapshot.error) emit({type: 'error', message: snapshot.error});
-              emit({type: 'final_result', response: snapshot.response || '', state: snapshot.state});
-              await saveHistory(sessionId);
-              output.close(); return;
-            }
-            if (attempt === 1) throw streamFailure || new Error('انقطع البث؛ الطلب ما زال قيد التنفيذ. افتح سجل المحادثة لمتابعته.');
+          let streamFailure;
+          try { await api.events(runId, {signal: controller.signal, cursor: current.cursor, onEvent}); }
+          catch (error) {
+            if (controller.signal.aborted) throw error;
+            streamFailure = error;
           }
+          const snapshot = await request('/runs/' + encode(runId), {signal: controller.signal});
+          if (terminal.has(snapshot.state)) {
+            if (snapshot.conversation_id) emit({type: 'init', conversation_id: snapshot.conversation_id});
+            if (snapshot.error) emit({type: 'error', message: snapshot.error});
+            emit({type: 'final_result', response: snapshot.response || '', state: snapshot.state});
+            await saveHistory(sessionId);
+            output.close(); return;
+          }
+          throw streamFailure || new Error('انقطع البث؛ الطلب ما زال قيد التنفيذ. افتح سجل المحادثة لمتابعته.');
         })().catch(error => output.error(error));
       },
       cancel() { controller.abort(); }
