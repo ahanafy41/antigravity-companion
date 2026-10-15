@@ -21,6 +21,66 @@ public final class FloatingVoiceController {
     private Button voiceButton;
     private Button agentButton;
     private LinearLayout panel;
+    private Thread commandWorker;
+    private boolean closed;
+
+    public static void processVoiceCommand(Context context, com.google.gson.JsonObject speech, boolean agentMode) {
+        FloatingVoiceController current = instance;
+        if (!agentMode) {
+            if (!MainActivity.deliverVoiceDictation(speech)) {
+                if (current != null) current.announce("لا يوجد محرر مفتوح للإملاء. افتح المحادثة أولاً.");
+                else android.widget.Toast.makeText(context, "لا يوجد محرر مفتوح للإملاء", android.widget.Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
+        if (current == null || current.closed) {
+            android.widget.Toast.makeText(context, "خدمة التحكم بالجهاز غير متصلة", android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        current.startCommand(speech.get("text").getAsString(), speech.get("task_id").getAsString());
+    }
+
+    private void startCommand(String text, String requestId) {
+        if (commandWorker != null) { announce("أمر صوتي جارٍ. ألغِه أولاً."); return; }
+        Context application = service.getApplicationContext();
+        commandWorker = new Thread(() -> {
+            Thread worker = Thread.currentThread();
+            try (HeadlessVoiceApi api = new HeadlessVoiceApi(application)) {
+                if (worker.isInterrupted()) throw new InterruptedException();
+                new HeadlessVoiceCommand(api, () -> Thread.sleep(500)).execute(text, requestId);
+            } catch (InterruptedException cancelled) {
+                worker.interrupt();
+            } catch (java.io.IOException | IllegalArgumentException | IllegalStateException failure) {
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                    if (!closed) announce("تعذر إتمام الأمر الصوتي. تحقق من اتصال الخادم وحساب agy.");
+                });
+                Logger.getLogger(getClass().getName()).warning("Headless voice request failed: " + failure.getClass().getSimpleName());
+            } finally {
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
+                    if (commandWorker == worker) commandWorker = null;
+                    if (!closed && agentButton != null) {
+                        agentButton.setEnabled(true);
+                        agentButton.setText("تحكم صوتي");
+                        agentButton.setContentDescription("بدء أمر صوتي للتحكم بالجهاز");
+                    }
+                });
+            }
+        }, "companion-headless-voice");
+        if (agentButton != null) {
+            agentButton.setText("إلغاء الأمر الجاري");
+            agentButton.setContentDescription("إلغاء الأمر الصوتي الجاري");
+        }
+        commandWorker.start();
+    }
+
+    private void announce(String text) {
+        com.google.gson.JsonObject args = new com.google.gson.JsonObject();
+        args.addProperty("text", text); args.addProperty("language", "ar-EG");
+        service.executeAction("speak", args, "voice-notice-" + java.util.UUID.randomUUID(), outcome -> {
+            if (outcome.has("error") && !closed)
+                android.widget.Toast.makeText(service, text, android.widget.Toast.LENGTH_LONG).show();
+        });
+    }
     private FloatingVoiceController(AntigravityAccessibilityService service) {
         this.service = service; window = (WindowManager) service.getSystemService(Context.WINDOW_SERVICE);
     }
@@ -40,6 +100,9 @@ public final class FloatingVoiceController {
         agentButton = new Button(service); agentButton.setText("تحكم صوتي");
         agentButton.setContentDescription("بدء أمر صوتي للتحكم بالجهاز");
         agentButton.setOnClickListener(view -> {
+            if (commandWorker != null) {
+                agentButton.setEnabled(false); commandWorker.interrupt(); return;
+            }
             feedback(); service.startActivity(new Intent(service, VoiceCommandActivity.class)
                     .putExtra("voice_agent", true)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP));
@@ -72,6 +135,8 @@ public final class FloatingVoiceController {
     }
     static synchronized void destroy() {
         if (instance == null) return;
+        instance.closed = true;
+        if (instance.commandWorker != null) instance.commandWorker.interrupt();
         if (instance.panel != null && instance.window != null) {
             instance.voiceButton.setOnClickListener(null); instance.agentButton.setOnClickListener(null);
             instance.window.removeView(instance.panel);

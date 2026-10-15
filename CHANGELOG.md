@@ -1,5 +1,9 @@
 # سجل التغيير
 
+- 2026-10-15 — feat: adopt approved main UI over API v1 with CSP assets, headless voice, trusted loopback automation, asynchronous native controls and owned graceful shutdown; fix CLI update help preflight.
+
+- 2026-10-14 — docs: pin maintainer main UI and plan API v1/native/CSP adaptation; frontend replacement awaits architectural approval.
+
 - 2026-10-14 — fix: implement PR #1 CLI discovery/version parsing, dynamic workspace mentions, accessible dialogs/settings/policy controls, and automatic loopback sessions with origin and CSRF guards.
 
 

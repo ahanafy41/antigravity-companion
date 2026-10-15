@@ -1297,7 +1297,7 @@ class CLIAdministrationTests(unittest.IsolatedAsyncioTestCase):
             "elif args==['--help']:\n"
             " print('Antigravity CLI v'+(root/'version').read_text())\n"
             " print('  update          Update CLI')\n"
-            "elif args==['update','--help']: print('Usage of update:')\n"
+            "elif args==['update','--help']: sys.exit(2)\n"
             "elif args==['update']:\n"
             " (root/'version').write_text('1.2.0')\n"
             " counter=root/'updates'\n"

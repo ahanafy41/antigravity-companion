@@ -15,16 +15,15 @@ import org.java_websocket.server.WebSocketServer;
 import java.io.File;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
 public final class LocalAutomationServer extends WebSocketServer implements AutoCloseable {
     public static final int PORT = 8765;
     private static final Logger LOGGER = Logger.getLogger(LocalAutomationServer.class.getName());
+    private volatile boolean ready;
+    boolean isReady() { return ready; }
     private final AntigravityAccessibilityService service;
-    private final byte[] authorization;
     private final ActionLedger ledger;
     private final java.util.concurrent.ExecutorService journalWriter = java.util.concurrent.Executors.newSingleThreadExecutor();
     private final Handler deadlines = new Handler(Looper.getMainLooper());
@@ -32,15 +31,13 @@ public final class LocalAutomationServer extends WebSocketServer implements Auto
         super(new InetSocketAddress("127.0.0.1", PORT), 1, java.util.Collections.singletonList(
                 new org.java_websocket.drafts.Draft_6455(java.util.Collections.emptyList(), 1024 * 1024)));
         this.service = service;
-        authorization = ("Bearer " + NativeSecrets.androidToken(service)).getBytes(StandardCharsets.UTF_8);
         ledger = new ActionLedger(new File(service.getNoBackupFilesDir(), "phone_actions.json"));
         setReuseAddr(true); setConnectionLostTimeout(30);
     }
     @Override public ServerHandshakeBuilder onWebsocketHandshakeReceivedAsServer(
             WebSocket socket, Draft draft, ClientHandshake request) throws InvalidDataException {
-        byte[] supplied = request.getFieldValue("Authorization").getBytes(StandardCharsets.UTF_8);
-        if (!MessageDigest.isEqual(authorization, supplied) || socket.getRemoteSocketAddress() == null
-                || !socket.getRemoteSocketAddress().getAddress().isLoopbackAddress())
+        if (!AutomationConnectionPolicy.allows(socket.getRemoteSocketAddress(), request.getFieldValue("Origin"),
+                new OriginPolicy(NativeSecrets.serverPort(service))))
             throw new InvalidDataException(1008, "Unauthorized");
         return super.onWebsocketHandshakeReceivedAsServer(socket, draft, request);
     }
@@ -124,8 +121,9 @@ public final class LocalAutomationServer extends WebSocketServer implements Auto
     }
     @Override public void onClose(WebSocket socket, int code, String reason, boolean remote) { }
     @Override public void onError(WebSocket socket, Exception failure) { LOGGER.warning("Phone WebSocket failure: " + failure.getClass().getSimpleName()); }
-    @Override public void onStart() { LOGGER.info("Authenticated phone automation ready on loopback"); }
+    @Override public void onStart() { ready = true; LOGGER.info("Phone automation ready on trusted loopback"); }
     @Override public void close() {
+        ready = false;
         deadlines.removeCallbacksAndMessages(null); journalWriter.shutdown();
         try { stop(1000); } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
     }

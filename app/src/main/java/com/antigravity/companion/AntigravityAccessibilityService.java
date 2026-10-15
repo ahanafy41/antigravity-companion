@@ -42,6 +42,10 @@ public class AntigravityAccessibilityService extends AccessibilityService {
     private NativeSpeech speech;
     private interface DeviceAction { void execute(JsonObject args, Consumer<JsonObject> completion); }
     public static AntigravityAccessibilityService getInstance() { return instance; }
+    public static boolean isAutomationServerReady() {
+        AntigravityAccessibilityService service = instance;
+        return service != null && service.automationServer != null && service.automationServer.isReady();
+    }
     public static boolean isServiceRunning() { return instance != null; }
     @Override protected void onServiceConnected() {
         super.onServiceConnected(); instance = this; speech = new NativeSpeech(this); registerActions();

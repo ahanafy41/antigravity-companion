@@ -74,6 +74,8 @@ def create_app(data_dir, port=7681):
     )
     application["instance_id"] = instance_identity(store)
     application["port"] = port
+    application["shutdown_callback"] = None
+    application["shutdown_requested"] = False
     application["store"] = store
     application["pairing"] = Pairing()
     application["cli"] = CLI()
@@ -166,6 +168,7 @@ def register_routes(application):
         web.delete("/api/v1/mcp/{name}", delete_mcp),
         web.post("/api/v1/device/actions", device_action),
         web.get("/api/v1/device/epoch", device_epoch),
+        web.post("/api/v1/system/shutdown", shutdown_server),
         web.get("/api/v1/system/usage", local_usage),
         web.get("/api/v1/quota", account_quota),
         web.get("/api/v1/system/cli-version", cli_version),
@@ -183,12 +186,18 @@ def register_routes(application):
         routes.append(web.get("/api/v1/" + kind, list_cli))
     routes.append(web.route("*", r"/api/{tail:(?!v1(?:/|$)).*}", legacy_api))
     routes.append(web.get("/", index))
+    routes.append(web.get("/start", start_page))
     routes[0:0] = [
         web.get("/api/v1/legacy/conversations", list_legacy),
         web.get("/api/v1/legacy/conversations/{conversation_id}", read_legacy),
     ]
     application.add_routes(routes)
     root_assets = (
+        "main-ui.js",
+        "main-ui.css",
+        "main-v1-adapter.js",
+        "start-ui.js",
+        "start-ui.css",
         "api.js",
         "history.js",
         "state.js",
@@ -1004,6 +1013,22 @@ async def object_body(request):
     if not isinstance(payload, dict):
         raise ValueError("JSON body must be an object")
     return payload
+
+
+async def shutdown_server(request):
+    callback = request.app["shutdown_callback"]
+    if callback is None:
+        return error("shutdown_unavailable", "Host owns server shutdown", 503)
+    if not request.app["shutdown_requested"]:
+        request.app["shutdown_requested"] = True
+        asyncio.get_running_loop().call_later(0.2, callback)
+    return web.json_response({"status": "stopping"}, status=202)
+
+
+async def start_page(request):
+    return web.FileResponse(
+        Path(__file__).resolve().parent / "web" / "start.html"
+    )
 
 
 async def index(request):
