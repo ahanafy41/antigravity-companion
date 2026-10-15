@@ -2,7 +2,7 @@
 
 ## feat: implement approved main UI and headless controls — 2026-10-15
 
-complete_locally؛ اعتمد المطور الخطة في التعليق 6180568312، وأذن المستخدم بإتمامها والرفع والرد. اكتملت المطالب الأربعة: الصوت بلا فتح MainActivity، loopback WS، واجهة main تحت CSP مع API v1، والجسر والإيقاف المملوك. [حصيلة التنفيذ](docs/ui-main-adaptation-report.md) مرجع العقود وحدود القبول. 199 Python و53 JVM وChromium/Node وDebug ناجحة؛ الإملاء لا يرسل، والبث يستعاد دون إعادة POST، والأذون/OAuth تحفظ المالك والمراجعة. قبول الهاتف وagy/Termux/OTA الحي pending. النشر publishing_in_progress؛ لا Release أو تثبيت هاتف.
+complete_locally؛ اعتمد المطور الخطة في التعليق 6180568312، وأذن المستخدم بإتمامها والرفع والرد. اكتملت المطالب الأربعة: الصوت بلا فتح MainActivity، loopback WS، واجهة main تحت CSP مع API v1، والجسر والإيقاف المملوك. [حصيلة التنفيذ](docs/ui-main-adaptation-report.md) مرجع العقود وحدود القبول. 199 Python و53 JVM وChromium/Node وDebug ناجحة؛ الإملاء لا يرسل، والبث يستعاد دون إعادة POST، والأذون/OAuth تحفظ المالك والمراجعة. قبول الهاتف وagy/Termux/OTA الحي pending. النشر published؛ رُفع تنفيذ b6d47f3 إلى origin/codex/refactor-phase-1 وحُدّث وصف PR #1 وأُرسل الرد: https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6182599115 . لا Release أو تثبيت هاتف.
 
 | الملف أو النطاق | الحال |
 |---|---|
@@ -14,7 +14,7 @@ complete_locally؛ اعتمد المطور الخطة في التعليق 618056
 | index.html وstart.html وmain-ui/start-ui CSS/JS وmain-v1-adapter.js | complete_locally |
 | sw.js وrun_main_ui_tests.cjs وrun_tests.cjs | complete_locally |
 | README.md وSKILL.md والخطة والتقرير وCHANGELOG.md | complete |
-| رفع فرع PR #1 والرد على المطور | in_progress؛ مأذون صراحةً |
+| رفع فرع PR #1 والرد على المطور | complete؛ نُشر التنفيذ والرد بإذن المستخدم |
 | قبول الهاتف والحساب والترقية الحية | pending؛ بيد المطور |
 
 ## feat: adopt maintainer main UI — 2026-10-14
