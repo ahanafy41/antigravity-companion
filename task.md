@@ -12,7 +12,7 @@ complete_locally؛ أُصلحت مطالب التعليق 6192013512 الأرب�
 | README وSKILL والخطة وسجل التحقق وCHANGELOG | complete |
 | الفحص | complete؛ 201 Python و61 JVM/20 suite وChromium/Node وBlack79/flake8 وSW؛ Debug وLint ناجحان |
 | تطابق APK | complete؛ 29 أصل ويب في assets/web وassets/server/web، و51 أصل خادم وrepair.html حرفيًّا |
-| الرفع والرد على PR #1 | pending؛ أذن المستخدم بهما، يليان حفظ commit |
+| الرفع والرد على PR #1 | complete؛ التنفيذ12c6040 مرفوع إلىorigin/codex/refactor-phase-1 ومثبت فيPR؛ الرد: https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6193094988 |
 | قبول TalkBack/Jieshuo والخادم القديم على الهاتف والصوت والترقية الحية | pending؛ يحتاج إعادة قبول المطور؛ لا تثبيت أو نشر Release |
 
 
