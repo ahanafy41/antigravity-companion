@@ -1,7 +1,6 @@
 package com.antigravity.companion;
 
 import android.app.Activity;
-import android.content.Intent;
 import android.os.Bundle;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -15,16 +14,13 @@ public final class VoiceCommandActivity extends Activity {
         boolean agentMode = getIntent().getBooleanExtra("voice_agent", false);
         TextView label = new TextView(this);
         label.setText(agentMode ? "تحدث بأمر للتحكم بالجهاز. الإلغاء يوقف التقاط الصوت."
-                : "تحدث لإملاء رسالتك. لا تُرسل حتى تعتمدها.");
+                : "تحدث لإملاء رسالتك في المحرر المفتوح. لا تُرسل حتى تعتمدها.");
+        label.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);
         Button cancel = new Button(this); cancel.setText(agentMode ? "إلغاء الأمر الصوتي" : "إلغاء الإملاء");
         panel.addView(label); panel.addView(cancel); setContentView(panel);
         capture = new VoiceCapture(this); cancel.setOnClickListener(view -> { capture.cancel(); finish(); });
         capture.start(speech -> {
-            if (!speech.has("error")) startActivity(new Intent(this, MainActivity.class)
-                    .putExtra("voice_text", speech.get("text").getAsString())
-                    .putExtra("voice_agent", agentMode)
-                    .putExtra("voice_task_id", speech.get("task_id").getAsString())
-                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+            if (!speech.has("error")) FloatingVoiceController.processVoiceCommand(getApplicationContext(), speech, agentMode);
             else android.widget.Toast.makeText(this, speech.get("error").getAsString(), android.widget.Toast.LENGTH_LONG).show();
             finish();
         });

@@ -1,5 +1,27 @@
 # سجل العمل
 
+## feat: implement approved main UI and headless controls — 2026-10-15
+
+complete_locally؛ اعتمد المطور الخطة في التعليق 6180568312، وأذن المستخدم بإتمامها والرفع والرد. اكتملت المطالب الأربعة: الصوت بلا فتح MainActivity، loopback WS، واجهة main تحت CSP مع API v1، والجسر والإيقاف المملوك. [حصيلة التنفيذ](docs/ui-main-adaptation-report.md) مرجع العقود وحدود القبول. 199 Python و53 JVM وChromium/Node وDebug ناجحة؛ الإملاء لا يرسل، والبث يستعاد دون إعادة POST، والأذون/OAuth تحفظ المالك والمراجعة. قبول الهاتف وagy/Termux/OTA الحي pending. النشر published؛ رُفع تنفيذ b6d47f3 إلى origin/codex/refactor-phase-1 وحُدّث وصف PR #1 وأُرسل الرد: https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6182599115 . لا Release أو تثبيت هاتف.
+
+| الملف أو النطاق | الحال |
+|---|---|
+| VoiceCommandActivity/FloatingVoiceController وHeadlessVoiceApi/HeadlessVoiceCommand | complete_locally |
+| LocalAutomationServer/AutomationConnectionPolicy وMainActivity/NativeActionArguments/AntigravityAccessibilityService | complete_locally |
+| فحوص JVM الثلاثة الجديدة | complete؛ الفحص العام 53 حالة |
+| server/application.py وserver/server.py وscripts/run_shutdown_tests.py | complete؛ 6 حالات |
+| server/runtime_status.py وscripts/run_backend_tests.py | complete؛ إصلاح update --help مثبت رجعيًا |
+| index.html وstart.html وmain-ui/start-ui CSS/JS وmain-v1-adapter.js | complete_locally |
+| sw.js وrun_main_ui_tests.cjs وrun_tests.cjs | complete_locally |
+| README.md وSKILL.md والخطة والتقرير وCHANGELOG.md | complete |
+| رفع فرع PR #1 والرد على المطور | complete؛ نُشر التنفيذ والرد بإذن المستخدم |
+| قبول الهاتف والحساب والترقية الحية | pending؛ بيد المطور |
+
+## feat: adopt maintainer main UI — 2026-10-14
+
+awaiting_maintainer_approval؛ آخر تعليق للمطور 6176545650 ينسخ قرار إبقاء واجهة PR ويطلب واجهة main كاملة. [خطة المواءمة](docs/ui-main-adaptation-plan.md) complete؛ التنفيذ not_started. الأصل upstream/main@05470d6، لا origin/main. فُحصت 40 API قديمة وعقود البث والجسر وCSP؛ turns غير موجود وplugins مغلفة. لا تغيير للشفرة أو الواجهة؛ يلزم اعتماد نقل الواجهة وتكييف CSP والجسر وإيقاف الخادم المملوك. باقي القبول الميداني ثابت. طلب المستخدم عرض الخطة على المطور؛ نُشرت كاملة في 2026-10-15: https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6179106094. انتظار الاعتماد؛ لا تنفيذ إنتاجي أو commit/push لهذه المواءمة.
+
+
 ## chore: publish PR #1 fixes — 2026-10-14
 
 published؛ أذن المستخدم بالرفع، وحُفظت الإصلاحات في d017f8819574e23fe9bf9d45de979a2322105703 ثم رُفعت رفعًا عاديًا إلى origin/codex/refactor-phase-1. تحقق git ls-remote وGitHub PR #1 من الرأس نفسه. فحوص ما قبل الحفظ ناجحة: 79 Python وChromium/Node وBlack79 وflake8 وSW. لا force أو merge أو رد جديد أو تثبيت هاتف؛ قبول الهاتف وagy الحي باقٍ.

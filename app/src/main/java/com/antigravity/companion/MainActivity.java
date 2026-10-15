@@ -25,6 +25,7 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonParseException;
 import java.io.File;
 import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -33,6 +34,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class MainActivity extends AppCompatActivity {
+    private static WeakReference<MainActivity> activeActivity = new WeakReference<>(null);
     private WebView webView;
     private TextView status;
     private OriginPolicy origins;
@@ -140,12 +142,29 @@ public final class MainActivity extends AppCompatActivity {
         actions.put("get_app_version", request -> {
             JsonObject version = new JsonObject(); version.addProperty("version", updates.getCurrentVersionName());
             version.add("native_status", DoctorDiagnosticEngine.runDiagnosis(this));
+            version.add("connection_status", connectionStatus());
+            com.google.gson.JsonArray supported = new com.google.gson.JsonArray();
+            for (String action : actions.keySet()) supported.add(action);
+            version.add("native_actions", supported);
             version.addProperty("version_code", updates.currentVersionCode()); version.addProperty("can_install", updates.canInstallUnknownApps());
             reply(request, version);
         });
+        actions.put("get_connection_status", request -> reply(request, connectionStatus()));
+        actions.put("run_diagnostics", request -> reply(request, DoctorDiagnosticEngine.runDiagnosis(this)));
+        actions.put("is_accessibility_active", request -> reply(request,
+                flag("active", AntigravityAccessibilityService.isServiceRunning())));
+        actions.put("open_settings", request -> {
+            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); reply(request, flag("opened", true));
+        });
+        actions.put("open_termux_app", request -> {
+            Intent launch = getPackageManager().getLaunchIntentForPackage(TermuxBridge.TERMUX_PACKAGE);
+            if (launch == null) throw new IllegalStateException("Termux application is unavailable");
+            startActivity(launch); reply(request, flag("opened", true));
+        });
+        actions.put("copy_setup_command", this::copySetupCommand);
         actions.put("check_update", request -> updates.checkForUpdates(outcome -> reply(request, outcome)));
         actions.put("download_update", this::downloadUpdate);
-        actions.put("open_install_permission", request -> { updates.openInstallPermissionSettings(this); reply(request, new JsonObject()); });
+        actions.put("open_install_permission", request -> { updates.openInstallPermissionSettings(this); reply(request, flag("opened", true)); });
         actions.put("start_voice", request -> {
             voiceButton.setText("إلغاء الإملاء");
             voice.start(speech -> { voiceButton.setText("إملاء رسالة"); reply(request, speech); });
@@ -155,6 +174,25 @@ public final class MainActivity extends AppCompatActivity {
         actions.put("mcp_cli", request -> reply(request, TermuxBridge.startInteractive(this, "mcp", request.args.has("cwd") ? ScreenSnapshot.required(request.args, "cwd") : null)));
         actions.put("logout_cli", request -> reply(request, TermuxBridge.startInteractive(this, "logout", request.args.has("cwd") ? ScreenSnapshot.required(request.args, "cwd") : null)));
         actions.put("start_server", this::connectServer); actions.put("bootstrap", this::connectServer);
+    }
+    private JsonObject connectionStatus() {
+        JsonObject connection = new JsonObject();
+        connection.addProperty("server_connected", serverConnected);
+        connection.addProperty("server_authenticated", serverConnected);
+        connection.addProperty("connecting", connecting.get());
+        connection.addProperty("automation_ready", AntigravityAccessibilityService.isAutomationServerReady());
+        connection.addProperty("accessibility_active", AntigravityAccessibilityService.isServiceRunning());
+        return connection;
+    }
+    private void copySetupCommand(NativeRequest request) {
+        android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (clipboard == null) throw new IllegalStateException("Clipboard is unavailable");
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Antigravity Setup",
+                "curl -fsSL https://raw.githubusercontent.com/ahanafy41/antigravity-companion/main/setup.sh | bash"));
+        reply(request, flag("copied", true));
+    }
+    private static JsonObject flag(String name, boolean enabled) {
+        JsonObject outcome = new JsonObject(); outcome.addProperty(name, enabled); return outcome;
     }
     private void receiveNativeRequest(String message) {
         NativeRequest request = null;
@@ -169,12 +207,14 @@ public final class MainActivity extends AppCompatActivity {
             requestIds.reserve(id);
             request = new NativeRequest(id, payload.getAsJsonObject("args"), pageGeneration);
             String actionName = ScreenSnapshot.required(payload, "action");
-            if (!serverConnected && !actionName.equals("get_app_version") && !actionName.equals("start_server")
+            if (!serverConnected && !actionName.equals("get_app_version") && !actionName.equals("get_connection_status")
+                    && !actionName.equals("is_accessibility_active") && !actionName.equals("run_diagnostics") && !actionName.equals("start_server")
                     && !actionName.equals("bootstrap")) throw new IllegalStateException("Native actions need an authenticated server");
             NativeAction action = actions.get(actionName);
             if (action == null) throw new IllegalArgumentException("Unsupported native action");
+            NativeActionArguments.validate(actionName, request.args);
             action.execute(request);
-        } catch (JsonParseException | IllegalArgumentException | IllegalStateException | SecurityException failure) {
+        } catch (JsonParseException | IllegalArgumentException | IllegalStateException | SecurityException | ActivityNotFoundException failure) {
             if (request != null) reply(request, error(failure.getMessage())); else status.setText("طلب Native مخالف: " + failure.getMessage());
         }
     }
@@ -360,9 +400,14 @@ public final class MainActivity extends AppCompatActivity {
         getIntent().putExtra("voice_text", speech.get("text").getAsString());
         getIntent().putExtra("voice_task_id", speech.get("task_id").getAsString()); deliverPendingVoice();
     }
+    private boolean isChatPage() {
+        if (!origins.allowsBridge(webView.getUrl())) return false;
+        String path = Uri.parse(webView.getUrl()).getPath();
+        return path == null || path.isEmpty() || path.equals("/");
+    }
     private void deliverPendingVoice() {
         String text = getIntent().getStringExtra("voice_text");
-        if (text == null || !serverConnected || !origins.allowsBridge(webView.getUrl())) return;
+        if (text == null || !serverConnected || !isChatPage()) return;
         JsonObject speech = new JsonObject(); speech.addProperty("text", text);
         speech.addProperty("task_id", getIntent().getStringExtra("voice_task_id"));
         speech.addProperty("mode", getIntent().getBooleanExtra("voice_agent", false) ? "agent" : "dictation");
@@ -373,11 +418,26 @@ public final class MainActivity extends AppCompatActivity {
         JsonObject visibility = new JsonObject(); visibility.addProperty("visible", activityVisible);
         emit("companion-native-visibility", visibility, pageGeneration);
     }
+    public static boolean deliverVoiceDictation(JsonObject speech) {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) return false;
+        MainActivity activity = activeActivity.get();
+        if (activity == null || activity.destroyed || !activity.serverConnected
+                || !activity.isChatPage() || speech == null
+                || speech.has("error") || !speech.has("text") || !speech.has("task_id")) return false;
+        JsonObject dictation = speech.deepCopy(); dictation.addProperty("mode", "dictation");
+        activity.emit("companion-voice-input", dictation, activity.pageGeneration); return true;
+    }
+    @Override protected void onStart() { super.onStart(); activeActivity = new WeakReference<>(this); }
+    @Override protected void onStop() {
+        if (activeActivity.get() == this) activeActivity.clear();
+        super.onStop();
+    }
     @Override protected void onResume() { super.onResume(); activityVisible = true; reportVisibility(); }
     @Override protected void onPause() { activityVisible = false; reportVisibility(); super.onPause(); }
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); deliverPendingVoice(); }
     private static JsonObject error(String message) { JsonObject failure = new JsonObject(); failure.addProperty("error", message); return failure; }
     @Override protected void onDestroy() {
+        if (activeActivity.get() == this) activeActivity.clear();
         destroyed = true; TermuxBridge.cancelRequests(this); voice.close(); updates.close(); server.close(); connectionExecutor.shutdownNow();
         if (bridgeSupported) WebViewCompat.removeWebMessageListener(webView, "CompanionNative");
         webView.stopLoading(); webView.setWebViewClient(new WebViewClient()); webView.destroy(); super.onDestroy();

@@ -145,7 +145,6 @@ class CLIAdministration:
         help_text = await self.cli.command(["--help"])
         if not re.search(r"^\s*update\s+", help_text, re.MULTILINE):
             raise CLIUnavailable("CLI update command is not advertised")
-        await self.cli.command(["update", "--help"])
         if not can_update():
             raise ValueError("Close owned CLI sessions before updating")
         if len(self.updates) >= 128:

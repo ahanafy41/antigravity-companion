@@ -67,6 +67,10 @@ def bootstrap_configuration():
     return configuration
 
 
+def request_shutdown():
+    raise web.GracefulExit()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", choices=["127.0.0.1"], default="127.0.0.1")
@@ -80,6 +84,7 @@ def main():
         options.port = options.port or configured_port(options.data_dir)
         with server_lock(options.data_dir):
             app = create_app(options.data_dir, options.port)
+            app["shutdown_callback"] = request_shutdown
             if options.android_token_stdin:
                 app["android"].configure(bootstrap_configuration())
             print(

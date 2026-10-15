@@ -41,6 +41,8 @@ function load(name, extras = {}) {
   assert.match(sw, /request.method !== 'GET'/);
   const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
   assert.doesNotMatch(html, /https:\/\/.*(?:cdn|unpkg)/);
-  assert.match(html, /alpine-csp/);
+  assert.match(html, /src="\/main-v1-adapter\.js"/);
+  assert.match(html, /src="\/main-ui\.js"/);
+  assert.doesNotMatch(html, /(?:alpine|tailwind|onclick=|<script>)/);
   console.log('PASS: CSRF recovery, credentialed mutation, Unicode SSE framing, nondestructive legacy import, static-only worker, local dependencies');
 })().catch(error=>{console.error(error); process.exitCode=1;});

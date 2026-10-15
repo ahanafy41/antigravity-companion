@@ -2,96 +2,783 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
   <meta name="theme-color" content="#090d13">
-  <title>Antigravity Web</title>
   <link rel="manifest" href="/manifest.json">
-  <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/vendor/tailwind.min.css">
-  <link rel="stylesheet" href="/styles.css">
-  <script defer src="/vendor/marked.umd.js"></script>
-  <script defer src="/vendor/purify.min.js"></script>
-  <script defer src="/api.js"></script>
-  <script defer src="/history.js"></script>
-  <script defer src="/state.js"></script>
-  <script defer src="/native.js"></script>
-  <script defer src="/ui.js"></script>
-  <script defer src="/panels.js"></script>
-  <script defer src="/app.js"></script>
-  <script defer src="/vendor/alpine-csp.min.js"></script>
+  <link rel="apple-touch-icon" href="/icon.svg">
+  <title>Antigravity Web</title>
+  <link rel="stylesheet" href="/main-ui.css">
 </head>
-<body x-data="companion">
-  <a class="skip-link" href="#prompt">إلى كتابة الرسالة</a>
-  <p id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
-  <header class="app-header">
-    <div class="brand-section flex gap-2 items-center">
-      <button type="button" id="menu-open" aria-haspopup="dialog" aria-controls="menu-dialog">القائمة</button>
-      <h1 class="brand-name">Antigravity</h1>
-      <span class="status-badge" x-text="connectionLabel">فحص الاتصال</span>
-    </div>
-    <nav class="header-actions flex gap-2" aria-label="إجراءات المحادثة">
-      <button type="button" data-panel="auth">الحساب</button>
-      <button type="button" data-panel="models" id="active-model">النموذج</button>
-      <button type="button" id="new-chat" class="primary">جديد</button>
-    </nav>
-  </header>
-  <main class="studio">
-    <section id="connection-section" aria-labelledby="connection-title" class="connection-card">
-      <h2 id="connection-title">الاتصال المحلي</h2>
-      <p id="connection-message">فحص الخادم المحلي.</p>
-      <button type="button" id="reconnect">إعادة فحص الاتصال</button>
-      <button type="button" id="start-server" hidden>إيقاظ الخادم</button>
-      <p>السجل المحفوظ متاح للقراءة عند انقطاع الاتصال. لا يعاد إرسال طلب معلّق تلقائياً.</p>
-    </section>
-    <p id="notice" class="notice" hidden></p>
-    <section class="chat-region" aria-labelledby="chat-title">
-      <h2 id="chat-title" class="sr-only">المحادثة</h2>
-      <div id="messages" class="chat-feed" aria-label="الرسائل" aria-busy="false"></div>
-      <p id="run-status">لا رد جارٍ.</p>
-    </section>
-    <form id="chat-form" class="composer">
-      <label for="prompt" class="sr-only">اكتب رسالتك</label>
-      <textarea id="prompt" rows="3" placeholder="اكتب رسالتك هنا..." aria-describedby="prompt-help" disabled></textarea>
-      <p id="voice-help" class="composer-help">الإملاء الصوتي يحتاج تطبيق Android؛ النص المملى لا يُرسل تلقائياً.</p>
-      <p id="prompt-help" class="composer-help">الإرسال بالزر أو Ctrl+Enter. افتح قائمة الأوامر بعلامة /، وقائمة الإشارات بعلامة @.</p>
-      <div id="suggestions" class="suggestions" role="region" hidden aria-label="اقتراحات الكتابة"></div>
-      <div class="composer-actions flex gap-2">
-        <button type="button" data-panel="files">ملفات</button>
-        <button type="button" id="voice-start" aria-describedby="voice-help">إملاء صوتي</button>
-        <button type="button" id="voice-cancel" hidden>إلغاء الإملاء</button>
-        <button type="submit" id="send" class="primary" disabled>إرسال</button>
-        <button type="button" id="cancel-run" class="danger" hidden>إيقاف الرد</button>
-        <button type="button" id="recover-run" hidden>استعادة حالة الرد</button>
+<body>
+
+
+  <div id="sr-announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+
+
+  <header class="app-header" role="banner">
+    <div class="brand-section">
+      <button type="button" id="btn-toggle-drawer" class="btn btn-drawer-toggle" aria-label="القائمة" aria-haspopup="dialog" aria-expanded="false"><span class="drawer-icon" aria-hidden="true">☰</span> <span class="drawer-label">القائمة</span></button>
+      <span class="brand-name main-style-1">Antigravity</span>
+      <div class="status-badge" id="status-badge" role="status" aria-label="حالة الخادم">
+        <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+        <span id="chat-connection-status-text">متصل</span>
       </div>
-    </form>
-  </main>
-  <dialog id="menu-dialog" class="menu-dialog" aria-labelledby="menu-title">
-    <header class="dialog-header"><h2 id="menu-title" tabindex="-1">القائمة</h2><button type="button" data-close>إغلاق القائمة</button></header>
-    <nav aria-label="خيارات Antigravity" class="drawer-options">
-      <button type="button" data-panel="models">النموذج والتفكير</button>
-      <button type="button" data-panel="auth">حساب agy</button>
-      <button type="button" data-panel="settings">الإعدادات والأمان</button>
-      <button type="button" data-panel="quota">استهلاك النماذج</button>
-      <button type="button" data-panel="agents">فريق الوكلاء</button>
-      <button type="button" data-panel="engine">المحرك المستقل والمزودون</button>
-      <button type="button" data-panel="tasks">المهام والمؤقتات</button>
-      <button type="button" data-panel="skills">المهارات</button>
-      <button type="button" data-panel="plugins">الإضافات</button>
-      <button type="button" data-panel="mcp">بروتوكولات MCP</button>
-      <button type="button" data-panel="device">التحكم بالهاتف</button>
-      <button type="button" data-panel="voice">التحكم الصوتي وTTS</button>
-      <button type="button" data-panel="history">المحادثات السابقة</button>
-      <button type="button" data-panel="updates">فحص إصدار التطبيق</button>
-      <button type="button" id="export-chat">تصدير المحادثة JSON</button>
-      <button type="button" id="clear-chat" class="danger">مسح العرض</button>
-    </nav>
-    <footer>Developed by Ahmed Hanafy · Antigravity Companion 1.3.6</footer>
+    </div>
+
+
+    <div class="header-actions" role="toolbar" aria-label="الإجراءات">
+      <button type="button" id="btn-header-dashboard" class="btn" aria-label="لوحة التحكم وشاشة البدء" title="لوحة التحكم">الرئيسية</button>
+      <button type="button" id="btn-header-auth" class="btn" aria-label="الحساب"><span id="header-auth-badge">الحساب</span></button>
+      <button type="button" id="btn-header-model" class="btn btn-header-model" aria-label="تغيير النموذج"><span id="header-active-model-name">لم يُختر نموذج</span></button>
+      <button type="button" id="btn-new-ai-chat" class="btn btn-primary" aria-label="محادثة جديدة">جديد</button>
+      <button type="button" id="btn-toggle-tones" class="btn main-style-2" aria-label="الأصوات">أصوات</button>
+    </div>
+  </header>
+
+
+  <div id="drawer-backdrop" class="drawer-backdrop" aria-hidden="true"></div>
+
+
+  <nav id="antigravity-drawer" class="antigravity-drawer" role="dialog" aria-modal="true" aria-label="القائمة" aria-hidden="true" inert>
+    <div class="drawer-header">
+      <div class="drawer-header-title">
+        <h2>القائمة</h2>
+      </div>
+      <button type="button" id="btn-close-drawer" class="btn-close-drawer" aria-label="إغلاق">✕</button>
+    </div>
+    <div class="drawer-body" role="menu" aria-label="الخيارات">
+      <button type="button" id="btn-drawer-change-model" class="drawer-btn" aria-label="النموذج والتفكير">
+        <span>النموذج والتفكير</span>
+        <strong id="drawer-active-model-name" class="badge-count main-style-3">لم يُختر نموذج</strong>
+      </button>
+      <button type="button" id="btn-open-auth-wizard" class="drawer-btn" aria-label="حساب Google">
+        <span>حساب Google</span>
+        <strong id="drawer-auth-badge" class="badge-count main-style-3">فحص...</strong>
+      </button>
+      <button type="button" id="btn-open-settings" class="drawer-btn" aria-label="الإعدادات والأمان">
+        <span>الإعدادات والأمان</span>
+      </button>
+      <button type="button" id="btn-open-quota" class="drawer-btn" aria-label="استهلاك النماذج">
+        <span>استهلاك النماذج</span>
+      </button>
+      <button type="button" id="btn-open-subagents" class="drawer-btn" aria-label="فريق الوكلاء">
+        <span>فريق الوكلاء</span>
+        <span id="val-subagents-count-drawer" class="badge-count">0</span>
+      </button>
+      <button type="button" id="btn-open-tasks" class="drawer-btn" aria-label="المهام والمؤقتات">
+        <span>المهام والمؤقتات</span>
+        <span id="val-tasks-count-drawer" class="badge-count">0</span>
+      </button>
+      <button type="button" id="btn-open-skills" class="drawer-btn" aria-label="المهارات">
+        <span>المهارات</span>
+      </button>
+      <button type="button" id="btn-open-plugins" class="drawer-btn" aria-label="الإضافات">
+        <span>الإضافات</span>
+        <span id="val-plugins-count-drawer" class="badge-count">1</span>
+      </button>
+      <button type="button" id="btn-open-mcp" class="drawer-btn" aria-label="بروتوكولات MCP">
+        <span>بروتوكولات MCP</span>
+      </button>
+      <button type="button" id="btn-open-conversations" class="drawer-btn" aria-label="المحادثات السابقة">
+        <span>المحادثات السابقة</span>
+      </button>
+      <button type="button" id="btn-check-updates" class="drawer-btn" aria-label="التحقق من التحديثات">
+        <span>التحقق من التحديثات</span>
+        <span id="drawer-update-badge" class="badge-count main-style-4">تحديث متاح</span>
+      </button>
+      <button type="button" id="btn-save-chat" class="drawer-btn" aria-label="تصدير المحادثة">
+        <span>تصدير المحادثة</span>
+      </button>
+      <button type="button" id="btn-clear-chat" class="drawer-btn btn-danger" aria-label="مسح المحادثة">
+        <span>مسح المحادثة</span>
+      </button>
+      <button type="button" id="btn-open-dashboard" class="drawer-btn" aria-label="لوحة التحكم وشاشة البدء">
+        <span>لوحة التحكم (شاشة البدء)</span>
+      </button>
+      <button type="button" id="btn-stop-server" class="drawer-btn btn-danger main-style-5" aria-label="إيقاف الخادم نهائياً">
+        <span>إيقاف الخادم نهائياً</span>
+      </button>
+    </div>
+    <div class="drawer-footer main-style-6" aria-label="معلومات المطور">
+      <div class="main-style-7">Developed by Ahmed Hanafy</div>
+      <div class="main-style-8">Antigravity Companion v1.2.7</div>
+    </div>
+  </nav>
+
+
+
+  <section id="ai-studio-viewport" class="ai-studio-viewport" role="region" aria-label="منطقة المحادثة">
+
+    <div id="ai-system-bar" class="ai-system-bar sr-only" role="status" aria-label="شريط الموارد" aria-hidden="true">
+      <div class="system-stat-item ai-stat-highlight" id="stat-ai-quota-google" title="حصة Google">
+        <span class="stat-icon" aria-hidden="true">🌐</span>
+        <span class="stat-label">Google:</span>
+        <span class="stat-val" id="val-quota-google">--%</span>
+      </div>
+      <div class="system-stat-item ai-stat-highlight" id="stat-ai-quota-claude" title="حصة Claude و GPT">
+        <span class="stat-icon" aria-hidden="true">🤖</span>
+        <span class="stat-label">Claude/GPT:</span>
+        <span class="stat-val" id="val-quota-claude">--%</span>
+      </div>
+      <div class="system-stat-item" id="stat-ai-tokens" title="التوكنز المستهلكة">
+        <span class="stat-icon" aria-hidden="true">⚡</span>
+        <span class="stat-label">التوكنز:</span>
+        <span class="stat-val" id="val-ai-tokens">0</span>
+      </div>
+      <div class="system-stat-item" id="stat-subagents" title="الوكلاء">
+        <span class="stat-icon" aria-hidden="true">👥</span>
+        <span class="stat-label">فريق العمل:</span>
+        <span class="stat-val" id="val-subagents-count">0</span>
+      </div>
+      <div class="system-stat-item" id="stat-active-session" title="المحادثة الجارية">
+        <span class="stat-icon" aria-hidden="true">💬</span>
+        <span class="stat-label">المحادثة:</span>
+        <span class="stat-val" id="val-session-title">تلقائية (نشطة)</span>
+      </div>
+      <button type="button" id="btn-open-quota-inline" class="btn-stat-refresh" aria-label="الحصص">📊 الحصص</button>
+      <button type="button" id="btn-refresh-stats" class="btn-stat-refresh" aria-label="تحديث الحصص">🔄 تحديث</button>
+    </div>
+
+    <div id="ai-chat-feed" class="ai-chat-feed" role="region" aria-label="الرسائل"></div>
+
+
+
+    <div id="subagent-focus-banner" role="status" aria-live="polite" class="main-style-9">
+      <div class="main-style-10">
+        <span class="main-style-11">
+          توجه الرسالة إلى: <strong id="focus-agent-name" class="main-style-12">الوكيل</strong>
+        </span>
+      </div>
+      <button type="button" id="btn-cancel-agent-focus" class="btn btn-sm main-style-13" aria-label="إلغاء التوجيه">العودة للعام</button>
+    </div>
+
+
+    <div id="ai-interactive-prompt-slot" class="main-style-14"></div>
+
+
+    <footer class="ai-input-section" role="region" aria-label="كتابة رسالة">
+      <form id="ai-chat-form" class="ai-chat-form main-style-10">
+        <textarea id="ai-prompt-input" class="ai-prompt-input" rows="1" placeholder="اكتب رسالتك هنا..." aria-label="اكتب رسالتك"></textarea>
+        <button type="button" id="btn-open-files-bottom" class="btn main-style-15" aria-label="الملفات">ملفات</button>
+        <button type="submit" id="btn-ai-send" class="btn btn-send-ai" aria-label="إرسال">إرسال</button>
+        <button type="button" id="btn-ai-abort" class="btn btn-abort-ai main-style-16" aria-label="إيقاف">إيقاف</button>
+      </form>
+    </footer>
+  </section>
+
+
+
+
+
+
+
+  <!-- Pure Accessible AI Agent Engine - Terminal decoupled -->
+
+
+  <dialog id="files-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="files-title">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <h2 id="files-title">ملفات المشروع</h2>
+        <button type="button" id="btn-close-files-top" class="btn-close-dialog" aria-label="إغلاق">✕</button>
+      </header>
+      <div class="dialog-body">
+        <div id="files-list-container">
+          <p>جاري قراءة الملفات...</p>
+        </div>
+        <div id="file-viewer-container" class="main-style-17">
+          <div class="main-style-18">
+            <strong id="file-viewer-title" class="main-style-19"></strong>
+            <div class="main-style-20">
+              <button type="button" id="btn-send-file-to-prompt" class="btn btn-primary btn-sm" aria-label="إرسال المسار للدردشة">أرسل للمحادثة</button>
+              <button type="button" id="btn-copy-file-path" class="btn btn-sm" aria-label="نسخ المسار">نسخ المسار</button>
+              <button type="button" id="btn-back-to-files" class="btn btn-sm" aria-label="رجوع">رجوع</button>
+            </div>
+          </div>
+          <pre id="file-viewer-content" class="file-viewer-content" tabindex="0"></pre>
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" id="btn-close-files" class="btn" aria-label="إغلاق">إغلاق</button>
+      </footer>
+    </div>
   </dialog>
-  <dialog id="panel-dialog" aria-labelledby="panel-title" aria-describedby="panel-description">
-    <header class="dialog-header"><h2 id="panel-title" tabindex="-1"></h2><button type="button" data-close>إغلاق النافذة</button></header>
-    <p id="panel-description"></p>
-    <div id="panel-content"></div>
+
+
+  <dialog id="quota-dialog" class="accessible-dialog main-style-21" role="dialog" aria-modal="true" aria-labelledby="quota-dialog-title">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <h2 id="quota-dialog-title">حصص النماذج</h2>
+        <button type="button" id="btn-close-quota-top" class="btn-close-dialog" aria-label="إغلاق">✕</button>
+      </header>
+      <div class="dialog-body">
+        <p class="form-hint main-style-22">
+          الحصص المتبقية ومواعيد التجديد لكل نموذج.
+        </p>
+        <div id="quota-cards-container" role="list" aria-label="الحصص" class="main-style-23">
+          <div class="main-style-24">جاري تحميل الحصص...</div>
+        </div>
+        <div class="main-style-25">
+          <strong>ملاحظة:</strong> تتجدد الحصص كل 5 ساعات، والحد الأسبوعي في الموعد الموضح.
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" id="btn-force-refresh-quota" class="btn btn-primary" aria-label="تحديث الحصص">تحديث</button>
+        <button type="button" id="btn-close-quota" class="btn" aria-label="إغلاق">إغلاق</button>
+      </footer>
+    </div>
   </dialog>
-  <noscript><p>تحتاج الواجهة JavaScript. لا يمكن إرسال طلبات من هذه الصفحة عند تعطيله.</p></noscript>
+
+
+  <dialog id="auth-wizard-dialog" class="accessible-dialog main-style-26" role="dialog" aria-modal="true" aria-labelledby="auth-wizard-title">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <h2 id="auth-wizard-title">حساب Google</h2>
+        <button type="button" id="btn-close-auth-wizard-top" class="btn-close-dialog" aria-label="إغلاق">✕</button>
+      </header>
+      <div class="dialog-body">
+        <!-- Live Status Card -->
+        <div id="auth-status-card" class="auth-status-box main-style-27">
+          <div class="main-style-28">
+            <strong id="auth-card-title">حالة الحساب</strong>
+            <span id="auth-card-badge" class="badge main-style-29">فحص...</span>
+          </div>
+          <p id="auth-card-desc" class="main-style-30"></p>
+        </div>
+
+        <!-- Wizard Step 1: Start Login -->
+        <div id="auth-step-idle" class="auth-step-container">
+          <p class="main-style-31">
+            سجّل الدخول بحساب Google لتشغيل نماذج Antigravity.
+          </p>
+          <div class="main-style-32">
+            <button type="button" id="btn-start-auth-wizard" class="btn btn-primary" aria-label="تسجيل الدخول">
+              تسجيل الدخول بحساب Google
+            </button>
+            <button type="button" id="btn-auth-logout" class="btn btn-danger main-style-17" aria-label="تسجيل الخروج">
+              تسجيل الخروج
+            </button>
+          </div>
+        </div>
+
+        <!-- Wizard Step 2: In-Progress / Waiting for code -->
+        <div id="auth-step-code" class="auth-step-container main-style-17">
+          <div class="main-style-33">
+            <p id="auth-code-instruction" class="main-style-34">
+              الخطوة 1: اضغط على الزر لفتح صفحة تسجيل الدخول في جوجل وانسخ كود المصادقة.
+            </p>
+            <a id="btn-open-google-login-url" href="#" class="btn btn-primary btn-sm main-style-35" role="button" aria-disabled="true" aria-label="فتح صفحة تسجيل الدخول في Google في المتصفح">
+              ⏳ جاري تحضير الرابط...
+            </a>
+          </div>
+
+          <div class="form-group main-style-36">
+            <label for="auth-code-input" class="main-style-37">
+              الخطوة 2: الصق كود المصادقة هنا:
+            </label>
+            <input type="text" id="auth-code-input" class="form-control main-style-38" placeholder="الصق كود المصادقة (4/0A...)" aria-label="كود المصادقة من جوجل" />
+          </div>
+
+          <div class="main-style-39">
+            <button type="button" id="btn-submit-auth-code" class="btn btn-primary" aria-label="تأكيد وإرسال كود المصادقة">
+              تأكيد وإرسال الكود
+            </button>
+            <button type="button" id="btn-cancel-auth-wizard" class="btn" aria-label="إلغاء عملية تسجيل الدخول">
+              إلغاء
+            </button>
+          </div>
+        </div>
+
+        <!-- Wizard Step 3: Terms of Service Agreement -->
+        <div id="auth-step-terms" class="auth-step-container main-style-17">
+          <div class="main-style-40">
+            <h3 class="main-style-41">اتفاقية ترخيص خدمة Antigravity</h3>
+            <p class="main-style-42">
+              لاستكمال تفعيل الترخيص وربط الحساب بالوكيل الذكي، يلزم الموافقة على شروط خدمة Google Cloud Code و Antigravity.
+            </p>
+          </div>
+          <div class="main-style-43">
+            <button type="button" id="btn-accept-auth-terms" class="btn btn-primary" aria-label="موافق على شروط الخدمة والترخيص">
+              أوافق على الشروط والترخيص
+            </button>
+            <button type="button" id="btn-decline-auth-terms" class="btn btn-danger" aria-label="رفض الشروط وإلغاء العملية">
+              رفض وإلغاء
+            </button>
+          </div>
+        </div>
+
+        <!-- Wizard Step 4: Loading / Verifying indicator -->
+        <div id="auth-step-loading" class="auth-step-container main-style-44">
+          <p id="auth-loading-text" class="main-style-45">⏳ جاري المعالجة والتحقق...</p>
+        </div>
+
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" id="btn-close-auth-wizard" class="btn" aria-label="إغلاق نافذة الحساب">إغلاق</button>
+      </footer>
+    </div>
+  </dialog>
+
+
+
+  <dialog id="settings-dialog" class="accessible-dialog dynamic-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-dialog-title" aria-describedby="settings-dialog-desc">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <div class="dialog-header-title-group">
+          <h2 id="settings-dialog-title">⚙️ AI Studio & Engine Settings</h2>
+          <span id="settings-sync-badge" class="sync-badge sync-badge-idle" role="status" aria-live="polite">● Live Synced</span>
+        </div>
+        <button type="button" id="btn-close-dialog-top" class="btn-close-dialog" aria-label="Close settings dialog">✕</button>
+      </header>
+
+      <p id="settings-dialog-desc" class="sr-only">
+        Configure Active AI Models, Reasoning Effort, Autopilot Mode, Granular Sandbox Permissions, Trusted Workspaces, and Audio Feedback.
+      </p>
+
+      <div class="dialog-body">
+
+        <form id="dynamic-settings-form" novalidate onsubmit="return false;" class="dynamic-form-root" aria-label="Antigravity Settings Form">
+          <div id="dynamic-settings-skeleton" class="settings-skeleton-loader" aria-busy="true" aria-label="Loading settings schema...">
+            <div class="skeleton-line skeleton-title"></div>
+            <div class="skeleton-line skeleton-input"></div>
+            <div class="skeleton-line skeleton-input"></div>
+            <div class="skeleton-line skeleton-card"></div>
+          </div>
+          <div id="dynamic-settings-fields" class="dynamic-fields-container main-style-17"></div>
+        </form>
+      </div>
+
+      <footer class="dialog-footer">
+        <div class="dialog-footer-actions">
+          <button type="button" id="btn-reset-settings" class="btn btn-secondary" aria-label="Reset all settings to server defaults">
+            🔄 Reset
+          </button>
+          <div class="dialog-footer-right">
+            <button type="button" id="btn-close-dialog" class="btn" aria-label="Cancel and close dialog">
+              Cancel
+            </button>
+            <button type="button" id="btn-save-settings" class="btn btn-primary" aria-label="Save and immediately apply settings">
+              💾 Save Settings
+            </button>
+          </div>
+        </div>
+      </footer>
+    </div>
+  </dialog>
+
+
+  <dialog id="conversations-dialog" class="accessible-dialog main-style-46" role="dialog" aria-modal="true" aria-labelledby="conversations-dialog-title">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <h2 id="conversations-dialog-title">المحادثات السابقة</h2>
+        <button type="button" id="btn-close-conversations-top" class="btn-close-dialog" aria-label="إغلاق">✕</button>
+      </header>
+      <div class="dialog-body">
+        <p class="form-hint main-style-47">
+          اختر محادثة لاستئناف الحوار.
+        </p>
+        <div id="conversations-list-container" role="list" aria-label="المحادثات" class="main-style-48">
+          <div class="main-style-24">جاري تحميل المحادثات...</div>
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" id="btn-close-conversations" class="btn" aria-label="إغلاق">إغلاق</button>
+      </footer>
+    </div>
+  </dialog>
+
+
+  <dialog id="skills-dialog" class="accessible-dialog main-style-26" role="dialog" aria-modal="true" aria-labelledby="skills-dialog-title">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <h2 id="skills-dialog-title">المهارات</h2>
+        <button type="button" id="btn-close-skills-top" class="btn-close-dialog" aria-label="إغلاق">✕</button>
+      </header>
+      <div class="dialog-body">
+        <p class="form-hint main-style-47">
+          تفعيل وتعطيل المهارات.
+        </p>
+        <div id="skills-list-container" role="list" aria-label="المهارات" class="main-style-48">
+          <div class="main-style-24">جاري تحميل المهارات...</div>
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" id="btn-close-skills" class="btn" aria-label="إغلاق">إغلاق</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <!-- PLUGINS MANAGER DIALOG -->
+  <dialog id="plugins-dialog" class="accessible-dialog main-style-26" role="dialog" aria-modal="true" aria-labelledby="plugins-dialog-title">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <h2 id="plugins-dialog-title">الإضافات</h2>
+        <button type="button" id="btn-close-plugins-top" class="btn-close-dialog" aria-label="إغلاق">✕</button>
+      </header>
+      <div class="dialog-body">
+        <p class="form-hint main-style-47">
+          تفعيل وتعطيل الإضافات.
+        </p>
+        <div id="plugins-list-container" role="list" aria-label="الإضافات" class="main-style-48">
+          <div class="main-style-24">جاري فحص الإضافات...</div>
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" id="btn-close-plugins" class="btn" aria-label="إغلاق">إغلاق</button>
+      </footer>
+    </div>
+  </dialog>
+
+
+  <dialog id="mcp-dialog" class="accessible-dialog main-style-49" role="dialog" aria-modal="true" aria-labelledby="mcp-dialog-title">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <h2 id="mcp-dialog-title">🔌 بروتوكولات MCP (Model Context Protocol)</h2>
+        <button type="button" id="btn-close-mcp-top" class="btn-close-dialog" aria-label="إغلاق نافذة بروتوكولات MCP">✕</button>
+      </header>
+      <div class="dialog-body main-style-50">
+
+        <p class="form-hint main-style-51">
+          بروتوكول سياق النموذج (MCP) يمنح الذكاء الاصطناعي أدوات حية مثل قواعد البيانات، تصفح الويب، فحص المستودعات، والوصول للملفات.
+        </p>
+
+
+        <section aria-labelledby="mcp-installed-heading" class="main-style-52">
+          <div class="main-style-53">
+            <h3 id="mcp-installed-heading" class="main-style-54">
+              ⚡ البروتوكولات المثبتة في Antigravity
+            </h3>
+            <button type="button" id="btn-refresh-mcp" class="btn btn-sm main-style-55" aria-label="تحديث قائمة خوادم MCP">
+              🔄 تحديث
+            </button>
+          </div>
+          <div id="mcp-installed-container" role="list" aria-label="قائمة بروتوكولات MCP المثبتة" class="main-style-56">
+            <div class="main-style-57">جاري تحميل خوادم MCP...</div>
+          </div>
+        </section>
+
+
+        <section aria-labelledby="mcp-catalog-heading" class="main-style-52">
+          <h3 id="mcp-catalog-heading" class="main-style-58">
+            ⭐ القائمة المعتمَدة لبروتوكولات MCP
+          </h3>
+          <p class="form-hint main-style-59">
+            خوادم رسمية موثوقة تم التحقق منها، يمكنك تثبيتها بنقرة واحدة عبر <code>agy mcp</code>:
+          </p>
+          <div id="mcp-catalog-container" role="list" aria-label="القائمة المعتمدة لبروتوكولات MCP" class="main-style-60">
+            <div class="main-style-57">جاري فحص الكتالوج المعتمد...</div>
+          </div>
+        </section>
+
+
+        <section aria-labelledby="mcp-custom-heading" class="main-style-52">
+          <h3 id="mcp-custom-heading" class="main-style-61">
+            ➕ إضافة بروتوكول مخصص
+          </h3>
+          <form id="mcp-custom-form" onsubmit="return false;" class="main-style-62">
+            <div class="main-style-63">
+              <div class="main-style-64">
+                <label for="mcp-custom-name" class="main-style-65">اسم البروتوكول:</label>
+                <input type="text" id="mcp-custom-name" class="accessible-input main-style-66" placeholder="مثال: my-server" required aria-label="اسم بروتوكول MCP الجديد">
+              </div>
+              <div class="main-style-67">
+                <label for="mcp-custom-type" class="main-style-65">النوع:</label>
+                <select id="mcp-custom-type" class="accessible-input main-style-66" aria-label="نوع خادم MCP">
+                  <option value="stdio" selected>stdio (أمر)</option>
+                  <option value="http">http (رابط)</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label for="mcp-custom-command" class="main-style-65">الملف التنفيذي أو رابط HTTP:</label>
+              <input type="text" id="mcp-custom-command" class="accessible-input main-style-68" placeholder="npx أو https://example.com/mcp" required aria-label="أمر تشغيل أو رابط خادم MCP">
+            </div>
+            <div>
+              <label for="mcp-custom-args" class="main-style-65">وسائط التشغيل (JSON، اختياري):</label>
+              <input type="text" id="mcp-custom-args" class="accessible-input main-style-68" value="[]" aria-label="قائمة وسائط تشغيل MCP">
+            </div>
+            <div>
+              <label for="mcp-custom-env" class="main-style-65">متغيرات البيئة أو الترويسات (اختياري، مفصولة بفواصل):</label>
+              <input type="text" id="mcp-custom-env" class="accessible-input main-style-69" placeholder="مثال: API_KEY=xyz, BRAVE_API_KEY=abc" aria-label="متغيرات البيئة لخادم MCP">
+            </div>
+            <div class="main-style-70">
+              <button type="button" id="btn-submit-custom-mcp" class="btn btn-primary" aria-label="إضافة وتثبيت خادم MCP المخصص">
+                ➕ تثبيت البروتوكول المخصص
+              </button>
+            </div>
+          </form>
+        </section>
+
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" id="btn-close-mcp" class="btn" aria-label="إغلاق نافذة بروتوكولات MCP">إغلاق</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <!-- MCP Authentication & Token Pairing Dialog -->
+  <dialog id="mcp-auth-dialog" class="accessible-dialog main-style-71" role="dialog" aria-modal="true" aria-labelledby="mcp-auth-title">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <h2 id="mcp-auth-title">🔐 توثيق ومصادقة بروتوكول MCP</h2>
+        <button type="button" id="btn-close-mcp-auth-top" class="btn-close-dialog" aria-label="إغلاق نافذة توثيق MCP">✕</button>
+      </header>
+      <div class="dialog-body main-style-72">
+
+        <div class="main-style-73">
+          <div class="main-style-74">
+            <div>
+              <span class="main-style-75">البروتوكول المستهدف:</span>
+              <strong id="mcp-auth-target-name" class="main-style-76"></strong>
+            </div>
+            <span id="mcp-auth-target-type" class="main-style-77"></span>
+          </div>
+          <p id="mcp-auth-target-desc" class="main-style-78"></p>
+        </div>
+
+        <!-- Mode Selection Tabs / Radio Buttons -->
+        <fieldset class="main-style-79">
+          <legend class="main-style-80">
+            طريقة التحقق والربط:
+          </legend>
+          <div class="main-style-81">
+            <label class="main-style-82">
+              <input type="radio" name="mcp-auth-mode" id="mcp-mode-token" value="token" checked>
+              <span>🔑 توكن مباشر / مفتاح API (Bearer Token / API Key)</span>
+            </label>
+            <label class="main-style-82">
+              <input type="radio" name="mcp-auth-mode" id="mcp-mode-device" value="device">
+              <span>📱 كود التحقق والربط (Device Code Flow / OAuth)</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <!-- Tab 1: Direct Token / Key -->
+        <section id="mcp-auth-tab-token" aria-label="بيانات التوكن المباشر" class="main-style-83">
+          <div>
+            <label for="mcp-auth-token-input" class="main-style-84">
+              التوكن أو مفتاح API (Token / API Key):
+            </label>
+            <div class="main-style-43">
+              <input type="password" id="mcp-auth-token-input" class="accessible-input main-style-85" placeholder="ألصق التوكن هنا (مثال: ghp_... أو sk-...)" autocomplete="off" aria-label="حقل إدخال توكن أو مفتاح البروتوكول">
+              <button type="button" id="btn-toggle-token-visibility" class="btn btn-sm main-style-86" aria-label="إظهار التوكن">👁️</button>
+            </div>
+            <p id="mcp-auth-token-hint" class="form-hint main-style-87"></p>
+          </div>
+
+          <div id="mcp-auth-env-container">
+            <label for="mcp-auth-var-name" class="main-style-65">
+              اسم متغير البيئة (Environment Variable):
+            </label>
+            <input type="text" id="mcp-auth-var-name" class="accessible-input main-style-69" placeholder="API_KEY أو GITHUB_PERSONAL_ACCESS_TOKEN" aria-label="اسم متغير البيئة لحفظ التوكن">
+          </div>
+        </section>
+
+        <!-- Tab 2: Device Code Flow -->
+        <section id="mcp-auth-tab-device" aria-label="تدفق رمز التحقق الخارجي" class="main-style-88">
+          <div class="main-style-89">
+            <p class="main-style-90">
+              اضغط على الزر أدناه لتوليد كود التحقق ورابط المصادقة في المتصفح:
+            </p>
+            <div>
+              <button type="button" id="btn-request-device-code" class="btn btn-primary" aria-label="طلب كود التحقق ورابط الاعتماد">
+                🌐 إنشاء كود التحقق ورابط الدخول
+              </button>
+            </div>
+          </div>
+
+          <div id="mcp-device-details-box" class="main-style-91">
+            <div class="main-style-92">
+              <span class="main-style-93">كود التحقق الخاص بك:</span>
+              <div class="main-style-94">
+                <code id="mcp-device-user-code" class="main-style-95"></code>
+                <button type="button" id="btn-copy-device-code" class="btn btn-sm" aria-label="نسخ كود التحقق إلى الحافظة">📋 نسخ الكود</button>
+              </div>
+            </div>
+            <div>
+              <a id="mcp-device-link" href="#" target="_blank" rel="noopener noreferrer" class="btn btn-sm main-style-96" aria-label="فتح صفحة الاعتماد والتسجيل في المتصفح">
+                🔗 فتح صفحة التحقق في المتصفح ↗
+              </a>
+            </div>
+          </div>
+
+          <div>
+            <label for="mcp-auth-device-code-input" class="main-style-65">
+              رمز التحقق أو التوكن المستلم (بعد الموافقة في المتصفح):
+            </label>
+            <input type="text" id="mcp-auth-device-code-input" class="accessible-input main-style-68" placeholder="ألصق كود التحقق أو التوكن هنا..." aria-label="حقل لصق رمز التحقق">
+          </div>
+        </section>
+
+        <!-- Live Status Announcement Box -->
+        <div id="mcp-auth-status" role="status" aria-live="polite" class="main-style-97"></div>
+
+      </div>
+      <footer class="dialog-footer main-style-98">
+        <button type="button" id="btn-close-mcp-auth" class="btn" aria-label="إلغاء وإغلاق نافذة التوثيق">إلغاء</button>
+        <div class="main-style-43">
+          <button type="button" id="btn-test-mcp-auth" class="btn main-style-99" aria-label="اختبار الاتصال بالبروتوكول">
+            🔍 اختبار الاتصال
+          </button>
+          <button type="button" id="btn-save-mcp-auth" class="btn btn-primary" aria-label="تحقق وحفظ ربط البروتوكول">
+            💾 تحقق وربط الحساب
+          </button>
+        </div>
+      </footer>
+    </div>
+  </dialog>
+
+  <dialog id="subagents-dialog" class="accessible-dialog" aria-labelledby="subagents-dialog-title" aria-modal="true">
+    <div class="dialog-content" role="document">
+      <header class="dialog-header">
+        <h2 id="subagents-dialog-title">فريق الوكلاء</h2>
+        <button type="button" id="btn-close-subagents-top" class="btn-close" aria-label="إغلاق">✕</button>
+      </header>
+      <div class="dialog-body">
+        <div class="main-style-100">
+          <p class="form-hint main-style-101">
+            متابعة حالة الوكلاء والتواصل معهم.
+          </p>
+          <div class="main-style-102">
+            <button type="button" id="btn-quick-create-subagent" class="btn btn-sm main-style-103" aria-label="إنشاء وكيل">➕ إنشاء وكيل</button>
+            <button type="button" id="btn-clear-subagents" class="btn btn-sm main-style-104" aria-label="مسح الوكلاء">🗑️ مسح</button>
+          </div>
+        </div>
+        <div id="subagents-team-container" role="list" aria-label="الوكلاء" class="main-style-105">
+          <div class="main-style-106">لا يوجد وكلاء نشطون حالياً.</div>
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" id="btn-close-subagents" class="btn" aria-label="إغلاق">إغلاق</button>
+      </footer>
+    </div>
+  </dialog>
+
+
+  <dialog id="model-picker-dialog" class="accessible-dialog main-style-46" role="dialog" aria-modal="true" aria-labelledby="model-picker-title">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <h2 id="model-picker-title">اختيار النموذج</h2>
+        <button type="button" id="btn-close-model-picker" class="btn-close-dialog" aria-label="إغلاق">✕</button>
+      </header>
+      <div class="dialog-body">
+        <p class="form-hint main-style-107">
+          نماذج Antigravity المتاحة.
+        </p>
+        <div id="model-picker-list" role="radiogroup" aria-label="النماذج" class="main-style-108">
+          <p>جاري تحميل النماذج...</p>
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" id="btn-cancel-model-picker" class="btn" aria-label="إغلاق">إغلاق</button>
+      </footer>
+    </div>
+  </dialog>
+
+
+  <dialog id="tasks-monitor-dialog" class="accessible-dialog main-style-46" role="dialog" aria-modal="true" aria-labelledby="tasks-monitor-title">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <h2 id="tasks-monitor-title">المهام والمؤقتات</h2>
+        <button type="button" id="btn-close-tasks-monitor" class="btn-close-dialog" aria-label="إغلاق">✕</button>
+      </header>
+      <div class="dialog-body">
+        <div class="main-style-100">
+          <p class="form-hint main-style-101">
+            متابعة المؤقتات والمهام المجدولة في الخلفية.
+          </p>
+          <button type="button" id="btn-refresh-tasks-monitor" class="btn btn-sm" aria-label="تحديث">🔄 تحديث</button>
+        </div>
+        <div id="tasks-monitor-list" role="list" aria-label="المهام" class="main-style-48">
+          <p>جاري تحميل المهام...</p>
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" id="btn-dismiss-tasks-monitor" class="btn" aria-label="إغلاق">إغلاق</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <dialog id="update-dialog" class="accessible-dialog main-style-26" role="dialog" aria-modal="true" aria-labelledby="update-dialog-title">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <h2 id="update-dialog-title">تحديث التطبيق</h2>
+        <button type="button" id="btn-close-update-dialog" class="btn-close-dialog" aria-label="إغلاق">✕</button>
+      </header>
+      <div class="dialog-body">
+        <div id="update-status-announcer" class="sr-only" role="status" aria-live="polite"></div>
+
+        <div id="update-info-container" class="main-style-109">
+          <div class="main-style-110">
+            <div>
+              <span class="main-style-111">الإصدار الحالي: </span>
+              <strong id="update-current-version">--</strong>
+            </div>
+            <div>
+              <span class="main-style-111">أحدث إصدار: </span>
+              <strong id="update-latest-version" class="main-style-19">--</strong>
+            </div>
+          </div>
+
+          <div id="update-status-card" role="status" aria-live="polite" class="main-style-112">
+            <p id="update-status-message" class="main-style-113">اضغط على فحص التحديثات للتحقق من وجود إصدار جديد.</p>
+          </div>
+
+          <div id="update-release-notes-container" class="main-style-114">
+            <h3 class="main-style-115">ملاحظات الإصدار</h3>
+            <div id="update-release-notes" class="main-style-116"></div>
+          </div>
+
+          <div id="update-progress-container" class="main-style-117">
+            <div class="main-style-118">
+              <span id="update-progress-label">جاري التنزيل...</span>
+              <span id="update-progress-percent" class="main-style-119">0%</span>
+            </div>
+            <div class="main-style-120">
+              <div id="update-progressbar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-label="تقدم تنزيل التحديث" class="main-style-121"></div>
+            </div>
+          </div>
+
+          <div id="update-permission-box" class="main-style-122">
+            <span>يتطلب تثبيت التحديث السماح بتثبيت التطبيقات من مصادر غير معروفة.</span>
+            <button type="button" id="btn-open-install-permission" class="btn btn-sm main-style-123" aria-label="فتح إعدادات إذن التثبيت">فتح إعدادات التثبيت</button>
+          </div>
+
+          <div aria-label="About developer" class="main-style-124">
+            Developed by Ahmed Hanafy
+          </div>
+        </div>
+      </div>
+      <footer class="dialog-footer main-style-125">
+        <button type="button" id="btn-update-check" class="btn" aria-label="فحص التحديثات الآن">فحص التحديثات</button>
+        <button type="button" id="btn-update-download" class="btn btn-primary main-style-17" aria-label="تنزيل وتثبيت التحديث">تنزيل وتثبيت</button>
+        <button type="button" id="btn-dismiss-update-dialog" class="btn" aria-label="إغلاق">إغلاق</button>
+      </footer>
+    </div>
+  </dialog>
+
+
+  <dialog id="dlg-nexus-interactive" class="accessible-dialog main-style-126" role="dialog" aria-modal="true" aria-labelledby="dlg-nexus-title">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <h2 id="dlg-nexus-title">⚡ إجراء تفاعلي مطلوب</h2>
+        <button type="button" id="btn-nexus-cancel-top" class="btn-close-dialog" aria-label="إلغاء وإغلاق النافذة">✕</button>
+      </header>
+      <div class="dialog-body">
+        <div id="dlg-nexus-body" class="main-style-127"></div>
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" id="btn-nexus-cancel" class="btn" aria-label="إلغاء وإرسال هروب (Escape)">إلغاء (Esc)</button>
+        <button type="button" id="btn-nexus-confirm" class="btn btn-primary" aria-label="تأكيد الخيار المختار (Enter)">تأكيد (Enter)</button>
+      </footer>
+    </div>
+  </dialog>
+
+
+
+<script src="/api.js"></script>
+<script src="/native.js"></script>
+<script src="/history.js"></script>
+<script src="/main-v1-adapter.js"></script>
+<script src="/main-ui.js"></script>
 </body>
 </html>

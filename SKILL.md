@@ -1,5 +1,17 @@
 # مرجع تشغيل Antigravity Companion
 
+## feat: approved main UI and headless controls — 2026-10-15
+
+اعتماد المطور: PR #1، التعليق 6180568312. المصدر المثبت upstream/main@05470d6. index.html وstart.html المدخلان الوحيدان النشطان في / و/start؛ main-ui/start-ui CSS/JS محلية تحت CSP القائم، وmain-v1-adapter.js يستعمل api.js/native.js/history.js دون تبديل fetch العام. لا تعد تحميل أي أصل قديم رجوعًا إلى واجهة PR؛ لا تحذف الأصول المحفوظة المشروطة بقبول الهاتف.
+
+POST /api/v1/system/shutdown يحتاج الجلسة وCSRF، ويرد 202 stopping ثم يستدعي callback يملكه server.py مرة واحدة؛ create_app المضمّن بلا callback يرد 503. لا kill عام. VoiceCommandActivity يسلم إلى FloatingVoiceController وينتهي بلا MainActivity؛ HeadlessVoiceCommand يختار cwd المحفوظ أو أول workspace root، ويستعمل HMAC ثم Cookie/CSRF وإلغاء request_id عند الشك. النطق من NativeSpeech القائم بعد نتيجة الخلفية؛ الإملاء في المحرر المفتوح فقط.
+
+WebSocket 127.0.0.1:8765 يثق بعنوان peer الحقيقي دون Bearer، ويرفض Origin الأجنبي وغير loopback؛ العقد WS journal_ready_epoch_v1 باقٍ. لا تفترض وجود HTTP serve أو مصدر /usr/bin/phone. الجسر async عبر CompanionNative، مع Origin والإطار الرئيس وHMAC قبل الأفعال الخاصة. get_connection_status يميز automation_ready عن server_authenticated. الترقية تستعمل الحزمة التي تحقق منها Android؛ URL من JavaScript لا يختار APK.
+
+أذون CLI لا تحفظ في settings: whitelist/command(*) عبر /cli/policy مع revision وصون deny/ask؛ بقية الأذون غير الموصولة معطلة. OAuth GET/PATCH /mcp/{name}/oauth يحفظ المالك وrevision والفارغ يصون السر. المصادقة إحالة إلى agy، بلا ادعاء authenticated. SSE يحفظ cursor ويعيد GET مرة، ثم snapshot؛ لا يعيد POST مجهولًا. الرسالة الجارية queued للدور التالي، ومعرّفها ومعرّف ترقية CLI يبقيان عند غموض النتيجة. ظهور الوظيفة لا يثبت قبول الهاتف أو حساب agy.
+
+الفحص المستهدف: scripts/run_shutdown_tests.py وserver/web/run_main_ui_tests.cjs مع فحوص Python/JVM القائمة؛ Debug يعبئ المصدر من server/. تقرير الحصيلة: docs/ui-main-adaptation-report.md. لا نشر Release أو تثبيت هاتف ضمن هذا الطلب؛ رفع فرع PR والرد على المطور مأذونان صراحةً.
+
 ## مطالب صاحب PR #1 — 2026-10-14
 
 أذن المستخدم بتنفيذ التعليقات جميعًا؛ التعقيب الأخير ينسخ اشتراط كود المتصفح. GET /api/v1/auth/session يصدر جلسة محلية تلقائية بلا PIN، ويحفظ HttpOnly وSameSite=Strict وCache-Control:no-store؛ الحراسة تفحص peer loopback وHost الدقيق وOrigin المطابق وSec-Fetch-Site، وتبقي CSRF للتغيير وHMAC/Bearer لمسار Android bootstrap. الثقة تشمل العملاء المحليين؛ لا يُدّعى أن Origin يثبت هويتهم. /pair القديم باقٍ للتوافق فقط، بلا حقل رمز أو طبع رمز في التشغيل.
