@@ -454,7 +454,7 @@
       case 'skills/list': return request(scoped('/skills'));
       case 'plugins/list': return request(scoped('/plugins'));
       case 'skills/toggle': case 'plugins/toggle':
-        await request('/' + path.split('/')[0] + '/' + encode(body.name) + '/' + ((body.enable ?? body.enabled) ? 'enable' : 'disable'),
+        await request('/' + path.split('/')[0] + '/' + encode(body.name || body.id) + '/' + ((body.enable ?? body.enabled) ? 'enable' : 'disable'),
           {method: 'POST', body: context()});
         return {status: 'ok'};
       case 'mcp/list': if (!settingsDocument) await settings(); return {installed: (await request(scoped('/mcp'))).servers, catalog: mcpCatalog};

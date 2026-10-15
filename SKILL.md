@@ -1,5 +1,9 @@
 # مرجع تشغيل Antigravity Companion
 
+## fix: approved plugin toggle fallback — 2026-10-16
+
+التعليق6202018307 يجيز body.name || body.id في main-v1-adapter.js:457/dispatch ومرآته وحدهما. إصلاح الإضافات الذي كان ممنوعًا سابقًا مأذون الآن ومنجز محليًا؛ name مقدم، وid بديل. تجديد CACHE_NAME في sw.js أثر prepare_web_release المعتاد، بلا تغيير منطق أو حذف أصل. المانيفست debug_manifest.json، والحصيلة docs/plugin-toggle-fix-report.md. run_ui_tests ناجح الآن؛ mentions القديم وإنذار validate_code السابق يمنعان بلوغ شرط100%، وأذن المستخدم لاحقًا بإنشاء Commit ورفعه للمراجعة رغم المانعين؛ هذا لا يثبت اجتياز بوابة100% أو جاهزية الدمج. البنود المجمدة باقية على حالها.
+
 ## fix: scoped maintainer follow-up — review snapshot — 2026-10-15
 
 اقرأ [خطة الحصر](docs/scoped-maintainer-follow-up-plan.md) و[حصيلة الجولة](docs/scoped-maintainer-follow-up-report.md) قبل الاستكمال. التعليق6195796462 يحصر الجولة؛ لا تغيير لملكية الإعدادات أو حذف للإرث أو إعادة هيكلة عامة. FloatingVoiceController يختار LEGACY بعد probe، ويرسل command/ui_tree إلى /api/device_agent/turn دون Bearer أو Cookie؛ الأفعال تحويل حرفي محصور، وCONTINUE حتى خمس خطوات مع history لأفعال مؤكدة. الإلغاء يغلق HTTP الجاري، وRequestBody one-shot يمنع replay حتى503 Retry-After:0. MODERN يحفظ HMAC؛ والإملاء لا يرسل ولا يفتح MainActivity.

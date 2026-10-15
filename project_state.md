@@ -1,5 +1,18 @@
 # حالة المشروع
 
+## fix: approved plugin identifier fallback — 2026-10-16
+
+review_snapshot_authorized؛ أذن التعليق6202018307 بالسطر body.name || body.id ومرآته. الموضع الفعلي457/dispatch؛ لا وجود لموضع المثال195/handlePluginToggle. النسخ السابقة محفوظة بواسطة backup_manager تحت.tmp/FIX-PLUGINS-TOGGLE-ID. أذن المستخدم صراحة بإنشاء Commit ورفعه للمراجعة رغم المانعين؛ شرط100% لم يتحقق، فلا اعتماد دمج أو إصدار. [حصيلة الإصلاح](docs/plugin-toggle-fix-report.md).
+
+| النطاق | الحال |
+|---|---|
+| المانيفست والإذن والنسخ السابقة | complete |
+| سطر canonical وسطر mirror | complete_locally؛ diff_verifier ناجح0.37% لكل ملف |
+| run_ui_tests وPython وJVM وDebug/Lint وحزمة APK | complete؛ 201 Python و66 JVM؛ 29 أصلًا محفوظًا |
+| validate_code --strict --human-grade | blocked؛ إنذار Regex في298 موجود في النسختين السابقتين أيضًا؛ node --check ناجح |
+| run_mentions_tests | blocked؛ #prompt القديم في42؛ خارج الحصر، لم يُعدّل |
+| الرفع والرد | Commit/push مأذونان للمراجعة بطلب المستخدم؛ [الرد المنشور](https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6202597761) يعرض الإصلاح والمانعين وينتظر حسم المطور |
+
 ## fix: scoped maintainer follow-up — 2026-10-15
 
 review_snapshot_published؛ أذن المستخدم لاحقًا برفع الشفرة لفحص المطور رغم الفحوص الراسبة، مع بقاء قراره بعدم إصلاح الإضافات. نُفذ محليًا الحصر في التعليقين6195701813 و6195796462 دون إعادة كتابة أو حذف مسارات عاملة. [حصيلة الجولة](docs/scoped-maintainer-follow-up-report.md) مرجع العقود والفحوص والموانع. اعتماد الهاتف السابق تقرير المطور عن12c6040/ef04a14، لا قبولًا جديدًا لهذه الجولة.

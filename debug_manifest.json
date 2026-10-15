@@ -1,33 +1,59 @@
 {
-  "issue_id": "FEATURE-REMOVAL-CUSTOM-AGENT",
-  "severity": "HIGH",
+  "issue_id": "FIX-PLUGINS-TOGGLE-ID",
+  "severity": "LOW",
+  "diagnostic_branch": "Branch A: API Contract Mismatch",
   "environment": {
-    "os": "Android / Linux Termux aarch64",
-    "runtime": "Python 3.11 / Web HTML5",
+    "os": "Android / Termux Linux",
+    "runtime": "Browser JavaScript",
     "dependencies": [
-      "server.py",
-      "custom_agent.py",
-      "index.html"
+      "main-v1-adapter.js",
+      "main-ui.js"
     ]
   },
+  "reproduction_command": "node server/web/run_ui_tests.cjs",
   "symptoms": [
-    "وجود ميزة الوكيل المخصص غير الضرورية تزيد من تعقيد الواجهة وتشتت تجربة المستخدم",
-    "اعتماد السيرفر على ملف custom_agent.py منفصل ونقاط نهاية زائدة /api/custom-agent/*",
-    "ازدواجية محركات الذكاء الاصطناعي في الهيدر وقائمة اختيار النماذج"
+    "The accepted UI sends id; adapter reads name and requests /plugins/undefined/disable."
   ],
-  "diagnostic_branch": "Branch A: API Contract Mismatch",
   "exact_location_pinpoint": {
-    "file_path": "server/server.py",
-    "line_number": 1261,
-    "symbol_or_ast_node": "handle_ai_stream.custom_agent_branch",
-    "offending_snippet": "if requested_engine == 'custom' and custom_agent:"
+    "file_path": "server/web/main-v1-adapter.js",
+    "line_number": 457,
+    "symbol_or_ast_node": "dispatch: case 'skills/toggle' / 'plugins/toggle'",
+    "offending_snippet": "encode(body.name)"
   },
-  "hypothesis": "ميزة الوكيل المخصص أصبحت زائدة وتسبب تعقيداً في واجهة المستخدم (Web UI) وفي خادم الباك إند (server.py) مع الاعتماد على ملف custom_agent.py المنفصل ونقاط نهاية غير مستخدمة (/api/custom-agent/*). إزالة الميزة بالكامل ستجعل النظام أحادي النواة يعتمد كلياً ونظيفاً على محرك Antigravity الرسمي.",
+  "hypothesis": "Use body.name || body.id at the existing encoded path identifier; preserve name precedence and action selection.",
   "fix_plan": [
-    "حذف ملف server/custom_agent.py وملف app/src/main/assets/server/custom_agent.py نهائياً.",
-    "تعديل server/server.py ونسخته في assets لإزالة استيراد custom_agent، وحذف تفريعة custom_agent في handle_ai_stream، وحذف نقاط النهاية /api/custom-agent/config و /api/custom-agent/models.",
-    "تعديل server/web/index.html ونسخته في assets لإزالة زر تبديل المحرك من الهيدر (#btn-header-engine)، وتبويب ولوحة الوكيل المخصص (#panel-engine-custom و #tab-engine-custom)، وكافة كود الجافاسكريبت والـ CSS المتعلق بالوكيل المخصص.",
-    "مزامنة التعديلات النظيفة مع بيئة الخادم المشغلة في ~/.antigravity-server/."
+    "Replace encode(body.name) with encode(body.name || body.id) on line457 only.",
+    "Apply exactly the same line to app/src/main/assets/web/main-v1-adapter.js.",
+    "Run existing UI regression, scope verifier and strict validator; do not change any frozen code."
   ],
-  "verification_test": "python3 /data/data/com.termux/files/home/.gemini/config/skills/universal-software-agency/scripts/validate_code.py server/server.py"
+  "verification_test": "node server/web/run_ui_tests.cjs",
+  "pre_mutation_backup": ".tmp/FIX-PLUGINS-TOGGLE-ID/canonical/.backups/20261016_001739/main-v1-adapter.js",
+  "approved_by": {
+    "comment_id": 6202018307,
+    "url": "https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6202018307",
+    "scope": "Exact name || id fallback and mirror only; actual location corrected from stale sample, not expanded."
+  },
+  "allowed_source_changes": [
+    {
+      "file_path": "server/web/main-v1-adapter.js",
+      "line_number": 457,
+      "old": "encode(body.name)",
+      "new": "encode(body.name || body.id)"
+    },
+    {
+      "file_path": "app/src/main/assets/web/main-v1-adapter.js",
+      "line_number": 457,
+      "old": "encode(body.name)",
+      "new": "encode(body.name || body.id)"
+    }
+  ],
+  "derived_release_metadata": [
+    "server/web/sw.js",
+    "app/src/main/assets/web/sw.js"
+  ],
+  "diff_churn_percent": 0.37,
+  "location_note": "The approved sample line195/handlePluginToggle/const pluginId does not exist at HEAD5779cff; the current dispatch line457 implements the same approved operation.",
+  "symbols": [
+    "dispatch"
+  ]
 }
