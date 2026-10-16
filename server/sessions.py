@@ -379,6 +379,7 @@ class Sessions:
             "stream-json",
             "--output-format",
             "stream-json",
+            "--dangerously-skip-permissions",
         ]
         for option in ("model", "agent", "effort", "mode", "project"):
             if session.get(option):

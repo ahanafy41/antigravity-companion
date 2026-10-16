@@ -23,6 +23,12 @@ async def terminate_process(process):
             await terminate_windows_tree(process)
         return
     group_id = getattr(process, "_companion_pgid", None)
+    if group_id is None and hasattr(process, "pid") and process.pid:
+        try:
+            group_id = os.getpgid(process.pid)
+        except (OSError, ProcessLookupError):
+            group_id = process.pid
+        process._companion_pgid = group_id
     if group_id is None:
         raise CLIUnavailable("Owned process group identity is unavailable")
     if not getattr(process, "_companion_group_closed", False):
@@ -129,6 +135,14 @@ class CLI:
         environment["AGY_NO_UPDATE_CHECK"] = "1"
         environment["AGY_CLI_DISABLE_AUTO_UPDATE"] = "true"
         environment.pop("AGY_AUTO_UPDATE", None)
+        environment["GOMAXPROCS"] = "2"
+        environment["GODEBUG"] = "netdns=cgo"
+        cert_path = "/data/data/com.termux/files/usr/etc/tls/cert.pem"
+        if os.path.exists(cert_path):
+            environment["SSL_CERT_FILE"] = cert_path
+        termux_bin = "/data/data/com.termux/files/usr/bin"
+        if os.path.exists(termux_bin) and termux_bin not in environment.get("PATH", ""):
+            environment["PATH"] = f"{termux_bin}:{environment.get('PATH', '')}"
         options = {"start_new_session": True} if os.name == "posix" else {}
         try:
             process = await asyncio.create_subprocess_exec(

@@ -333,8 +333,67 @@
     const local = await companion.history.get(id);
     if (local) return {messages: local.messages.map(message => ({...message, role: message.role === 'user' ? 'user' : 'agent'})), read_only: local.read_only};
     const legacy = await request('/legacy/conversations/' + encode(id));
-    return {messages: legacy.records.filter(record => ['USER_INPUT', 'AGENT_RESPONSE'].includes(record.type))
-      .map((record, index) => ({id: String(index), role: record.type === 'USER_INPUT' ? 'user' : 'agent', text: record.content || ''}))};
+    if (legacy && Array.isArray(legacy.messages)) {
+      return {
+        id: legacy.id || id,
+        messages: legacy.messages,
+        artifacts: legacy.artifacts || [],
+        total_tokens: legacy.total_tokens || 0
+      };
+    }
+    const records = (legacy && legacy.records) || [];
+    const messages = [];
+    let currentAgent = null;
+    records.forEach((record, index) => {
+      const type = record.type;
+      if (type === 'USER_INPUT') {
+        if (currentAgent) { messages.push(currentAgent); currentAgent = null; }
+        let c = record.content || '';
+        if (c.includes('<USER_REQUEST>')) {
+          c = c.split('<USER_REQUEST>')[1].split('</USER_REQUEST>')[0].trim();
+        }
+        if (c) {
+          messages.push({
+            id: String(index),
+            role: 'user',
+            text: c,
+            time: record.created_at || ''
+          });
+        }
+      } else if (type === 'PLANNER_RESPONSE' || type === 'AGENT_RESPONSE') {
+        const c = record.content || '';
+        const th = record.thinking || '';
+        const toolCalls = record.tool_calls || [];
+        if (!currentAgent) {
+          currentAgent = {
+            id: String(index),
+            role: 'agent',
+            text: c,
+            thinking: th,
+            tool_count: toolCalls.length,
+            time: record.created_at || ''
+          };
+        } else {
+          if (th) currentAgent.thinking = (currentAgent.thinking ? currentAgent.thinking + '\n\n' + th : th);
+          if (c) currentAgent.text = (currentAgent.text ? currentAgent.text + '\n\n' + c : c);
+          currentAgent.tool_count = (currentAgent.tool_count || 0) + toolCalls.length;
+          currentAgent.time = record.created_at || currentAgent.time;
+        }
+      }
+    });
+    if (currentAgent) messages.push(currentAgent);
+    messages.forEach(msg => {
+      if (msg.role === 'agent' && !msg.text) {
+        if (msg.tool_count > 0) msg.text = '*(نفّذ الوكيل ' + msg.tool_count + ' عملية/أداة بنجاح في هذه الخطوة)*';
+        else if (msg.thinking) msg.text = '*(خطوات تفكير وتحليل فقط)*';
+      }
+    });
+    return {
+      id: id,
+      messages: messages,
+      artifacts: (legacy && legacy.artifacts) || [],
+      total_tokens: (legacy && legacy.total_tokens) || 0
+    };
   }
   async function conversations() {
     await historyReady;
@@ -350,8 +409,14 @@
     const rows = new Map(local.map(record => [record.id, {id: record.id, title: record.title, date: '', read_only: record.read_only}]));
     for (const session of sessions) rows.set(session.session_id, {id: session.conversation_id || session.session_id,
       title: local.find(record => record.id === session.session_id)?.title || session.conversation_id || 'محادثة', date: '', message_count: session.runs.length * 2});
-    for (const record of legacy) if (![...rows.values()].some(row => row.id === record.conversation_id)) {
-      rows.set(record.conversation_id, {id: record.conversation_id, title: record.title, date: new Date(record.mtime * 1000).toLocaleString()});
+    for (const record of legacy) if (![...rows.values()].some(row => row.id === (record.conversation_id || record.id))) {
+      const cid = record.conversation_id || record.id;
+      rows.set(cid, {
+        id: cid,
+        title: record.title,
+        date: record.date || new Date((record.mtime || 0) * 1000).toLocaleString(),
+        steps: record.steps || 0
+      });
     }
     return {conversations: [...rows.values()]};
   }
@@ -369,11 +434,25 @@
     }));
   }
   function convertEvent(event) {
-    const payload = event.payload;
+    const payload = event.payload || {};
     if (event.event === 'state' && payload.conversation_id) return {type: 'init', conversation_id: payload.conversation_id};
     if (event.event === 'delta') return {type: 'chunk', text: payload.text_delta};
-    if (event.event === 'tool') return {type: 'tool_step', tool: payload.tool_name || payload.name || payload.tool,
-      params: payload.tool_info?.parameters || payload.tool_input || payload.input || payload.params || {}, state: payload.tool_state || payload.tool_info?.state || payload.status || (payload.state !== 'running' ? payload.state : null) || 'ACTIVE'};
+    if (event.event === 'thought') return {type: 'thought', text: payload.text || payload.thought || ''};
+    if (event.event === 'artifact') return {type: 'artifact', name: payload.name, path: payload.path, summary: payload.summary, requestFeedback: payload.requestFeedback, userFacing: payload.userFacing};
+    if (event.event === 'tool') {
+      const toolInfo = payload.tool_info || payload;
+      const toolName = payload.tool_name || payload.name || payload.tool || toolInfo.tool_name || toolInfo.name || toolInfo.tool || 'command';
+      const params = toolInfo.parameters || payload.tool_input || payload.input || payload.params || {};
+      const out = toolInfo.output || payload.output || '';
+      const state = payload.tool_state || toolInfo.state || payload.status || (payload.state !== 'running' ? payload.state : null) || 'ACTIVE';
+      return {
+        type: 'tool_step',
+        tool: toolName,
+        params: params,
+        state: state,
+        output: out
+      };
+    }
     if (event.event === 'error' || event.event === 'replay_unavailable') return {type: 'error', message: payload.message || 'تعذر استعادة البث؛ افتح سجل المحادثة.'};
     if (event.event === 'result') return {type: 'final_result', response: payload.response || '', state: payload.state};
     return null;

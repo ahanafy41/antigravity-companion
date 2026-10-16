@@ -119,6 +119,9 @@ class FeatureTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_mcp_mutation_preserves_selected_workspace_owner(self):
+        self.app["store"].update(
+            "settings", {"workspace_roots": [str(self.home)]}, 0
+        )
         workspace = self.home / "selected"
         global_file = self.home / ".gemini/config/mcp_config.json"
         local_file = workspace / ".agents/mcp_config.json"
