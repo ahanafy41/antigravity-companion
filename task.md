@@ -1,5 +1,12 @@
 # سجل العمل
 
+## refactor: final lean cleanup — 2026-10-16
+
+complete_locally / awaiting_publication؛ أمر المستخدم بتنفيذ الحصر الأخير في تعليق6220674524. [الخطة](docs/final-lean-cleanup-plan.md) وdebug_manifest.json يقيدان حذف الدالة والموارد السبعة وapp.js/panels.js فقط ومراياهما ومساراتهما، ونقل فحوص الواجهة المعتزلة إلى الواجهة الحالية. الخادم ومدخله وlauncher وبثArtifacts خارج هذه الجولة؛ لا استيراد. حارس رفضspeech_enabled باقٍ، ولا مستمع صوت نشط ليحذف.
+
+الحصر والنسخ السابقة والتنفيذ الإنتاجي complete؛202 Python و35 JVM وبناءDebug ناجحة، وLint صفر أخطاء/6إنذارات. نقل الفحوص والمراجعة المستقلة complete؛ ثغرتا التغطية أصلحتا واجتازتا الفحص الطبيعي والتحوير السلبي. APK4,207,180بايت؛27أصل ويب و51مدخل خادم متطابقة؛ Commit/push/comment pending. [الحصيلة](docs/final-lean-cleanup-report.md). لا إصدار أو تثبيت أو دمج. البقايا الثلاثة state.js/ui.js/styles.css باقية وفق الحصر الأخير.
+
+
 ## refactor: lean companion — 2026-10-16
 
 published / awaiting_maintainer_review؛ اعتمد المستخدم التنفيذ الكامل لتعليق المطور6212526418 وملفي RFC/spec في preview/refactor-test، ثم الرفع والرد. [الخطة](docs/lean-companion-plan.md) وdebug_manifest.json يحصران حذف28ملفًا مسمىً وخمسة أيتام مثبتة، وتنظيف المستدعين وتشخيصTermux وشاشة البدء. النسخ السابقة في.tmp/LEAN-COMPANION. المواصفة الجديدة تنسخ إبقاء8765 والصوت الأصلي؛ الأمان والإعدادات والبيانات باقية.

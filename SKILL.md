@@ -1,5 +1,10 @@
 # مرجع تشغيل Antigravity Companion
 
+## refactor: final lean cleanup — 2026-10-16
+
+Current bounded task: maintainer comment6220674524, user explicitly authorizes execution. [Plan](docs/final-lean-cleanup-plan.md), [report](docs/final-lean-cleanup-report.md), debug_manifest.json and ignored .tmp/FINAL-LEAN-CLEANUP snapshots own scope. Retire ONLY isPortOpen, four unused strings, three unused colors, app.js/panels.js and their two routes/mirrors. Keep state.js/ui.js/styles.css; preserve server/server.py, launcher.py, active main-ui.js and adapter, native HMAC/session/CSRF/Origin and speech_enabled rejection guard. No upstream copy; live transcript/artifacts fully deferred. Migrate old checkers to actual current UI/API; nativevoice and obsolete scheduling UI checks are historical, while server scheduling tests remain. No release, phone install or merge.
+
+
 Current architecture (2026-10-16): [lean RFC](docs/lean-companion-architecture-rfc.md), [spec](docs/lean-companion-spec.json), [plan](docs/lean-companion-plan.md), [report](docs/lean-companion-report.md). Earlier native voice, AccessibilityService and port8765 requirements below are historical and superseded. Canonical web remains server/web; build-generated mirrors must match. Native connection status contains only server_available/version/can_install; Doctor contains only termux_installed/termux_run_command_permission/server_connectivity. Retain private HMAC/session/CSRF/origin guards, settings drafts/revisions and browser accessibility. Host acceptance phases are all/dashboard/chat; on-device phase is chat. No runtime version/signing change or phone acceptance is implied.
 
 

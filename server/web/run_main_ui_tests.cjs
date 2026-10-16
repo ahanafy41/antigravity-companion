@@ -144,11 +144,26 @@ const server = http.createServer(async(request,response)=>{
     await page.getByRole('button',{name:'توثيق ومصادقة بروتوكول test-server',exact:true}).click();
     await page.getByRole('button',{name:'حفظ إعداد OAuth',exact:true}).waitFor();
     assert.equal(await page.locator('#oauth-client_secret').inputValue(),'');
+    assert.equal(await page.locator('#oauth-client_secret').getAttribute('type'),'password');
     await page.locator('#oauth-client_id').fill('public-client');
     await page.getByRole('button',{name:'حفظ إعداد OAuth',exact:true}).click();
     await page.waitForFunction(()=>document.getElementById('mcp-auth-status').textContent.includes('حُفظ'));
     assert.equal(oauth.has_client_secret,true);
     await page.evaluate(()=>{window.Companion.ui.dismissTopDialog();window.Companion.ui.dismissTopDialog();});
+    // Invoke the real hidden handler; this checks cancellation, not accessible flow acceptance.
+    const logoutRequests=requests.filter(entry=>entry.route==='/api/v1/auth/logout').length;
+    let logoutDialogSeen=false;
+    let finishLogoutDismissal;
+    const logoutDismissal=new Promise(resolve=>{finishLogoutDismissal=resolve;});
+    page.once('dialog',async dialog=>{
+      logoutDialogSeen=true;assert.equal(dialog.type(),'confirm');
+      await dialog.dismiss();finishLogoutDismissal();
+    });
+    await page.evaluate(()=>document.getElementById('btn-auth-logout').click());
+    assert.equal(logoutDialogSeen,true,'logout handler must ask for confirmation');
+    await logoutDismissal;
+    assert.equal(requests.filter(entry=>entry.route==='/api/v1/auth/logout').length,logoutRequests,
+      'dismissed logout confirmation must not send a request');
     const previousRuns=requests.filter(entry=>entry.route.endsWith('/runs')).length;
     assert.equal(previousRuns,1);
     await page.reload();
