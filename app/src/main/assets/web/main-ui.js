@@ -1904,6 +1904,10 @@ await window.mainV1.ready;
 
         this.state = {};
         this.initialState = {};
+        this.baseline = null;
+        this.saveRequest = null;
+        this.remoteRequest = null;
+        this.remoteGeneration = 0;
         this.models = [];
           this.agents = [];
         this.dirtyFields = new Set();
@@ -1916,10 +1920,11 @@ await window.mainV1.ready;
 
       initBroadcast() {
         if ('BroadcastChannel' in window) {
-          this.broadcast = new BroadcastChannel('agy_settings_sync');
+          this.broadcast = window.mainV1.settingsBroadcast;
+          if (!this.broadcast) return;
           this.broadcast.onmessage = (e) => {
             if (e.data && e.data.type === 'SETTINGS_UPDATED') {
-              this.handleExternalSync(e.data.settings);
+              this.handleExternalSync();
             }
           };
         }
@@ -2120,37 +2125,51 @@ await window.mainV1.ready;
         ];
       }
 
-      async fetchRemoteData() {
+      async fetchRemoteData(discardDraft = false) {
+        if (this.remoteRequest) return this.remoteRequest;
         this.setSyncStatus('syncing', 'Syncing...');
-        try {
-          const [modelsRes, settingsRes, agentsRes] = await Promise.all([
-            window.mainV1Fetch('/api/ai/models'),
-            window.mainV1Fetch('/api/ai/settings'),
+        const generation = this.remoteGeneration;
+        const pending = (async () => {
+          const responses = await Promise.allSettled([
+            window.mainV1Fetch('/api/ai/models'), window.mainV1Fetch('/api/ai/settings'),
             window.mainV1Fetch('/api/ai/agents')
           ]);
-
-          if (modelsRes.ok) {
-            this.models = await modelsRes.json();
+          const [modelsRes, settingsRes, agentsRes] = responses.map(response => response.status === 'fulfilled' ? response.value : null);
+          const readCatalog = async (response, key) => {
+            if (!response?.ok) throw new Error('تعذر جلب القائمة');
+            const listing = await response.json();
+            const entries = key ? listing?.[key] : listing;
+            if (!Array.isArray(entries)) throw new Error('قائمة غير صالحة');
+            return entries;
+          };
+          const catalogs = await Promise.allSettled([readCatalog(modelsRes), readCatalog(agentsRes, 'agents')]);
+          if (!settingsRes?.ok) throw new Error('تعذر جلب الإعدادات');
+          const raw = await settingsRes.json();
+          if (generation !== this.remoteGeneration) return false;
+          if (catalogs[0].status === 'fulfilled') this.models = catalogs[0].value;
+          if (catalogs[1].status === 'fulfilled') this.agents = catalogs[1].value;
+          const normalized = this.normalizeSettings(raw);
+          if (discardDraft) this.dirtyFields.clear();
+          if (discardDraft || (!this.dirtyFields.size && !this.saveRequest)) {
+            this.initialState = JSON.parse(JSON.stringify(normalized));
+            this.baseline = {revision: settingsRes.headers.get('X-Settings-Revision'),
+              policyRevision: settingsRes.headers.get('X-Policy-Revision'), permissions: raw.permissions};
           }
-
-          if (agentsRes.ok) { this.agents = (await agentsRes.json()).agents || []; }
-
-          if (settingsRes.ok) {
-            const raw = await settingsRes.json();
-            this.state = this.normalizeSettings(raw);
-            this.initialState = JSON.parse(JSON.stringify(this.state));
-            this.setSyncStatus('saved', '● Live Synced');
-            if (typeof syncActiveModelDisplay === 'function' && this.state.model) {
-              syncActiveModelDisplay(this.state.model);
-            }
-            if (typeof syncReasoningEffortDisplay === 'function' && this.state.effort) {
-              syncReasoningEffortDisplay(this.state.effort);
-            }
-          }
-        } catch (err) {
+          Object.keys(normalized).forEach(key => {
+            if (!this.dirtyFields.has(key)) this.state[key] = normalized[key];
+          });
+          this.setSyncStatus(this.dirtyFields.size ? 'idle' : 'saved', this.dirtyFields.size ? 'تغييرات لم تُحفظ' : '● Live Synced');
+          if (typeof syncActiveModelDisplay === 'function' && this.state.model) syncActiveModelDisplay(this.state.model);
+          if (typeof syncReasoningEffortDisplay === 'function' && this.state.effort) syncReasoningEffortDisplay(this.state.effort);
+          return true;
+        })().catch(err => {
+          if (generation !== this.remoteGeneration) return false;
           console.error('Failed fetching settings schema:', err);
-          this.setSyncStatus('idle', 'Offline / Cache');
-        }
+          this.setSyncStatus('idle', this.dirtyFields.size ? 'تعذر الاتصال؛ تغييرات لم تُحفظ' : 'Offline / Cache');
+          return false;
+        }).finally(() => { if (this.remoteRequest === pending) this.remoteRequest = null; });
+        this.remoteRequest = pending;
+        return pending;
       }
 
       normalizeSettings(raw) {
@@ -2597,62 +2616,83 @@ await window.mainV1.ready;
         this.syncBadge.textContent = text;
       }
 
-      handleExternalSync(newSettings) {
-        if (!this.dialog || !this.dialog.open) {
-          this.state = this.normalizeSettings(newSettings);
-          return;
-        }
-        const normalized = this.normalizeSettings(newSettings);
-        Object.keys(normalized).forEach(k => {
-          if (!this.dirtyFields.has(k)) {
-            this.state[k] = normalized[k];
+      async handleExternalSync() {
+        window.mainV1.invalidateSettings();
+        this.remoteGeneration++;
+        this.remoteRequest = null;
+        const refreshed = await this.fetchRemoteData();
+        if (refreshed && this.dialog?.open) {
+          const focused = document.activeElement;
+          const focusedId = focused?.id;
+          const textDraft = focused?.tagName === 'INPUT' && focused.type === 'text' ? focused.value : null;
+          const selection = textDraft !== null ? [focused.selectionStart, focused.selectionEnd] : null;
+          this.render();
+          if (focusedId && document.activeElement === document.body) {
+            const replacement = document.getElementById(focusedId);
+            if (replacement && textDraft !== null) replacement.value = textDraft;
+            replacement?.focus();
+            if (replacement && selection) replacement.setSelectionRange(...selection);
           }
-        });
-        this.render();
-        this.setSyncStatus('saved', '● Live Synced');
+        }
       }
 
       async save(closeDialog = false) {
-        this.setSyncStatus('syncing', 'Saving...');
         if (this._debounceTimer) clearTimeout(this._debounceTimer);
+        if (this.saveRequest) {
+          const saved = await this.saveRequest;
+          if (!saved) return;
+          if (this.dirtyFields.size) return this.save(closeDialog);
+          if (closeDialog && this.dialog) this.dialog.close();
+          return;
+        }
         const writable = ['model', 'agent', 'effort', 'mode', 'sandbox', 'allow_commands', 'tones_enabled', 'haptic_enabled', 'trustedWorkspaces'];
-        const payload = Object.fromEntries([...this.dirtyFields]
-          .filter(key => writable.includes(key)).map(key => [key, this.state[key]]));
+        const payload = JSON.parse(JSON.stringify(Object.fromEntries([...this.dirtyFields]
+          .filter(key => writable.includes(key)).map(key => [key, this.state[key]]))));
         if (!Object.keys(payload).length) {
           this.setSyncStatus('saved', 'لا تغيير للحفظ');
           if (closeDialog && this.dialog) this.dialog.close();
           return;
         }
-
-        try {
+        this.setSyncStatus('syncing', 'Saving...');
+        this.remoteGeneration++;
+        const pending = (async () => {
           const res = await window.mainV1Fetch('/api/ai/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload), settingsBaseline: this.baseline
           });
-
-          if (res.ok) {
-            const data = await res.json();
-            this.dirtyFields.clear();
-            this.setSyncStatus('saved', '● Settings Applied');
-            if (closeDialog) {
-              if (typeof playSuccessChime === 'function') playSuccessChime();
-              announce('Antigravity settings saved and applied successfully');
-              if (this.dialog) this.dialog.close();
+          const outcome = await res.json();
+          const confirmed = outcome.savedFields || [];
+          if (confirmed.length) this.remoteGeneration++;
+          const accepted = outcome.settings ? this.normalizeSettings(outcome.settings) : {};
+          confirmed.forEach(key => {
+            this.initialState[key] = accepted[key];
+            if (JSON.stringify(this.state[key]) === JSON.stringify(payload[key])) this.dirtyFields.delete(key);
+          });
+          if (outcome.baseline && confirmed.length) {
+            this.baseline ||= {};
+            if (confirmed.some(key => !['allow_commands', 'whitelist'].includes(key))) this.baseline.revision = outcome.baseline.revision;
+            if (confirmed.some(key => ['allow_commands', 'whitelist'].includes(key))) {
+              this.baseline.policyRevision = outcome.baseline.policyRevision;
+              this.baseline.permissions = outcome.baseline.permissions;
             }
-            if (this.broadcast) {
-              this.broadcast.postMessage({ type: 'SETTINGS_UPDATED', settings: data.settings || this.state });
-            }
-          } else {
-            throw new Error(`Server returned HTTP ${res.status}`);
           }
-        } catch (err) {
+          if (!res.ok) throw new Error(res.status === 409 ? (confirmed.length ? 'حُفظ بعض التغييرات؛ تعارض الحفظ في الباقي؛ أعد تحميل الإعدادات لمراجعة تغييراتك' : 'تعارض الحفظ؛ أعد تحميل الإعدادات لمراجعة تغييراتك') :
+            (confirmed.length ? 'حُفظ بعض التغييرات وبقي بعضها دون حفظ' : `تعذر الحفظ؛ رمز الخطأ ${res.status}`));
+          this.setSyncStatus(this.dirtyFields.size ? 'idle' : 'saved', this.dirtyFields.size ? 'تغييرات لم تُحفظ' : '● Settings Applied');
+          if (closeDialog && !this.dirtyFields.size) {
+            if (typeof playSuccessChime === 'function') playSuccessChime();
+            announce('Antigravity settings saved and applied successfully');
+            if (this.dialog) this.dialog.close();
+          }
+          return true;
+        })().catch(err => {
           console.error('Settings save failed:', err);
-          this.setSyncStatus('idle', 'Save Failed');
-          if (closeDialog) {
-            announce('Error: Failed to save settings to server');
-          }
-        }
+          this.setSyncStatus('idle', err.message);
+          announce(err.message);
+          return false;
+        }).finally(() => { if (this.saveRequest === pending) this.saveRequest = null; });
+        this.saveRequest = pending;
+        return pending;
       }
 
       debouncedSave() {
@@ -2668,11 +2708,14 @@ await window.mainV1.ready;
         }
 
         if (this.btnReset) {
-          this.btnReset.addEventListener('click', () => {
-            this.state = JSON.parse(JSON.stringify(this.initialState));
-            this.dirtyFields.clear();
+          this.btnReset.addEventListener('click', async () => {
+            if (this.saveRequest) await this.saveRequest;
+            window.mainV1.invalidateSettings();
+            this.remoteGeneration++;
+            this.remoteRequest = null;
+            const reloaded = await this.fetchRemoteData(true);
             this.render();
-            announce('Settings reset to loaded state');
+            announce(reloaded ? 'Settings reset to loaded state' : 'تعذر تحميل الإعدادات؛ بقيت تغييراتك دون مساس');
           });
         }
 
@@ -5486,9 +5529,6 @@ await window.mainV1.ready;
       });
     }
 
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
-    }
 
     if (typeof dynamicSettingsEngine !== 'undefined' && dynamicSettingsEngine.fetchRemoteData) {
       dynamicSettingsEngine.fetchRemoteData();

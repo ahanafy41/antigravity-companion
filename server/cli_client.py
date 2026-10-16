@@ -246,11 +246,6 @@ class CLI:
             else:
                 arguments.append(name)
             await self.command(arguments, **command_options)
-            return (
-                await self.listing("mcp", cwd)
-                if cwd is not None
-                else await self.listing("mcp")
-            )
 
 
 def mcp_add_flags(request, help_text):

@@ -18,7 +18,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.Arrays;
 import android.widget.LinearLayout;
-import android.widget.TextView;
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.webkit.WebViewAssetLoader;
@@ -40,7 +39,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class MainActivity extends AppCompatActivity {
     private static WeakReference<MainActivity> activeActivity = new WeakReference<>(null);
     private WebView webView;
-    private TextView status;
     private OriginPolicy origins;
     private AppUpdateManager updates;
     private ServerConnection server;
@@ -77,7 +75,6 @@ public final class MainActivity extends AppCompatActivity {
     }
     private void buildViews() {
         LinearLayout panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL);
-        status = new TextView(this);
         accessibilityBanner = new Button(this);
         accessibilityBanner.setText("خدمة الوصول غير مفعلة؛ افتح إعدادها");
         accessibilityBanner.setOnClickListener(view -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
@@ -87,7 +84,6 @@ public final class MainActivity extends AppCompatActivity {
         panel.addView(webView, new LinearLayout.LayoutParams(-1, 0, 1)); setContentView(panel);
     }
     private void showStatus(String message) {
-        status.setText(message);
         if (!destroyed && webView != null && origins.allowsNativePage(webView.getUrl()))
             webView.evaluateJavascript("(function(){const el=document.getElementById('live-announcer')"
                     + "||document.getElementById('sr-announcer');if(el)el.textContent="
@@ -497,12 +493,6 @@ public final class MainActivity extends AppCompatActivity {
         callback.setEnabled(false);
         try { getOnBackPressedDispatcher().onBackPressed(); }
         finally { callback.setEnabled(true); }
-    }
-    private void acceptVoice(JsonObject speech) {
-        if (speech.has("error")) { showStatus(speech.get("error").getAsString()); return; }
-        getIntent().putExtra("voice_agent", false);
-        getIntent().putExtra("voice_text", speech.get("text").getAsString());
-        getIntent().putExtra("voice_task_id", speech.get("task_id").getAsString()); deliverPendingVoice();
     }
     private boolean isChatPage() {
         if (!origins.allowsBridge(webView.getUrl())) return false;

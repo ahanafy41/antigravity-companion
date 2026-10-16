@@ -7,6 +7,19 @@ const {chromium} = require(process.env.CODEX_PLAYWRIGHT_MODULE || path.join(proc
 const requests = [];
 const settings = {model:'first',agent:'',effort:'medium',mode:'accept-edits',trustedWorkspaces:['.'],tones_enabled:false,haptic_enabled:false};
 let revision = 4;
+let policyWrites = 0;
+let settingsGetGate;
+let settingsPatchGate;
+let policyPatchGate;
+let failCatalog = false;
+let malformedCatalog = false;
+let failSettingsRead = false;
+let malformedSettingsRead = false;
+function gate() {
+  let enter, release;
+  return {entered:new Promise(resolve=>{enter=resolve;}),wait:new Promise(resolve=>{release=resolve;}),
+    enter:()=>enter(),release:()=>release()};
+}
 let oauth = {revision:'mcp-one',scope:'project',has_client_id:false,has_client_secret:true};
 let uncertain = false;
 let resumeStream = false;
@@ -18,13 +31,19 @@ const server = http.createServer(async(request,response)=>{
   let raw='';for await(const chunk of request)raw+=chunk;
   requests.push({route:request.url,method:request.method,cursor:request.headers['last-event-id'],body:raw?JSON.parse(raw):null});
   if(request.url==='/api/v1/auth/session')return json(response,{csrf_token:'test-csrf'});
+  if(request.url==='/api/v1/models'&&malformedCatalog)return json(response,{unexpected:'catalog'});
+  if(request.url==='/api/v1/models'&&failCatalog)return json(response,{message:'Catalog offline'},503);
   if(request.url==='/api/v1/models')return json(response,{models:[{id:'first',name:'First model'},{id:'second',name:'Second model'}]});
   if(request.url.startsWith('/api/v1/agents'))return json(response,{agents:[{id:'reviewer',name:'Reviewer'}]});
   if(request.url==='/api/v1/settings'){
+    if(!raw&&malformedSettingsRead)return json(response,{settings:[],revision:'invalid'});
+    if(!raw&&failSettingsRead)return json(response,{message:'Settings offline'},503);
+    if(!raw&&settingsGetGate){const held=settingsGetGate;settingsGetGate=null;const snapshot=JSON.parse(JSON.stringify({settings,revision}));held.enter();await held.wait;return json(response,snapshot);}
+    if(raw&&settingsPatchGate){const held=settingsPatchGate;settingsPatchGate=null;held.enter();await held.wait;}
     if(raw){assert.equal(request.headers['x-csrf-token'],'test-csrf');if(request.headers['if-match']!=='"'+revision+'"')return json(response,{message:'Revision conflict'},409);Object.assign(settings,JSON.parse(raw).settings);revision++;}
     return json(response,{settings,revision});
   }
-  if(request.url==='/api/v1/cli/policy'){if(raw){const patch=JSON.parse(raw);assert.equal(patch.revision,policy.revision);policy={permissions:patch.permissions,revision:'policy-two'};}return json(response,policy);}
+  if(request.url==='/api/v1/cli/policy'){if(raw&&policyPatchGate){const held=policyPatchGate;policyPatchGate=null;held.enter();await held.wait;}if(raw){const patch=JSON.parse(raw);if(patch.revision!==policy.revision)return json(response,{message:'Policy conflict'},409);policy={permissions:patch.permissions,revision:'policy-'+(++policyWrites)};}return json(response,policy);}
   if(request.url.startsWith('/api/v1/commands'))return json(response,{commands:[{id:'/real',name:'Actual command'}]});
   if(request.url==='/api/v1/tasks')return json(response,{tasks:[],subagents:[]});
   if(request.url==='/api/v1/local-tasks')return json(response,{tasks:[]});
@@ -141,6 +160,17 @@ const server = http.createServer(async(request,response)=>{
     });
     assert.equal(removed.status,200);assert.deepEqual(removed.body.whitelist,['read_file(*)']);
     assert.deepEqual(policy.permissions.deny,['secret(*)']);assert.deepEqual(policy.permissions.ask,['write(*)']);
+    // A refreshed owner must not silently advance an older editor's baseline.
+    const oldBaseline = await page.evaluate(async()=>{
+      const response=await window.mainV1Fetch('/api/ai/settings');
+      await response.json();
+      return {revision:response.headers.get('X-Settings-Revision'),policyRevision:response.headers.get('X-Policy-Revision')};
+    });
+    revision++;
+    await page.evaluate(async()=>{await window.mainV1Fetch('/api/ai/settings');});
+    const staleDraft=await page.evaluate(async baseline=>(await window.mainV1Fetch('/api/ai/settings',{
+      method:'POST',body:JSON.stringify({agent:'stale-draft'}),settingsBaseline:baseline})).status,oldBaseline);
+    assert.equal(staleDraft,409,'refresh must preserve the editing baseline conflict');
     revision++;
     const conflict=await page.evaluate(async()=> (await window.mainV1Fetch('/api/ai/settings',{method:'POST',body:JSON.stringify({agent:'other'})})).status);
     assert.equal(conflict,409);assert.equal(settings.agent,'reviewer');
@@ -166,6 +196,119 @@ const server = http.createServer(async(request,response)=>{
     assert.ok(offline.list.conversations.length);assert.ok(offline.record.messages.some(message=>message.text==='Verified reply'));
     await context.setOffline(false);
     assert.deepEqual(errors,[]);
+    // Delayed reads cannot restore an older snapshot; accepted writes need no reread.
+    await page.evaluate(async()=>{await window.mainV1Fetch('/api/ai/settings');});
+    const readGate=gate();settingsGetGate=readGate;
+    await page.evaluate(()=>{window.delayedSettings=window.mainV1Fetch('/api/ai/settings').then(response=>response.json());});
+    await readGate.entered;
+    const readsBeforeWrite=requests.filter(entry=>entry.route==='/api/v1/settings'&&entry.method==='GET').length;
+    failSettingsRead=true;
+    const acceptedWrite=await page.evaluate(async()=>{
+      const response=await window.mainV1Fetch('/api/ai/settings',{method:'POST',body:JSON.stringify({model:'second'})});
+      return {status:response.status,body:await response.json()};
+    });
+    assert.equal(acceptedWrite.status,200);assert.equal(acceptedWrite.body.settings.model,'second');
+    assert.equal(requests.filter(entry=>entry.route==='/api/v1/settings'&&entry.method==='GET').length,readsBeforeWrite);
+    failSettingsRead=false;readGate.release();
+    assert.equal(await page.evaluate(async()=>(await window.delayedSettings).model),'second');
+    assert.equal(await page.evaluate(()=>window.mainV1.preferences().model),'second');
+
+    // A GET started during a mixed write must not roll back its accepted policy.
+    const policyGate=gate(),mixedSettingsGate=gate(),duringGetGate=gate();
+    policyPatchGate=policyGate;settingsPatchGate=mixedSettingsGate;
+    await page.evaluate(()=>{window.mixedSave=window.mainV1Fetch('/api/ai/settings',{
+      method:'POST',body:JSON.stringify({allow_commands:true,model:'second'})}).then(async response=>({status:response.status,body:await response.json()}));});
+    await policyGate.entered;
+    settingsGetGate=duringGetGate;
+    await page.evaluate(()=>{window.duringWriteRead=window.mainV1Fetch('/api/ai/settings').then(response=>response.json());});
+    await duringGetGate.entered;policyGate.release();await mixedSettingsGate.entered;
+    duringGetGate.release();await page.evaluate(()=>window.duringWriteRead);mixedSettingsGate.release();
+    const mixed=await page.evaluate(()=>window.mixedSave);
+    assert.equal(mixed.status,200);assert.equal(mixed.body.settings.allow_commands,true);
+    assert.equal(mixed.body.baseline.policyRevision,policy.revision);
+    assert.deepEqual(mixed.body.savedFields,['allow_commands','model']);
+    await page.evaluate(async()=>{await window.mainV1Fetch('/api/ai/settings',{method:'POST',body:JSON.stringify({allow_commands:false})});});
+
+    await page.locator('#btn-toggle-drawer').click();await page.locator('#btn-open-settings').click();
+    await page.locator('#field-trusted-workspaces-input').waitFor();
+    const addWorkspace=async name=>{
+      await page.locator('#field-trusted-workspaces-input').fill(name);
+      await page.getByRole('button',{name:'Add Path'}).click();
+    };
+    await addWorkspace('draft-a');
+    const secondTab=await context.newPage();await secondTab.goto(origin);
+    const remoteSave=await secondTab.evaluate(async()=>(await window.mainV1Fetch('/api/ai/settings',{
+      method:'POST',body:JSON.stringify({model:'first'})})).status);
+    assert.equal(remoteSave,200);
+    await page.waitForFunction(()=>window.mainV1.preferences().model==='first');
+    await page.locator('#field-trusted-workspaces-input').fill('unfinished-input');
+    const notificationGate=gate();settingsGetGate=notificationGate;
+    await secondTab.evaluate(()=>{const channel=new BroadcastChannel('agy_settings_sync');channel.postMessage({type:'SETTINGS_UPDATED',settings:{model:'untrusted-payload'}});channel.close();});
+    await notificationGate.entered;
+    await page.waitForFunction(()=>document.getElementById('settings-sync-badge').textContent==='Syncing...');
+    notificationGate.release();
+    await page.waitForFunction(()=>document.getElementById('settings-sync-badge').textContent.includes('لم تُحفظ'));
+    await page.waitForFunction(()=>document.activeElement.id==='field-trusted-workspaces-input'&&document.activeElement.value==='unfinished-input');
+    assert.equal(await page.locator('#field-model').inputValue(),'first');
+    assert.match(await page.locator('#field-trusted-workspaces-list').innerText(),/draft-a/);
+    await page.locator('#btn-save-settings').click();
+    await page.waitForFunction(()=>document.getElementById('settings-sync-badge').textContent.includes('تعارض'));
+    assert.equal(settings.trustedWorkspaces.includes('draft-a'),false);
+    assert.match(await page.locator('#field-trusted-workspaces-list').innerText(),/draft-a/);
+    await secondTab.close();
+    await page.locator('#btn-reset-settings').click();
+    await page.waitForFunction(()=>!document.getElementById('field-trusted-workspaces-list').textContent.includes('draft-a'));
+
+    // In-place array edits during a pending save remain dirty after its deep-copied submission.
+    await addWorkspace('submitted-b');
+    const patchGate=gate();settingsPatchGate=patchGate;
+    await page.evaluate(()=>document.getElementById('btn-save-settings').click());
+    await patchGate.entered;
+    await addWorkspace('later-c');patchGate.release();
+    await page.waitForFunction(()=>document.getElementById('settings-sync-badge').textContent==='تغييرات لم تُحفظ');
+    assert.equal(settings.trustedWorkspaces.includes('submitted-b'),true);
+    assert.equal(settings.trustedWorkspaces.includes('later-c'),false);
+    assert.match(await page.locator('#field-trusted-workspaces-list').innerText(),/later-c/);
+    await page.locator('#btn-save-settings').click();await page.locator('#settings-dialog').waitFor({state:'hidden'});
+    assert.equal(settings.trustedWorkspaces.includes('later-c'),true);
+
+    // Independent policy success and settings conflict clear only confirmed policy edits.
+    failCatalog=true;
+    await page.locator('#btn-toggle-drawer').click();await page.locator('#btn-open-settings').click();
+    await page.locator('#field-agent').waitFor();
+    assert.equal(await page.locator('#field-model').inputValue(),'first');
+    await page.evaluate(()=>window.Companion.ui.dismissTopDialog());
+    failCatalog=false;malformedCatalog=true;
+    await page.locator('#btn-toggle-drawer').click();await page.locator('#btn-open-settings').click();
+    await page.locator('#field-agent').waitFor();
+    await page.locator('label[for=field-perm-commands]').click();
+    await page.locator('#field-agent').selectOption('');
+    revision++;
+    await page.locator('#btn-save-settings').click();
+    await page.waitForFunction(()=>document.getElementById('settings-sync-badge').textContent.includes('تعارض'));
+    assert.ok(policy.permissions.allow.includes('command(*)'));
+    assert.equal(settings.agent,'reviewer');
+    assert.equal(await page.locator('#field-agent').inputValue(),'');
+    const policyCount=policyWrites;
+    await page.locator('#btn-save-settings').click();
+    await page.waitForFunction(()=>document.getElementById('settings-sync-badge').textContent.includes('تعارض'));
+    assert.equal(policyWrites,policyCount,'a confirmed policy write is not replayed');
+    failSettingsRead=true;
+    await page.locator('#btn-reset-settings').click();
+    await page.waitForFunction(()=>document.getElementById('settings-sync-badge').textContent.includes('تعذر الاتصال'));
+    assert.equal(await page.locator('#field-agent').inputValue(),'');
+    assert.doesNotMatch(await page.locator('#sr-announcer').innerText(),/Settings reset to loaded state/);
+    failSettingsRead=false;malformedSettingsRead=true;
+    const malformed=await page.evaluate(async()=>(await window.mainV1Fetch('/api/ai/settings')).status);
+    assert.equal(malformed,503);
+    assert.equal(await page.evaluate(()=>window.mainV1.preferences().agent),'reviewer');
+    assert.equal(await page.locator('#field-agent').inputValue(),'');
+    malformedSettingsRead=false;
+    failSettingsRead=false;failCatalog=false;malformedCatalog=false;
+    await page.locator('#btn-reset-settings').click();
+    await page.waitForFunction(()=>document.getElementById('field-agent').value==='reviewer');
+    await page.evaluate(()=>window.Companion.ui.dismissTopDialog());
+    console.log('PASS settings ownership: stale two-tab baseline, invalidation payload, delayed/during-write GET, no mandatory reread, deep-copy edits during save, partial policy success, failed refresh retention');
     await page.goto(origin+'/start');
     await page.waitForFunction(()=>document.getElementById('badge-a11y')?.textContent==='معطلة');
     assert.equal(await page.locator('#badge-ws').textContent(),'متصل');
