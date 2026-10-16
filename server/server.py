@@ -1471,6 +1471,41 @@ def handle_ai_stream(client_sock, body_bytes):
                                         }, ensure_ascii=False)
                                         safe_send(f"data: {tc_payload}\n\n")
 
+                                        # Artifacts detection in live stream
+                                        if t_name == "write_to_file":
+                                            t_file = t_args.get("TargetFile", "")
+                                            t_meta = t_args.get("ArtifactMetadata", {})
+                                            if isinstance(t_meta, str):
+                                                try: t_meta = json.loads(t_meta)
+                                                except Exception: pass
+                                            if t_meta or (t_file and "brain" in t_file):
+                                                art_name = os.path.basename(t_file) if t_file else "artifact"
+                                                cur_conv = persistent_ai_session.conversation_id or live_conv_id
+                                                if cur_conv and t_file:
+                                                    meta_disk = os.path.join(BRAIN_DIR, cur_conv, f"{art_name}.metadata.json")
+                                                    if os.path.exists(meta_disk):
+                                                        try:
+                                                            with open(meta_disk, "r", encoding="utf-8", errors="ignore") as mf:
+                                                                disk_meta = json.load(mf)
+                                                                if not t_meta: t_meta = disk_meta
+                                                                else:
+                                                                    for k, v in disk_meta.items():
+                                                                        t_meta.setdefault(k, v)
+                                                        except Exception: pass
+                                                art_summary = t_meta.get("Summary") or t_meta.get("summary") or t_args.get("Description", "")
+                                                art_feedback = bool(t_meta.get("RequestFeedback") or t_meta.get("requestFeedback", False))
+                                                art_user_facing = bool(t_meta.get("UserFacing", True) if "UserFacing" in t_meta else t_meta.get("userFacing", True))
+                                                art_payload = json.dumps({
+                                                    "type": "artifact",
+                                                    "name": art_name,
+                                                    "path": t_file,
+                                                    "summary": art_summary,
+                                                    "requestFeedback": art_feedback,
+                                                    "userFacing": art_user_facing,
+                                                    "step_index": step_idx
+                                                }, ensure_ascii=False)
+                                                safe_send(f"data: {art_payload}\n\n")
+
                             # 2. Capture Real Tool Execution Result from GENERIC step
                             elif etype == "GENERIC":
                                 content = entry.get("content", "")
@@ -3091,11 +3126,101 @@ def handle_conversation_get(client_sock, cid):
         send_json_response(client_sock, {"error": str(e)}, status_code=500)
         return
 
+    arts = get_conversation_artifacts(cid)
     send_json_response(client_sock, {
         "id": cid,
         "messages": messages,
-        "total_tokens": total_tokens
+        "total_tokens": total_tokens,
+        "artifacts": arts
     })
+
+def get_conversation_artifacts(cid):
+    if not cid:
+        return []
+    clean_cid = os.path.basename(cid)
+    b_dir = os.path.join(BRAIN_DIR, clean_cid)
+    if not os.path.isdir(b_dir):
+        return []
+    artifacts = []
+    try:
+        for fname in os.listdir(b_dir):
+            if fname.endswith(".metadata.json"):
+                base_name = fname[:-14]
+                meta_path = os.path.join(b_dir, fname)
+                doc_path = os.path.join(b_dir, base_name)
+                if os.path.exists(doc_path):
+                    try:
+                        with open(meta_path, "r", encoding="utf-8", errors="ignore") as mf:
+                            mdata = json.load(mf)
+                    except Exception:
+                        mdata = {}
+                    st = os.stat(doc_path)
+                    artifacts.append({
+                        "name": base_name,
+                        "summary": mdata.get("summary", "") or mdata.get("Summary", ""),
+                        "requestFeedback": bool(mdata.get("requestFeedback", False) or mdata.get("RequestFeedback", False)),
+                        "userFacing": bool(mdata.get("userFacing", True) if "userFacing" in mdata else mdata.get("UserFacing", True)),
+                        "updatedAt": mdata.get("updatedAt", ""),
+                        "mtime": st.st_mtime,
+                        "size": st.st_size,
+                        "path": doc_path
+                    })
+    except Exception as e:
+        logger.debug("Error listing artifacts for %s: %s", cid, e)
+    artifacts.sort(key=lambda x: x.get("mtime", 0), reverse=True)
+    return artifacts
+
+def handle_artifacts_list(client_sock, cid):
+    if not cid:
+        cid = persistent_ai_session.conversation_id or ""
+    if not cid:
+        try:
+            cids = [d for d in os.listdir(BRAIN_DIR) if os.path.isdir(os.path.join(BRAIN_DIR, d))]
+            if cids:
+                cids.sort(key=lambda d: os.path.getmtime(os.path.join(BRAIN_DIR, d)), reverse=True)
+                cid = cids[0]
+        except Exception:
+            pass
+    artifacts = get_conversation_artifacts(cid)
+    send_json_response(client_sock, {
+        "status": "ok",
+        "conversation_id": cid,
+        "artifacts": artifacts
+    })
+
+def handle_artifact_content(client_sock, cid, filename):
+    if not cid:
+        cid = persistent_ai_session.conversation_id or ""
+    if not cid or not filename:
+        send_json_response(client_sock, {"error": "Missing conversation_id or name"}, status_code=400)
+        return
+    clean_name = os.path.basename(filename)
+    clean_cid = os.path.basename(cid)
+    doc_path = os.path.join(BRAIN_DIR, clean_cid, clean_name)
+    meta_path = os.path.join(BRAIN_DIR, clean_cid, f"{clean_name}.metadata.json")
+    if not os.path.isfile(doc_path):
+        send_json_response(client_sock, {"error": f"Artifact {clean_name} not found"}, status_code=404)
+        return
+    try:
+        with open(doc_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        metadata = {}
+        if os.path.isfile(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8", errors="ignore") as mf:
+                    metadata = json.load(mf)
+            except Exception:
+                pass
+        send_json_response(client_sock, {
+            "status": "ok",
+            "name": clean_name,
+            "conversation_id": clean_cid,
+            "content": content,
+            "metadata": metadata
+        })
+    except Exception as e:
+        send_json_response(client_sock, {"error": str(e)}, status_code=500)
+
 
 
 # ==============================================================================
@@ -4165,6 +4290,23 @@ def handle_client(client_sock, backend_port, index_bytes):
         elif path.startswith("/api/ai/quota"):
             force = "refresh=1" in path or "force=1" in path
             handle_quota_get(client_sock, force=force)
+            client_sock.close()
+            return
+
+        elif path.startswith("/api/ai/artifacts/content"):
+            import urllib.parse
+            parsed_q = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+            cid = parsed_q.get("conversation_id", [""])[0] or persistent_ai_session.conversation_id or ""
+            fname = parsed_q.get("name", [""])[0]
+            handle_artifact_content(client_sock, cid, fname)
+            client_sock.close()
+            return
+
+        elif path.startswith("/api/ai/artifacts"):
+            import urllib.parse
+            parsed_q = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+            cid = parsed_q.get("conversation_id", [""])[0] or persistent_ai_session.conversation_id or ""
+            handle_artifacts_list(client_sock, cid)
             client_sock.close()
             return
 
