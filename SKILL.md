@@ -2,7 +2,7 @@
 
 ## fix: approved plugin toggle fallback — 2026-10-16
 
-التعليق6202018307 يجيز body.name || body.id في main-v1-adapter.js:457/dispatch ومرآته وحدهما. إصلاح الإضافات الذي كان ممنوعًا سابقًا مأذون الآن ومنجز محليًا؛ name مقدم، وid بديل. تجديد CACHE_NAME في sw.js أثر prepare_web_release المعتاد، بلا تغيير منطق أو حذف أصل. المانيفست debug_manifest.json، والحصيلة docs/plugin-toggle-fix-report.md. run_ui_tests ناجح الآن؛ mentions القديم وإنذار validate_code السابق يمنعان بلوغ شرط100%، وأذن المستخدم لاحقًا بإنشاء Commit ورفعه للمراجعة رغم المانعين؛ هذا لا يثبت اجتياز بوابة100% أو جاهزية الدمج. البنود المجمدة باقية على حالها.
+التعليق6202018307 يجيز body.name || body.id في main-v1-adapter.js:457/dispatch ومرآته وحدهما. إصلاح الإضافات الذي كان ممنوعًا سابقًا مأذون الآن ومنجز محليًا؛ name مقدم، وid بديل. تجديد CACHE_NAME في sw.js أثر prepare_web_release المعتاد، بلا تغيير منطق أو حذف أصل. المانيفست debug_manifest.json، والحصيلة docs/plugin-toggle-fix-report.md. الإصلاح منشور في f3f5c35؛ التعليق6204451761 يعتمد الإصلاح ويستثني mentions القديم وإنذار validate_code السابق صراحة. الفاحصان لم يُعدّلا؛ الاستثناء لا يغير نتيجة تشغيلهما. أُبلغ المطور باكتمال الرفع في6208540429؛ المراجعة النهائية والدمج عنده. البنود المجمدة باقية على حالها.
 
 ## fix: scoped maintainer follow-up — review snapshot — 2026-10-15
 

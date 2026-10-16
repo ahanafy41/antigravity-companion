@@ -1,6 +1,6 @@
 # سجل التغيير
 
-- 2026-10-16 — fix (review snapshot, known failed checks): accept plugin/skill toggle id when name is absent in the API adapter and Android mirror; uploaded for review at explicit user request despite the existing mentions selector and validator Regex false positive.
+- 2026-10-16 — fix: accept plugin/skill toggle id when name is absent in the API adapter and Android mirror; published in f3f5c35, with maintainer sign-off and explicit exemptions for the existing mentions selector and validator Regex false positive.
 
 - 2026-10-15 — fix (review snapshot, known failed checks): add bounded legacy floating voice and cancellable one-shot HTTP, three SSE GET reconnects, current UI/phone harness selectors, and remove ignored CLI help/repeated availability probes; uploaded for maintainer inspection at user request; existing browser failures and missing upstream agy retry contract remain.
 

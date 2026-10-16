@@ -2,16 +2,16 @@
 
 ## fix: approved plugin identifier fallback — 2026-10-16
 
-review_snapshot_authorized؛ أذن التعليق6202018307 بالسطر body.name || body.id ومرآته. الموضع الفعلي457/dispatch؛ لا وجود لموضع المثال195/handlePluginToggle. النسخ السابقة محفوظة بواسطة backup_manager تحت.tmp/FIX-PLUGINS-TOGGLE-ID. أذن المستخدم صراحة بإنشاء Commit ورفعه للمراجعة رغم المانعين؛ شرط100% لم يتحقق، فلا اعتماد دمج أو إصدار. [حصيلة الإصلاح](docs/plugin-toggle-fix-report.md).
+published / awaiting_maintainer_final_review؛ إصلاح السطر457/dispatch ومرآته منشور في f3f5c35، ورأس PR البعيد مطابق له. [اعتمد المطور الإصلاح والاستثناءين](https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6204451761)، وأذن بالرفع. [أُبلغ باكتمال الرفع](https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6208540429). المراجعة النهائية والدمج إلى main عند المطور؛ لا دمج أو Release أو قبول هاتف جديد في هذه الجولة. [حصيلة الإصلاح](docs/plugin-toggle-fix-report.md).
 
 | النطاق | الحال |
 |---|---|
 | المانيفست والإذن والنسخ السابقة | complete |
-| سطر canonical وسطر mirror | complete_locally؛ diff_verifier ناجح0.37% لكل ملف |
-| run_ui_tests وPython وJVM وDebug/Lint وحزمة APK | complete؛ 201 Python و66 JVM؛ 29 أصلًا محفوظًا |
-| validate_code --strict --human-grade | blocked؛ إنذار Regex في298 موجود في النسختين السابقتين أيضًا؛ node --check ناجح |
-| run_mentions_tests | blocked؛ #prompt القديم في42؛ خارج الحصر، لم يُعدّل |
-| الرفع والرد | Commit/push مأذونان للمراجعة بطلب المستخدم؛ [الرد المنشور](https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6202597761) يعرض الإصلاح والمانعين وينتظر حسم المطور |
+| سطر canonical وسطر mirror | published؛ f3f5c35 |
+| run_ui_tests وPython وJVM وDebug/Lint وحزمة APK | complete؛ نتائج الجولة موثقة في الحصيلة |
+| validate_code --strict --human-grade | exempted_by_maintainer؛ إنذار Regex سابق في298؛ الفاحص لم يُعدّل |
+| run_mentions_tests | exempted_by_maintainer؛ #prompt القديم في42؛ الفاحص لم يُعدّل |
+| الرفع وإشعار المطور | complete؛ المراجعة النهائية والدمج ينتظران المطور |
 
 ## fix: scoped maintainer follow-up — 2026-10-15
 
