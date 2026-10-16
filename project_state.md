@@ -2,9 +2,9 @@
 
 ## refactor: final lean cleanup — 2026-10-16
 
-complete_locally / awaiting_publication؛ أمر المستخدم بتنفيذ الحصر الأخير في تعليق6220674524. [الخطة](docs/final-lean-cleanup-plan.md) وdebug_manifest.json يقيدان حذف الدالة والموارد السبعة وapp.js/panels.js فقط ومراياهما ومساراتهما، ونقل فحوص الواجهة المعتزلة إلى الواجهة الحالية. الخادم ومدخله وlauncher وبثArtifacts خارج هذه الجولة؛ لا استيراد. حارس رفضspeech_enabled باقٍ، ولا مستمع صوت نشط ليحذف.
+published / awaiting_maintainer_review؛ أمر المستخدم بتنفيذ الحصر الأخير في تعليق6220674524. [الخطة](docs/final-lean-cleanup-plan.md) وdebug_manifest.json يقيدان حذف الدالة والموارد السبعة وapp.js/panels.js فقط ومراياهما ومساراتهما، ونقل فحوص الواجهة المعتزلة إلى الواجهة الحالية. الخادم ومدخله وlauncher وبثArtifacts خارج هذه الجولة؛ لا استيراد. حارس رفضspeech_enabled باقٍ، ولا مستمع صوت نشط ليحذف.
 
-الحصر والنسخ السابقة والتنفيذ الإنتاجي complete؛202 Python و35 JVM وبناءDebug ناجحة، وLint صفر أخطاء/6إنذارات. نقل الفحوص والمراجعة المستقلة complete؛ ثغرتا التغطية أصلحتا واجتازتا الفحص الطبيعي والتحوير السلبي. APK4,207,180بايت؛27أصل ويب و51مدخل خادم متطابقة؛ Commit/push/comment pending. [الحصيلة](docs/final-lean-cleanup-report.md). لا إصدار أو تثبيت أو دمج. البقايا الثلاثة state.js/ui.js/styles.css باقية وفق الحصر الأخير.
+الحصر والنسخ السابقة والتنفيذ الإنتاجي complete؛202 Python و35 JVM وبناءDebug ناجحة، وLint صفر أخطاء/6إنذارات. نقل الفحوص والمراجعة المستقلة complete؛ ثغرتا التغطية أصلحتا واجتازتا الفحص الطبيعي والتحوير السلبي. APK4,207,180بايت؛27أصل ويب و51مدخل خادم متطابقة؛ Commit/push/comment complete؛4e3371d منشور ومطابق للرأس البعيد؛ [تعليق التسليم](https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6221390646). [الحصيلة](docs/final-lean-cleanup-report.md). لا إصدار أو تثبيت أو دمج. البقايا الثلاثة state.js/ui.js/styles.css باقية وفق الحصر الأخير.
 
 
 ## refactor: lean companion — 2026-10-16

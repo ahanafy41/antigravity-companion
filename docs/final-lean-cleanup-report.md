@@ -1,6 +1,6 @@
 # refactor: final lean cleanup report
 
-2026-10-16. Implementation, local integration and independent reviews complete; publication pending.
+2026-10-16. Implementation, local integration, independent reviews and publication complete; awaiting maintainer review.
 
 ## Authority and exact scope
 
@@ -60,7 +60,7 @@ The previously exempt mentions runner and inherited lexical warnings on unchange
 
 The active adapter reports agy account state as unknown; its logout button is hidden in that state. Direct invocation of its real listener to check confirmation is regression coverage, not proof of an accessible visible logout flow. This is preexisting and unchanged, outside the cleanup scope. TalkBack/Jieshuo, real-phone start/stop and live agy/Termux/account behavior remain field acceptance.
 
-No release, physical installation/control or upstream merge. Closing commit/push and detailed maintainer reply are pending publication; no implementation or review finding remains open.
+No release, physical installation/control or upstream merge. Implementation commit [4e3371d](https://github.com/kamalyaser31/antigravity-companion/commit/4e3371df3c0144660c3ca80d5910e1c440ff82f6) was pushed to codex/refactor-phase-1; git ls-remote and PR headRefOid both matched its full hash before the [detailed maintainer reply](https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6221390646). PR description now reflects the final scope and results. This delivery receipt changes documentation only. No implementation or review finding remains open within the authorized cleanup; field acceptance and deferred features remain as stated.
 
 ## Official verification references
 
