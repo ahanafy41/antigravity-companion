@@ -151,6 +151,35 @@
   if (!current || typeof current !== 'object' || Array.isArray(current)) current = {};
   let settingsDocument;
   let policyDocument;
+  let settingsGeneration = 0;
+  let settingsRefresh;
+  let settingsWrites = Promise.resolve();
+  const settingsBroadcast = !bundled && 'BroadcastChannel' in global ? new BroadcastChannel('agy_settings_sync') : null;
+  const cloneSettings = snapshot => JSON.parse(JSON.stringify(snapshot));
+  function settingsBaseline() {
+    return {revision: settingsDocument?.revision, policyRevision: policyDocument?.revision,
+      permissions: cloneSettings(policyDocument?.permissions || {})};
+  }
+  function invalidateSettings() { settingsGeneration++; settingsRefresh = null; }
+  function validateSettingsDocument(snapshot) {
+    if (!snapshot || !snapshot.settings || typeof snapshot.settings !== 'object' || Array.isArray(snapshot.settings) ||
+        !['string', 'number'].includes(typeof snapshot.revision)) throw new Error('استجابة الإعدادات غير صالحة؛ لم تتأكد نتيجة الطلب.');
+    return snapshot;
+  }
+  function validatePolicyDocument(snapshot) {
+    if (!snapshot || !['string', 'number'].includes(typeof snapshot.revision) ||
+        !['allow', 'deny', 'ask'].every(key => Array.isArray(snapshot.permissions?.[key]))) {
+      throw new Error('استجابة الأذون غير صالحة؛ لم تتأكد نتيجة الطلب.');
+    }
+    return snapshot;
+  }
+  function settingsView() {
+    const stored = settingsDocument.settings;
+    return cloneSettings({...stored, permissions: policyDocument.permissions,
+      allow_commands: policyDocument.permissions.allow.some(rule => ['command', 'command(*)'].includes(rule)),
+      whitelist: policyDocument.permissions.allow,
+      tones_enabled: stored.sound !== false, haptic_enabled: stored.haptics !== false});
+  }
   let authRequestId;
   let connection;
   let sessionCreation;
@@ -181,36 +210,71 @@
     catch (error) { if (error.status === 401) connection = null; throw error; }
   }
   async function settings() {
-    settingsDocument = await request('/settings');
-    policyDocument = await request('/cli/policy');
-    const stored = settingsDocument.settings;
-    return {...stored, permissions: policyDocument.permissions, allow_commands: policyDocument.permissions.allow.some(rule => ['command', 'command(*)'].includes(rule)),
-      whitelist: policyDocument.permissions.allow,
-      tones_enabled: stored.sound !== false, haptic_enabled: stored.haptics !== false};
+    if (!settingsRefresh) {
+      const generation = settingsGeneration;
+      const pending = Promise.all([request('/settings'), request('/cli/policy')]).then(async documents => {
+        if (generation === settingsGeneration) {
+          const acceptedSettings = validateSettingsDocument(documents[0]);
+          const acceptedPolicy = validatePolicyDocument(documents[1]);
+          [settingsDocument, policyDocument] = [acceptedSettings, acceptedPolicy];
+        } else {
+          return settings();
+        }
+        return settingsView();
+      }).finally(() => { if (settingsRefresh === pending) settingsRefresh = null; });
+      settingsRefresh = pending;
+    }
+    return settingsRefresh;
   }
-  async function saveSettings(patch) {
+  function saveSettings(patch, baseline) {
+    const submitted = cloneSettings(patch);
+    const editingBaseline = baseline ? cloneSettings(baseline) : null;
+    const pending = settingsWrites.then(() => applySettings(submitted, editingBaseline));
+    settingsWrites = pending.catch(() => {});
+    return pending;
+  }
+  async function applySettings(patch, baseline) {
     if (!settingsDocument || !policyDocument) await settings();
+    baseline ||= settingsBaseline();
     const cliFields = ['autopilot', 'allow_write', 'allow_web', 'allow_subagent',
       'allow_schedule', 'safe_mode', 'allowNonWorkspaceAccess', 'speech_enabled', 'permissions'];
     if (cliFields.some(key => key in patch)) unsupported('غيّر أذون agy من طرفيته؛ لم يُحفظ هذا الطلب.');
     const adjusted = {...patch};
-    if ('allow_commands' in adjusted) {
-      const allow = policyDocument.permissions.allow.filter(rule => !['command', 'command(*)'].includes(rule));
-      if (adjusted.allow_commands) allow.push('command(*)');
-      adjusted.whitelist = allow;
-      delete adjusted.allow_commands;
+    const savedFields = [];
+    invalidateSettings();
+    try {
+      if ('allow_commands' in adjusted) {
+        const allow = (baseline.permissions || policyDocument.permissions).allow.filter(rule => !['command', 'command(*)'].includes(rule));
+        if (adjusted.allow_commands) allow.push('command(*)');
+        adjusted.whitelist = allow;
+        delete adjusted.allow_commands;
+      }
+      if ('whitelist' in adjusted) {
+        policyDocument = validatePolicyDocument(await request('/cli/policy', {method: 'PATCH', body: {
+          permissions: {...(baseline.permissions || policyDocument.permissions), allow: adjusted.whitelist}, revision: baseline.policyRevision}}));
+        invalidateSettings();
+        savedFields.push(...['allow_commands', 'whitelist'].filter(key => key in patch));
+        delete adjusted.whitelist;
+      }
+      for (const [legacy, actual] of [['tones_enabled', 'sound'], ['haptic_enabled', 'haptics']]) {
+        if (legacy in adjusted) { adjusted[actual] = adjusted[legacy]; delete adjusted[legacy]; }
+      }
+      if (Object.keys(adjusted).length) {
+        settingsDocument = validateSettingsDocument(await request('/settings', {method: 'PATCH',
+          headers: {'If-Match': '"' + baseline.revision + '"'}, body: {settings: adjusted}}));
+        invalidateSettings();
+        savedFields.push(...Object.keys(patch).filter(key => !['allow_commands', 'whitelist'].includes(key)));
+      }
+      return {settings: settingsView(), baseline: settingsBaseline(), savedFields};
+    } catch (error) {
+      error.savedFields = savedFields;
+      error.settings = settingsView();
+      error.baseline = settingsBaseline();
+      throw error;
+    } finally {
+      invalidateSettings();
+      if (savedFields.length) settingsBroadcast?.postMessage({type: 'SETTINGS_UPDATED'});
     }
-    if ('whitelist' in adjusted) {
-      policyDocument = await request('/cli/policy', {method: 'PATCH', body: {
-        permissions: {...policyDocument.permissions, allow: adjusted.whitelist}, revision: policyDocument.revision}});
-      delete adjusted.whitelist;
-    }
-    for (const [legacy, actual] of [['tones_enabled', 'sound'], ['haptic_enabled', 'haptics']]) {
-      if (legacy in adjusted) { adjusted[actual] = adjusted[legacy]; delete adjusted[legacy]; }
-    }
-    if (Object.keys(adjusted).length) settingsDocument = await request('/settings', {method: 'PATCH',
-      headers: {'If-Match': '"' + settingsDocument.revision + '"'}, body: {settings: adjusted}});
-    return {settings: await settings()};
   }
   function cwd() { return settingsDocument?.settings.cwd || settingsDocument?.settings.workspace_roots?.[0] || settingsDocument?.settings.trustedWorkspaces?.[0]; }
   function context() { return cwd() ? {cwd: cwd()} : {}; }
@@ -405,7 +469,12 @@
   }
   async function dispatch(path, query, body, options) {
     switch (path) {
-      case 'ai/settings': return options.method === 'POST' ? saveSettings(body) : settings();
+      case 'ai/settings': {
+        if (options.method === 'POST') return saveSettings(body, options.settingsBaseline);
+        await settings();
+        return new Response(JSON.stringify(settingsView()), {headers: {'Content-Type': 'application/json',
+          'X-Settings-Revision': String(settingsDocument.revision), 'X-Policy-Revision': String(policyDocument.revision)}});
+      }
       case 'ai/models': return (await request('/models')).models;
       case 'ai/agents': if (!settingsDocument) await settings(); return request(scoped('/agents'));
       case 'ai/commands': return {commands: (await request(scoped('/commands'))).commands.map(command =>
@@ -507,11 +576,11 @@
       return result instanceof Response ? result : json(result);
     } catch (error) {
       report(error);
-      return json({error: error.message, message: error.message, code: error.code || 'request_failed'}, error.status || 503);
+      return json({error: error.message, message: error.message, code: error.code || 'request_failed', savedFields: error.savedFields, settings: error.settings, baseline: error.baseline}, error.status || 503);
     }
   };
   // Startup stays usable offline; each action retries its own authenticated connection.
-  global.mainV1 = {ready: dashboard ? Promise.resolve() : Promise.allSettled([connect(), historyReady]), healthy, mentions, preferences: () => settingsDocument?.settings || {}, currentConversation: () => current.conversationId};
+  global.mainV1 = {ready: dashboard ? Promise.resolve() : Promise.allSettled([connect(), historyReady]), healthy, mentions, invalidateSettings, settingsBroadcast, preferences: () => cloneSettings(settingsDocument?.settings || {}), currentConversation: () => current.conversationId};
   companion.ui = {dismissTopDialog() {
     const popup = document.getElementById('at-autocomplete-popup') || document.getElementById('slash-autocomplete-popup');
     if (popup) {

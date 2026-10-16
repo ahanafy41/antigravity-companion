@@ -1,5 +1,22 @@
 # حالة المشروع
 
+## refactor: simplicity phases 2 and 3 — 2026-10-16
+
+verified_locally / publication_pending؛ أذن المستخدم بعد المواصفة بتنفيذ الكل ورفعه والرد. اكتمل التبسيط المحلي وتوحيد صورة الإعدادات لدى adapter، مع صون المسودة وrevision والحفظ الجزئي والتركيز وحماية الرابعة. [الحصيلة](docs/simplicity-phases-2-3-report.md) تفصل202 Python و66 JVM والفحوص الناجحة والإنذارات السابقة وحدود القبول. هذا إذن من المستخدم، لا اعتماد جديد من المطور على توسيع الحصر. لا دمج أو Release أو تثبيت هاتف.
+
+| الملف/المرحلة | الحال |
+|---|---|
+| المواصفة والخطة وdebug_manifest.json | complete؛ موضع error serialization الساقط من الحصر الأول موثق |
+| server/cli_client.py وscripts/run_process_tests.py | complete؛ حذف الجرد المهمل، صون cwd والخطأ وعدم replay |
+| MainActivity.java | complete؛ بقايا private فقط؛ لا تغيير layout/lifecycle |
+| main-v1-adapter.js وmain-ui.js | complete؛ ملكية الصورة، baseline المسودة، السباقات والحفظ الجزئي، تسجيل SW واحد |
+| run_main_ui_tests.cjs | complete؛ فحوص فعلية لنافذتين والتأخير والفشل والتركيز |
+| مرآتا JS وsw.js وAPK | complete؛ 29 أصلًا و53 مدخل سيرفر وrepair متطابقة |
+| الفحص المستقل وDebug/JVM/Lint | complete؛ نتائج وحدود مثبتة في الحصيلة |
+| commit/push/comment | pending؛ مأذونة من المستخدم |
+
+بقية تقرير التبسيط خارج الجولة: البنود3،4،5،6،9،10،11،12،14،15،16،17،18،19،20. قبول الهاتف والحساب الحي وانقطاع agy الداخلي غير مثبتة؛ لا يجعل نجاح GET retry الطلب الداخلي مستأنفًا.
+
 ## fix: approved plugin identifier fallback — 2026-10-16
 
 published / awaiting_maintainer_final_review؛ إصلاح السطر457/dispatch ومرآته منشور في f3f5c35، ورأس PR البعيد مطابق له. [اعتمد المطور الإصلاح والاستثناءين](https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6204451761)، وأذن بالرفع. [أُبلغ باكتمال الرفع](https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6208540429). المراجعة النهائية والدمج إلى main عند المطور؛ لا دمج أو Release أو قبول هاتف جديد في هذه الجولة. [حصيلة الإصلاح](docs/plugin-toggle-fix-report.md).

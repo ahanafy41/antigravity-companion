@@ -160,32 +160,56 @@ class ProcessGroupTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ScopedMCPTests(unittest.IsolatedAsyncioTestCase):
-    async def test_mutations_and_followup_listing_keep_workspace(self):
+    async def test_mutations_keep_workspace_without_followup_listing(self):
         client = cli_client.CLI()
-        client.command = AsyncMock(return_value="--type --env --header")
-        client.listing = AsyncMock(return_value=[{"name": "shared"}])
+        client.command = AsyncMock()
         for action in ("delete", "enable", "disable", "add"):
             client.command.reset_mock()
-            client.listing.reset_mock()
+            client.command.side_effect = ["--type --env --header", ""]
             request = {"name": "shared", "commandOrUrl": "fixture"}
-            await client.mutate_mcp(action, request, cwd="workspace")
+            result = await client.mutate_mcp(action, request, cwd="workspace")
+            self.assertIsNone(result)
+            self.assertEqual(client.command.await_count, 2)
+            verb = "remove" if action == "delete" else action
+            self.assertEqual(
+                client.command.await_args_list[0].args,
+                (["mcp", verb, "--help"],),
+            )
+            arguments = ["mcp", verb]
+            if action == "add":
+                arguments += ["--type", "stdio", "shared", "fixture"]
+            else:
+                arguments.append("shared")
+            self.assertEqual(
+                client.command.await_args_list[1].args, (arguments,)
+            )
             self.assertEqual(
                 client.command.await_args_list[0].kwargs, {"cwd": "workspace"}
             )
             self.assertEqual(
                 client.command.await_args_list[1].kwargs, {"cwd": "workspace"}
             )
-            client.listing.assert_awaited_once_with("mcp", "workspace")
 
     async def test_unscoped_mutation_preserves_existing_call_contract(self):
         client = cli_client.CLI()
-        client.command = AsyncMock(return_value="")
-        client.listing = AsyncMock(return_value=[])
-        await client.mutate_mcp("disable", {"name": "shared"})
+        client.command = AsyncMock(side_effect=["", ""])
+        result = await client.mutate_mcp("disable", {"name": "shared"})
+        self.assertIsNone(result)
+        self.assertEqual(client.command.await_count, 2)
         self.assertTrue(
             all(not call.kwargs for call in client.command.await_args_list)
         )
-        client.listing.assert_awaited_once_with("mcp")
+
+    async def test_mutation_failure_propagates_without_replay(self):
+        client = cli_client.CLI()
+        failure = cli_client.CLIUnavailable("mutation failed")
+        client.command = AsyncMock(side_effect=["", failure])
+        with self.assertRaises(cli_client.CLIUnavailable) as raised:
+            await client.mutate_mcp(
+                "disable", {"name": "shared"}, cwd="workspace"
+            )
+        self.assertIs(raised.exception, failure)
+        self.assertEqual(client.command.await_count, 2)
 
 
 if __name__ == "__main__":

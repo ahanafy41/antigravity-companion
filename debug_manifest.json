@@ -1,59 +1,172 @@
 {
-  "issue_id": "FIX-PLUGINS-TOGGLE-ID",
-  "severity": "LOW",
-  "diagnostic_branch": "Branch A: API Contract Mismatch",
+  "issue_id": "SIMPLIFY-PHASES-2-3",
+  "severity": "MEDIUM",
+  "diagnostic_branch": "Branch B: redundant work and settings snapshot ownership",
   "environment": {
-    "os": "Android / Termux Linux",
-    "runtime": "Browser JavaScript",
-    "dependencies": [
-      "main-v1-adapter.js",
-      "main-ui.js"
-    ]
+    "os": "Android / Termux with Windows verification host",
+    "runtime": "Existing Python / Java / browser JavaScript",
+    "dependencies": []
   },
-  "reproduction_command": "node server/web/run_ui_tests.cjs",
+  "reproduction_command": "node server/web/run_main_ui_tests.cjs",
   "symptoms": [
-    "The accepted UI sends id; adapter reads name and requests /plugins/undefined/disable."
+    "Remote settings broadcast bypasses adapter snapshot owner.",
+    "Dialog save clears edits made while save is in flight.",
+    "Unused MCP listing can turn successful mutation into an apparent failure."
   ],
   "exact_location_pinpoint": {
     "file_path": "server/web/main-v1-adapter.js",
-    "line_number": 457,
-    "symbol_or_ast_node": "dispatch: case 'skills/toggle' / 'plugins/toggle'",
-    "offending_snippet": "encode(body.name)"
+    "line_number": 183,
+    "symbol_or_ast_node": "settings / saveSettings",
+    "offending_snippet": "settingsDocument = await request('/settings');"
   },
-  "hypothesis": "Use body.name || body.id at the existing encoded path identifier; preserve name precedence and action selection.",
+  "hypothesis": "One adapter-owned snapshot, explicit draft baselines, stale-response protection and deletion of proven unused work preserve current contracts.",
   "fix_plan": [
-    "Replace encode(body.name) with encode(body.name || body.id) on line457 only.",
-    "Apply exactly the same line to app/src/main/assets/web/main-v1-adapter.js.",
-    "Run existing UI regression, scope verifier and strict validator; do not change any frozen code."
+    "Complete audited local cleanup without changing layout or compatibility.",
+    "Centralize accepted settings/policy snapshots and integrate editor drafts.",
+    "Verify regression, ownership races, security, packaging and scope before publish."
   ],
-  "verification_test": "node server/web/run_ui_tests.cjs",
-  "pre_mutation_backup": ".tmp/FIX-PLUGINS-TOGGLE-ID/canonical/.backups/20261016_001739/main-v1-adapter.js",
+  "verification_test": "node server/web/run_main_ui_tests.cjs",
+  "diff_churn_percent": 23.28,
   "approved_by": {
-    "comment_id": 6202018307,
-    "url": "https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6202018307",
-    "scope": "Exact name || id fallback and mirror only; actual location corrected from stale sample, not expanded."
+    "authority": "human user",
+    "instruction": "نفذ الكل وارفع للمطور وضع تعليقا بما فعلت",
+    "design": "docs/simplicity-phases-2-3-design.md",
+    "maintainer_signoff": "not claimed; user explicitly directs the expanded work despite earlier maintainer freeze"
   },
   "allowed_source_changes": [
     {
-      "file_path": "server/web/main-v1-adapter.js",
-      "line_number": 457,
-      "old": "encode(body.name)",
-      "new": "encode(body.name || body.id)"
+      "file_path": "server/cli_client.py",
+      "start_line": 231,
+      "end_line": 253,
+      "symbol": "CLI.mutate_mcp"
     },
     {
-      "file_path": "app/src/main/assets/web/main-v1-adapter.js",
-      "line_number": 457,
-      "old": "encode(body.name)",
-      "new": "encode(body.name || body.id)"
+      "file_path": "scripts/run_process_tests.py",
+      "start_line": 163,
+      "end_line": 188,
+      "symbol": "ScopedMCPTests"
+    },
+    {
+      "file_path": "app/src/main/java/com/antigravity/companion/MainActivity.java",
+      "start_line": 21,
+      "end_line": 90,
+      "symbol": "unused TextView import/status/assignment only; keep showStatus announcement"
+    },
+    {
+      "file_path": "app/src/main/java/com/antigravity/companion/MainActivity.java",
+      "start_line": 501,
+      "end_line": 506,
+      "symbol": "private acceptVoice only"
+    },
+    {
+      "file_path": "server/web/main-v1-adapter.js",
+      "start_line": 151,
+      "end_line": 215,
+      "symbol": "settingsDocument / policyDocument / settings / saveSettings"
+    },
+    {
+      "file_path": "server/web/main-v1-adapter.js",
+      "start_line": 408,
+      "end_line": 408,
+      "symbol": "dispatch ai/settings option metadata"
+    },
+    {
+      "file_path": "server/web/main-v1-adapter.js",
+      "start_line": 514,
+      "end_line": 514,
+      "symbol": "mainV1 settings ownership helpers"
+    },
+    {
+      "file_path": "server/web/main-ui.js",
+      "start_line": 1905,
+      "end_line": 1926,
+      "symbol": "DynamicSettingsEngine state and initBroadcast"
+    },
+    {
+      "file_path": "server/web/main-ui.js",
+      "start_line": 2122,
+      "end_line": 2154,
+      "symbol": "DynamicSettingsEngine.fetchRemoteData"
+    },
+    {
+      "file_path": "server/web/main-ui.js",
+      "start_line": 2599,
+      "end_line": 2704,
+      "symbol": "handleExternalSync / save / reset / polling"
+    },
+    {
+      "file_path": "server/web/main-ui.js",
+      "start_line": 5489,
+      "end_line": 5491,
+      "symbol": "duplicate Service Worker registration"
+    },
+    {
+      "file_path": "server/web/run_main_ui_tests.cjs",
+      "symbol": "existing production UI/adapter HTTP fixture and settings cases",
+      "start_line": 1,
+      "end_line": 228
+    },
+    {
+      "file_path": "server/web/main-v1-adapter.js",
+      "start_line": 510,
+      "end_line": 510,
+      "symbol": "mainV1Fetch existing error serialization: expose confirmed partial savedFields/baseline only"
     }
   ],
+  "new_test_files": [],
   "derived_release_metadata": [
     "server/web/sw.js",
     "app/src/main/assets/web/sw.js"
   ],
-  "diff_churn_percent": 0.37,
-  "location_note": "The approved sample line195/handlePluginToggle/const pluginId does not exist at HEAD5779cff; the current dispatch line457 implements the same approved operation.",
-  "symbols": [
-    "dispatch"
-  ]
+  "mirrors": [
+    "app/src/main/assets/web/main-v1-adapter.js",
+    "app/src/main/assets/web/main-ui.js"
+  ],
+  "baseline_sha256": {
+    "server/cli_client.py": "9127a4ae4e9aa70ae7b782daf1b893f2f63cdc7c7b95007b4700f0dacbadc4b1",
+    "server/application.py": "ba8430fe3b78bad562ef8a441f49e3deb7e505065995dd9f5ade0702596dc5be",
+    "scripts/run_process_tests.py": "f61fa8843687489a505608047cce87aa229af0d0d2a1bcf79a1773933b6b08a9",
+    "app/src/main/java/com/antigravity/companion/MainActivity.java": "7f745aeab634dbc6bab31bf1364c71d80357daa947c8291f189e27a986ce3ca3",
+    "server/web/main-v1-adapter.js": "1c4eccbb9bdc250afd149fab3775913dbf238bdc66a1939f1623cc4103b4f06c",
+    "server/web/main-ui.js": "fdd7922a5bbfaf832e5ebbb6c3069248683a903c7509cb45012013f31107e870",
+    "server/web/sw.js": "646a4f5637282c2ab4ef7473a2a67c7390406374637d4a03576f7c3c6f9d7608",
+    "app/src/main/assets/web/main-v1-adapter.js": "1c4eccbb9bdc250afd149fab3775913dbf238bdc66a1939f1623cc4103b4f06c",
+    "app/src/main/assets/web/main-ui.js": "fdd7922a5bbfaf832e5ebbb6c3069248683a903c7509cb45012013f31107e870",
+    "app/src/main/assets/web/sw.js": "646a4f5637282c2ab4ef7473a2a67c7390406374637d4a03576f7c3c6f9d7608"
+  },
+  "backup_receipts": ".tmp/SIMPLIFY-PHASES-2-3/backup-receipts.json",
+  "invariants": [
+    "No new dependencies",
+    "Keep HMAC/CSRF/Origin/signing/atomic-fsync/epoch/no-replay",
+    "No assets deletion",
+    "No MainActivity layout or lifecycle rewrite",
+    "Separate settings and policy revisions; retain user drafts on conflict"
+  ],
+  "diff_limits_percent": {
+    "production": 30,
+    "existing_browser_test_fixture": 100
+  },
+  "live_references_manifest": ".tmp/SIMPLIFY-PHASES-2-3/references_manifest.json",
+  "scope_audit_notes": [
+    "Post-edit audit found the first manifest omitted original line510 error serialization, required by the already approved partial-success contract. The manifest now explicitly records it; no claim of zero deviation from the first pinpoint list is made.",
+    "Restored original LF endings in canonical adapter after implementer write normalized them to CRLF; executable lines unchanged.",
+    "Restored the adjacent blank separator outside duplicate SW block; removal now touches original lines5489-5491 only."
+  ],
+  "measured_churn_percent": {
+    "app/src/main/java/com/antigravity/companion/MainActivity.java": 1.82,
+    "scripts/run_process_tests.py": 23.96,
+    "server/cli_client.py": 1.51,
+    "server/web/main-ui.js": 3.58,
+    "server/web/main-v1-adapter.js": 23.28,
+    "server/web/run_main_ui_tests.cjs": 63.6
+  },
+  "final_source_sha256": {
+    "app/src/main/java/com/antigravity/companion/MainActivity.java": "8999eea7b9fb5097cd70a89583850ffc9924bcd2c4ad85f870cbf0bf0f6b8b70",
+    "scripts/run_process_tests.py": "8b5e888b63ad981034420a5ac7b1ee1afc82940a356a6b8375896962667673aa",
+    "server/cli_client.py": "98b840ae1f0999ce9ace44833074f400552e9f71128a9163d882a893f8b803a3",
+    "server/web/main-ui.js": "3c6e85fbab55f502c81a8d3a9a44241af10f67fa37375d6a40676809955285d8",
+    "server/web/main-v1-adapter.js": "018d7a8dc6dd691d847666084b08fee8bf78f18150a0eaccb0ea5124455e1d08",
+    "server/web/run_main_ui_tests.cjs": "97193021c9a0209feeec83c88dfcba2e00d828a2ee524e08c19d90053b63855f"
+  },
+  "diff_churn_measurement": "Maximum changed production-file churn; test-file churn and budgets are separately listed."
 }
