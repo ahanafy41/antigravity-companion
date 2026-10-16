@@ -889,6 +889,43 @@ button:focus-visible, input:focus-visible, a:focus-visible {
   outline: 2px solid var(--accent-cyan);
 }
 
+/* Tool Execution Output Styles */
+.step-output-details {
+  margin-top: 8px;
+  background: #090d13;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.step-output-summary {
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  background: rgba(56, 189, 248, 0.08);
+  user-select: none;
+}
+.step-output-summary:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+}
+.step-output-content {
+  margin: 0;
+  padding: 10px;
+  font-family: monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #c9d1d9;
+  background: #040609;
+  max-height: 280px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  direction: ltr;
+  text-align: left;
+}
+
+
 /* File Explorer Dialog */
 .files-header-path {
   background-color: #070a0f;
@@ -2228,6 +2265,7 @@ dialog.accessible-dialog::backdrop {
       <button type="button" id="btn-header-dashboard" class="btn" aria-label="لوحة التحكم وشاشة البدء" title="لوحة التحكم">الرئيسية</button>
       <button type="button" id="btn-header-auth" class="btn" aria-label="الحساب"><span id="header-auth-badge">الحساب</span></button>
       <button type="button" id="btn-header-model" class="btn btn-header-model" aria-label="تغيير النموذج"><span id="header-active-model-name">Gemini 3.8</span></button>
+      <button type="button" id="btn-header-artifacts" class="btn" style="display:none; align-items:center; gap:6px; border: 1px solid var(--accent-purple); color: var(--accent-purple);" aria-label="عرض مستندات وخطط المحادثة (الآرتيفاكت)" title="المستندات والخطط"><span aria-hidden="true">📄</span> المستندات <span id="header-artifacts-badge" style="background:var(--accent-purple); color:#fff; border-radius:10px; padding:1px 6px; font-size:0.75rem; font-weight:bold;">0</span></button>
       <button type="button" id="btn-new-ai-chat" class="btn btn-primary" aria-label="محادثة جديدة">جديد</button>
       <button type="button" id="btn-toggle-tones" class="btn" style="display:none;" aria-label="الأصوات">أصوات</button>
     </div>
@@ -2279,6 +2317,10 @@ dialog.accessible-dialog::backdrop {
       </button>
       <button type="button" id="btn-open-conversations" class="drawer-btn" aria-label="المحادثات السابقة">
         <span>المحادثات السابقة</span>
+      </button>
+      <button type="button" id="btn-open-artifacts-drawer" class="drawer-btn" aria-label="مستندات وخطط المحادثة (الآرتيفاكت)">
+        <span>المستندات والخطط (Artifacts)</span>
+        <span id="val-artifacts-count-drawer" class="badge-count">0</span>
       </button>
       <button type="button" id="btn-check-updates" class="drawer-btn" aria-label="التحقق من التحديثات">
         <span>التحقق من التحديثات</span>
@@ -3248,6 +3290,59 @@ dialog.accessible-dialog::backdrop {
     </div>
   </dialog>
 
+  <!-- Accessible Artifacts Manager Dialog -->
+  <dialog id="artifacts-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="artifacts-dialog-title" style="max-width: 650px;">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <div class="dialog-header-title-group" style="display:flex; align-items:center; gap:8px;">
+          <span aria-hidden="true" style="font-size:1.4rem;">📄</span>
+          <h2 id="artifacts-dialog-title">المستندات والخطط (Artifacts)</h2>
+        </div>
+        <button type="button" id="btn-close-artifacts-top" class="btn-close-dialog" aria-label="إغلاق نافذة المستندات">✕</button>
+      </header>
+      <div class="dialog-body">
+        <p class="form-hint" style="margin-bottom: 12px; color: var(--text-muted);">
+          المستندات، التقارير والخطط المنشأة في هذه المحادثة:
+        </p>
+        <div id="artifacts-list-container" role="list" aria-label="قائمة المستندات والخطط" style="display: flex; flex-direction: column; gap: 10px; max-height: 55vh; overflow-y: auto;">
+          <div style="text-align: center; color: var(--text-muted); padding: 20px;">جاري تحميل المستندات...</div>
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button type="button" id="btn-close-artifacts" class="btn" aria-label="إغلاق">إغلاق</button>
+      </footer>
+    </div>
+  </dialog>
+
+  <!-- Accessible Artifact Viewer Modal Dialog -->
+  <dialog id="artifact-viewer-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="artifact-viewer-title" style="max-width: 850px; width: 95%; max-height: 85vh;">
+    <div class="dialog-content" style="display: flex; flex-direction: column; max-height: 80vh;">
+      <header class="dialog-header" style="flex-shrink: 0;">
+        <div style="display: flex; flex-direction: column; gap: 4px; overflow: hidden;">
+          <h2 id="artifact-viewer-title" style="margin: 0; font-size: 1.15rem; word-break: break-all;">عرض المستند</h2>
+          <span id="artifact-viewer-summary" style="font-size: 0.85rem; color: var(--text-muted); max-height: 2.8em; overflow: hidden; text-overflow: ellipsis;"></span>
+        </div>
+        <button type="button" id="btn-close-viewer-top" class="btn-close-dialog" aria-label="إغلاق عرض المستند">✕</button>
+      </header>
+      <div class="dialog-body" style="flex: 1; overflow-y: auto; padding: 16px 4px;">
+        <div id="artifact-viewer-content" class="markdown-body" dir="rtl" style="font-size: 1rem; line-height: 1.7; padding: 4px 10px;" tabindex="0" role="region" aria-label="نص المستند الكامل">
+          <p>⏳ جاري تحميل محتوى المستند...</p>
+        </div>
+      </div>
+      <footer class="dialog-footer" style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <div style="display: flex; gap: 8px;">
+          <button type="button" id="btn-copy-artifact-content" class="btn btn-secondary" aria-label="نسخ نص المستند كاملاً">
+            📋 نسخ النص
+          </button>
+          <button type="button" id="btn-viewer-proceed" class="btn btn-primary" style="display: none; background: var(--accent-green); color: #000; font-weight: bold;" aria-label="موافقة ومتابعة تنفيذ الخطة">
+            🚀 موافقة ومتابعة (Proceed)
+          </button>
+        </div>
+        <button type="button" id="btn-close-viewer" class="btn" aria-label="إغلاق">إغلاق</button>
+      </footer>
+    </div>
+  </dialog>
+
   
   <dialog id="skills-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="skills-dialog-title" style="max-width: 600px;">
     <div class="dialog-content">
@@ -3710,6 +3805,25 @@ dialog.accessible-dialog::backdrop {
     const settingsActiveConv = document.getElementById('settings-active-conv');
     const btnSettingsRefreshStats = document.getElementById('btn-settings-refresh-stats');
     let currentActiveConversationId = null;
+    // Artifacts elements
+    const btnHeaderArtifacts = document.getElementById('btn-header-artifacts');
+    const headerArtifactsBadge = document.getElementById('header-artifacts-badge');
+    const btnOpenArtifactsDrawer = document.getElementById('btn-open-artifacts-drawer');
+    const valArtifactsCountDrawer = document.getElementById('val-artifacts-count-drawer');
+    const artifactsDialog = document.getElementById('artifacts-dialog');
+    const btnCloseArtifacts = document.getElementById('btn-close-artifacts');
+    const btnCloseArtifactsTop = document.getElementById('btn-close-artifacts-top');
+    const artifactsListContainer = document.getElementById('artifacts-list-container');
+    const artifactViewerDialog = document.getElementById('artifact-viewer-dialog');
+    const artifactViewerTitle = document.getElementById('artifact-viewer-title');
+    const artifactViewerSummary = document.getElementById('artifact-viewer-summary');
+    const artifactViewerContent = document.getElementById('artifact-viewer-content');
+    const btnCloseViewer = document.getElementById('btn-close-viewer');
+    const btnCloseViewerTop = document.getElementById('btn-close-viewer-top');
+    const btnCopyArtifactContent = document.getElementById('btn-copy-artifact-content');
+    const btnViewerProceed = document.getElementById('btn-viewer-proceed');
+    let currentViewerArtifact = null;
+    let knownArtifacts = new Map();
     // AI Tokens & Quota elements
     const valAiTokens = document.getElementById('val-ai-tokens');
     const valAiContext = document.getElementById('val-ai-context');
@@ -3781,35 +3895,42 @@ dialog.accessible-dialog::backdrop {
     // Pure Accessible Agent Mode - AI Studio is always active
     if (aiViewport) aiViewport.style.display = 'flex';
 
-    // Friendly Arabic labels for tools
+    // Friendly Arabic labels for tools with semantic intent support
     function getToolLabel(toolName, params) {
+      if (!params || typeof params !== 'object') params = {};
+      const action = params.toolAction || params.action || '';
+      const summary = params.toolSummary || params.summary || '';
+      const intent = action || summary;
+
       if (toolName === 'run_command') {
-        const cmd = params.CommandLine || '';
-        return 'تشغيل أمر: ' + cmd;
+        const cmd = params.CommandLine || params.command || '';
+        const shortCmd = cmd.length > 500 ? (cmd.slice(0, 500) + '...') : cmd;
+        if (intent) return intent + (shortCmd ? ` (${shortCmd})` : '');
+        return 'تشغيل أمر الطرفية: ' + shortCmd;
       } else if (toolName === 'view_file' || toolName === 'read_resource') {
-        const p = params.AbsolutePath || params.TargetFile || '';
-        const name = p.split('/').pop() || p;
-        return 'قراءة الملف: ' + name;
+        const p = params.AbsolutePath || params.TargetFile || params.path || '';
+        return (intent ? `${intent}: ` : 'قراءة وفحص الملف: ') + (p || 'ملف');
       } else if (toolName === 'write_to_file' || toolName === 'replace_file_content') {
-        const p = params.TargetFile || params.AbsolutePath || '';
-        const name = p.split('/').pop() || p;
-        return 'تعديل أو كتابة الملف: ' + name;
+        const p = params.TargetFile || params.AbsolutePath || params.path || '';
+        const desc = params.Description || '';
+        return (intent ? `${intent}: ` : 'تعديل أو كتابة الملف: ') + p + (desc ? ` (${desc})` : '');
       } else if (toolName === 'list_dir' || toolName === 'find_by_name') {
-        return 'فحص محتويات المجلد';
+        return intent || 'فحص محتويات المجلد';
       } else if (toolName === 'invoke_subagent') {
         const subagents = params.Subagents || [];
         const roles = subagents.map(s => s.Role || s.TypeName).join(', ');
-        return '🤖 إطلاق وكيل فرعي متخصص: ' + (roles || 'وكيل جديد');
+        return '🤖 إطلاق فريق وكلاء متخصصين: ' + (roles || 'وكيل جديد');
       } else if (toolName === 'send_message') {
-        return '💬 تواصل وتنسيق مع وكيل فرعي';
+        const recipient = params.Recipient || 'وكيل فرعي';
+        return `💬 تواصل وتنسيق مع ${recipient}`;
       } else if (toolName === 'manage_subagents' || toolName === 'manage_task') {
-        return '⚙️ إدارة ومتابعة مهام الوكلاء';
+        return intent || '⚙️ إدارة ومتابعة مهام الوكلاء';
       } else if (toolName === 'search_web') {
-        return '🌐 بحث حي في الويب: ' + (params.query || '');
+        return '🌐 بحث حي في الويب: ' + (params.query || params.Query || intent || '');
       } else if (toolName === 'read_url_content') {
-        return '🌐 قراءة صفحة ومصدر ويب';
+        return '🌐 قراءة وتلخيص صفحة ويب: ' + (params.Url || params.url || '');
       }
-      return 'تنفيذ أداة: ' + toolName;
+      return intent || ('تنفيذ أداة: ' + toolName);
     }
 
     // Robust Accessible Markdown Parser
@@ -3926,6 +4047,177 @@ dialog.accessible-dialog::backdrop {
       }
 
       return outputHtml.join('');
+    }
+
+    // ==========================================================================
+    // ACCESSIBLE ARTIFACTS MANAGEMENT ENGINE
+    // ==========================================================================
+    function updateArtifactsUI(count) {
+      const cnt = count !== undefined ? count : knownArtifacts.size;
+      if (headerArtifactsBadge) headerArtifactsBadge.textContent = cnt;
+      if (valArtifactsCountDrawer) valArtifactsCountDrawer.textContent = cnt;
+      if (btnHeaderArtifacts) {
+        btnHeaderArtifacts.style.display = cnt > 0 ? 'inline-flex' : 'none';
+        btnHeaderArtifacts.setAttribute('aria-label', `عرض مستندات وخطط المحادثة (${cnt} مستند)`);
+      }
+    }
+
+    async function openArtifactViewer(artName, artPath, artSummary, requestFeedback) {
+      if (!artifactViewerDialog) return;
+      currentViewerArtifact = { name: artName, path: artPath, summary: artSummary, requestFeedback: requestFeedback };
+      if (artifactViewerTitle) artifactViewerTitle.textContent = `📄 ${artName}`;
+      if (artifactViewerSummary) artifactViewerSummary.textContent = artSummary || '';
+      if (artifactViewerContent) artifactViewerContent.innerHTML = '<p>⏳ جاري تحميل محتوى المستند...</p>';
+
+      if (btnViewerProceed) {
+        btnViewerProceed.style.display = requestFeedback ? 'inline-block' : 'none';
+      }
+
+      artifactViewerDialog.showModal();
+      announce(`تم فتح مستند: ${artName}`);
+
+      try {
+        const cid = currentActiveConversationId || '';
+        const url = `/api/ai/artifacts/content?conversation_id=${encodeURIComponent(cid)}&name=${encodeURIComponent(artName)}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`رمز الخطأ ${res.status}`);
+        const data = await res.json();
+        const rawContent = data.content || '';
+        currentViewerArtifact.content = rawContent;
+        if (artifactViewerContent) {
+          artifactViewerContent.innerHTML = renderMarkdown(rawContent);
+        }
+      } catch (err) {
+        if (artifactViewerContent) {
+          artifactViewerContent.innerHTML = `<div style="color:var(--accent-red); padding:10px;">تعذر قراءة المستند: ${escapeHtml(err.message)}</div>`;
+        }
+      }
+    }
+
+    function createArtifactCard(art) {
+      const card = document.createElement('div');
+      card.className = 'artifact-card';
+      card.setAttribute('role', 'region');
+      card.setAttribute('aria-label', `مستند: ${art.name}`);
+      card.style.cssText = 'background:rgba(163, 113, 247, 0.08); border:2px solid var(--accent-purple); border-radius:10px; padding:14px; margin:12px 0;';
+
+      const summaryText = art.summary || 'مستند تم إنشاؤه بواسطة الوكيل الذكي';
+      const isFeedback = Boolean(art.requestFeedback);
+
+      card.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+          <div style="display:flex; align-items:center; gap:8px; font-weight:bold; color:var(--accent-purple); font-size:1.05rem;">
+            <span aria-hidden="true" style="font-size:1.3rem;">📄</span>
+            <span>مستند / خطة: <strong class="artifact-name">${escapeHtml(art.name)}</strong></span>
+          </div>
+          <span class="badge" style="background:var(--accent-purple); color:#fff; border-radius:6px; padding:2px 8px; font-size:0.8rem;">وثيقة عمل (Artifact)</span>
+        </div>
+        <p class="artifact-summary" style="margin:6px 0 12px 0; color:var(--text-main); font-size:0.95rem; line-height:1.6; background:rgba(0,0,0,0.35); padding:10px 12px; border-radius:6px; border-right:4px solid var(--accent-purple);">
+          ${escapeHtml(summaryText)}
+        </p>
+        <div class="artifact-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm btn-view-art" aria-label="فتح وقراءة المستند ${escapeHtml(art.name)}" style="background:var(--accent-purple); color:#fff; font-weight:bold; border-radius:6px; padding:8px 14px; cursor:pointer;">
+            📖 فتح وقراءة المستند
+          </button>
+          <button type="button" class="btn btn-sm btn-copy-art" aria-label="نسخ محتوى المستند ${escapeHtml(art.name)}" style="background:var(--bg-card); color:var(--text-main); border:1px solid var(--border-main); border-radius:6px; padding:8px 14px; cursor:pointer;">
+            📋 نسخ المحتوى
+          </button>
+          ${isFeedback ? `
+            <button type="button" class="btn btn-sm btn-proceed-art" aria-label="موافقة ومتابعة تنفيذ الخطة (Proceed)" style="background:var(--accent-green); color:#000; font-weight:bold; border-radius:6px; padding:8px 14px; cursor:pointer;">
+              🚀 موافقة ومتابعة (Proceed)
+            </button>
+          ` : ''}
+        </div>
+      `;
+
+      const btnView = card.querySelector('.btn-view-art');
+      if (btnView) {
+        btnView.addEventListener('click', () => {
+          openArtifactViewer(art.name, art.path, art.summary, art.requestFeedback);
+        });
+      }
+
+      const btnCopy = card.querySelector('.btn-copy-art');
+      if (btnCopy) {
+        btnCopy.addEventListener('click', async () => {
+          try {
+            const cid = currentActiveConversationId || '';
+            const res = await fetch(`/api/ai/artifacts/content?conversation_id=${encodeURIComponent(cid)}&name=${encodeURIComponent(art.name)}`);
+            if (!res.ok) throw new Error('فشل جلب النص');
+            const data = await res.json();
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(data.content || '');
+            }
+            playBeep(880, 0.1);
+            announce(`تم نسخ محتوى ${art.name} إلى الحافظة بنجاح`);
+          } catch(err) {
+            announce('تعذر نسخ المستند: ' + err.message);
+          }
+        });
+      }
+
+      const btnProceed = card.querySelector('.btn-proceed-art');
+      if (btnProceed) {
+        btnProceed.addEventListener('click', () => {
+          if (aiInput) {
+            aiInput.value = 'موافق، تابع التنفيذ وفقاً للخطة الموضوعة.';
+            aiInput.focus();
+            announce('تم تعيين الموافقة والمتابعة في حقل الإدخال');
+            if (btnAiSend) btnAiSend.focus();
+          }
+        });
+      }
+
+      return card;
+    }
+
+    async function loadArtifactsList() {
+      if (!artifactsListContainer) return;
+      artifactsListContainer.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:20px;">جاري تحميل المستندات والخطط...</div>';
+      try {
+        const cid = currentActiveConversationId || '';
+        const res = await fetch(`/api/ai/artifacts?conversation_id=${encodeURIComponent(cid)}`);
+        if (!res.ok) throw new Error('فشل جلب المستندات');
+        const data = await res.json();
+        const arts = data.artifacts || [];
+        artifactsListContainer.innerHTML = '';
+        if (arts.length === 0) {
+          artifactsListContainer.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:20px;">لا توجد مستندات أو خطط منشأة في هذه المحادثة حتى الآن.</div>';
+          updateArtifactsUI(0);
+          return;
+        }
+        updateArtifactsUI(arts.length);
+        arts.forEach(art => {
+          knownArtifacts.set(art.name, art);
+          const item = document.createElement('div');
+          item.className = 'conversation-item';
+          item.setAttribute('role', 'listitem');
+          item.style.cssText = 'padding:12px; border:1px solid var(--border-main); border-radius:8px; background:var(--bg-card); display:flex; flex-direction:column; gap:8px;';
+          const sizeKb = art.size ? (art.size / 1024).toFixed(1) + ' KB' : '';
+          item.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <strong style="color:var(--accent-purple); font-size:1rem;">📄 ${escapeHtml(art.name)}</strong>
+              <span style="font-size:0.8rem; color:var(--text-muted);">${sizeKb}</span>
+            </div>
+            <p style="margin:0; font-size:0.9rem; color:var(--text-main); line-height:1.5;">${escapeHtml(art.summary || 'بدون ملخص')}</p>
+            <div style="display:flex; gap:8px; margin-top:4px;">
+              <button type="button" class="btn btn-sm btn-art-list-view" aria-label="عرض ${escapeHtml(art.name)}" style="background:var(--accent-purple); color:#fff; font-size:0.88rem; padding:6px 12px; border-radius:6px; cursor:pointer;">
+                عرض المستند
+              </button>
+            </div>
+          `;
+          const vBtn = item.querySelector('.btn-art-list-view');
+          if (vBtn) {
+            vBtn.addEventListener('click', () => {
+              if (artifactsDialog) artifactsDialog.close();
+              openArtifactViewer(art.name, art.path, art.summary, art.requestFeedback);
+            });
+          }
+          artifactsListContainer.appendChild(item);
+        });
+      } catch (err) {
+        artifactsListContainer.innerHTML = `<div style="color:var(--accent-red); padding:12px;">تعذر تحميل المستندات: ${escapeHtml(err.message)}</div>`;
+      }
     }
 
     // Global copy handlers
@@ -4325,34 +4617,143 @@ dialog.accessible-dialog::backdrop {
                     updateSubagentMessage(recipient, msg);
                   }
 
-                  const li = document.createElement('li');
-                  li.className = 'step-item ' + (data.state === 'ACTIVE' ? 'active' : 'done');
-                  if (data.tool === 'invoke_subagent') {
-                    li.style.background = 'rgba(57, 197, 187, 0.12)';
-                    li.style.border = '1px solid var(--accent-cyan)';
-                    li.innerHTML = '<span class="step-icon">👥</span> ' +
-                      '<span><strong style="color:var(--accent-cyan);">' + toolDesc + '</strong></span>';
-                  } else if (data.tool === 'send_message') {
-                    li.style.background = 'rgba(163, 113, 247, 0.12)';
-                    li.innerHTML = '<span class="step-icon">💬</span> ' +
-                      '<span><strong style="color:var(--accent-purple);">' + toolDesc + '</strong></span>';
-                  } else {
-                    li.innerHTML = '<span class="step-icon">' + (data.state === 'ACTIVE' ? '⚙️' : '✓') + '</span> ' +
-                      '<span>' + toolDesc + '</span>';
+                  // Check if there is an existing step for this tool/step_index to update in-place
+                  let stepLi = null;
+                  if (data.step_index !== undefined && data.step_index !== null) {
+                    stepLi = stepsList.querySelector(`.step-item[data-step-index="${data.step_index}"]`);
                   }
-                  stepsList.appendChild(li);
-                  announce(toolDesc);
+                  if (!stepLi && data.state !== 'ACTIVE') {
+                    const activeSteps = stepsList.querySelectorAll('.step-item.active');
+                    for (let i = activeSteps.length - 1; i >= 0; i--) {
+                      if (!data.tool || activeSteps[i].dataset.tool === data.tool) {
+                        stepLi = activeSteps[i];
+                        break;
+                      }
+                    }
+                  }
+                  if (!stepLi && data.state === 'DONE') {
+                    const lastStep = stepsList.querySelector('.step-item:last-child');
+                    if (lastStep) stepLi = lastStep;
+                  }
+
+                  const isDone = data.state === 'DONE';
+                  const isError = data.state === 'ERROR';
+
+                  if (!stepLi) {
+                    stepLi = document.createElement('li');
+                    if (data.step_index !== undefined && data.step_index !== null) {
+                      stepLi.dataset.stepIndex = data.step_index;
+                    }
+                    if (data.tool) stepLi.dataset.tool = data.tool;
+                    stepsList.appendChild(stepLi);
+                  } else {
+                    if (data.step_index !== undefined && data.step_index !== null) {
+                      stepLi.dataset.stepIndex = data.step_index;
+                    }
+                    if (data.tool) stepLi.dataset.tool = data.tool;
+                  }
+
+                  stepLi.className = 'step-item ' + (data.state === 'ACTIVE' ? 'active' : (isError ? 'error' : 'done'));
+
+                  const stateIcon = data.state === 'ACTIVE' ? '⚙️' : (isError ? '❌' : '✓');
+                  const stateLabel = data.state === 'ACTIVE' ? 'جارٍ التنفيذ...' : (isError ? 'تعثر' : 'اكتمل');
+
+                  if (data.tool === 'invoke_subagent') {
+                    stepLi.style.background = 'rgba(57, 197, 187, 0.12)';
+                    stepLi.style.border = '1px solid var(--accent-cyan)';
+                    stepLi.innerHTML = '<span class="step-icon">👥</span> ' +
+                      '<span><strong style="color:var(--accent-cyan);">' + escapeHtml(toolDesc) + '</strong></span>';
+                  } else if (data.tool === 'send_message') {
+                    stepLi.style.background = 'rgba(163, 113, 247, 0.12)';
+                    stepLi.innerHTML = '<span class="step-icon">💬</span> ' +
+                      '<span><strong style="color:var(--accent-purple);">' + escapeHtml(toolDesc) + '</strong></span>';
+                  } else {
+                    const finalDesc = toolDesc || (stepLi.querySelector('.step-label') ? stepLi.querySelector('.step-label').textContent : 'تنفيذ أداة');
+                    stepLi.innerHTML = '<span class="step-icon">' + stateIcon + '</span> ' +
+                      '<span class="step-label">' + escapeHtml(finalDesc) + ' <small style="opacity:0.8;">(' + stateLabel + ')</small></span>';
+                  }
+
+                  // Render Real Tool Output & Execution Results (Complete Uncut Output)
+                  if (data.output && String(data.output).trim()) {
+                    let outDetails = stepLi.querySelector('.step-output-details');
+                    if (!outDetails) {
+                      outDetails = document.createElement('details');
+                      outDetails.className = 'step-output-details';
+                      outDetails.open = true;
+                      const summary = document.createElement('summary');
+                      summary.className = 'step-output-summary';
+                      summary.textContent = '📄 مخرجات الأداة ونتيجة التنفيذ الكاملة';
+                      const pre = document.createElement('pre');
+                      pre.className = 'step-output-content';
+                      pre.setAttribute('tabindex', '0');
+                      pre.setAttribute('role', 'region');
+                      pre.setAttribute('aria-label', 'مخرجات ونتائج الأداة الكاملة');
+                      outDetails.append(summary, pre);
+                      stepLi.appendChild(outDetails);
+                    }
+                    const pre = outDetails.querySelector('pre');
+                    if (pre) {
+                      const outStr = String(data.output).trim();
+                      pre.textContent = outStr;
+                    }
+                  }
+
+                  if (data.state === 'ACTIVE') {
+                    announce('جارٍ تنفيذ: ' + toolDesc);
+                  } else if (isDone) {
+                    announce('تم تنفيذ: ' + toolDesc + ' بنجاح');
+                  } else if (isError) {
+                    announce('تعثر تنفيذ: ' + toolDesc);
+                  }
                   scrollChatIfNearBottom();
                 }
-                // B) Thought / Reasoning event
+                // A.1) Live Artifact event
+                else if (data.type === 'artifact' && data.name) {
+                  playBeep(780, 0.15);
+                  knownArtifacts.set(data.name, data);
+                  updateArtifactsUI();
+                  announce(`تم إنشاء مستند جديد: ${data.name}`);
+
+                  let artContainer = aiCard.querySelector('.artifacts-container');
+                  if (!artContainer) {
+                    artContainer = document.createElement('div');
+                    artContainer.className = 'artifacts-container';
+                    artContainer.setAttribute('role', 'region');
+                    artContainer.setAttribute('aria-label', 'المستندات المنشأة في هذه الخطوة');
+                    stepsTracker.parentNode.insertBefore(artContainer, stepsTracker.nextSibling);
+                  }
+                  artContainer.style.display = 'block';
+                  const existingCard = artContainer.querySelector(`[aria-label="مستند: ${data.name}"]`);
+                  if (existingCard) existingCard.remove();
+                  artContainer.appendChild(createArtifactCard(data));
+                  scrollChatIfNearBottom();
+                }
+                // B) Thought / Reasoning event (Live Thinking Stream)
                 else if (data.type === 'thought' && data.text) {
-                  accumulatedThinking += data.text;
-                  if (thinkingAccordion) thinkingAccordion.style.display = 'block';
+                  const wasEmpty = !accumulatedThinking;
+                  const newThinkingText = String(data.text).trim();
+                  if (!accumulatedThinking.includes(newThinkingText)) {
+                    accumulatedThinking += (accumulatedThinking ? '\n\n' : '') + newThinkingText;
+                  }
+                  if (thinkingAccordion) {
+                    thinkingAccordion.style.display = 'block';
+                    thinkingBody.removeAttribute('hidden');
+                    if (thinkingFooter) thinkingFooter.removeAttribute('hidden');
+                    thinkingHeader.setAttribute('aria-expanded', 'true');
+                    thinkingHeader.setAttribute('aria-label', 'تفكير واستدلال الوكيل (جارٍ التفكير المباشر...)');
+                    if (thinkingIcon) thinkingIcon.textContent = '▲';
+                  }
                   if (thinkingBody) thinkingBody.innerHTML = renderMarkdown(accumulatedThinking);
-                  if (thinkingBadge) thinkingBadge.textContent = accumulatedThinking.length + ' حرف تفكير';
+                  if (thinkingBadge) thinkingBadge.textContent = accumulatedThinking.length + ' حرف تفكير حي';
+                  if (wasEmpty) announce('بدأ الوكيل في التفكير والتحليل المنطقي المباشر');
                 }
                 // C) Content chunk event
                 else if (data.type === 'chunk' && data.text) {
+                  if (accumulatedThinking && thinkingBadge && !thinkingBadge.dataset.finished) {
+                    thinkingBadge.dataset.finished = 'true';
+                    thinkingBadge.textContent = 'اكتمل التفكير (' + accumulatedThinking.length + ' حرف)';
+                    if (thinkingHeader) thinkingHeader.setAttribute('aria-label', 'تفكير واستدلال الوكيل (مكتمل، اضغط للإخفاء أو العرض)');
+                  }
                   accumulatedText += data.text;
                   scheduleAiRender();
                 }
@@ -5879,6 +6280,24 @@ dialog.accessible-dialog::backdrop {
           });
         }
 
+        // Render Artifacts associated with this conversation
+        knownArtifacts.clear();
+        if (data.artifacts && data.artifacts.length > 0) {
+          data.artifacts.forEach(art => knownArtifacts.set(art.name, art));
+          updateArtifactsUI(data.artifacts.length);
+          const artSection = document.createElement('div');
+          artSection.className = 'chat-artifacts-section';
+          artSection.setAttribute('role', 'region');
+          artSection.setAttribute('aria-label', 'مستندات وخطط المحادثة (Artifacts)');
+          artSection.style.cssText = 'margin:12px 0; display:flex; flex-direction:column; gap:8px;';
+          data.artifacts.forEach(art => {
+            artSection.appendChild(createArtifactCard(art));
+          });
+          aiChatFeed.appendChild(artSection);
+        } else {
+          updateArtifactsUI(0);
+        }
+
         aiChatFeed.scrollTop = aiChatFeed.scrollHeight;
         if (conversationsDialog) conversationsDialog.close();
         playSuccessChime();
@@ -5902,6 +6321,63 @@ dialog.accessible-dialog::backdrop {
     }
     if (btnCloseConversationsTop && conversationsDialog) {
       btnCloseConversationsTop.addEventListener('click', () => conversationsDialog.close());
+    }
+
+    // Bind Artifacts Dialog & Viewer Events
+    if (btnHeaderArtifacts) {
+      btnHeaderArtifacts.addEventListener('click', () => {
+        if (artifactsDialog) {
+          loadArtifactsList();
+          artifactsDialog.showModal();
+          announce('تم فتح قائمة المستندات والخطط');
+        }
+      });
+    }
+    if (btnOpenArtifactsDrawer) {
+      btnOpenArtifactsDrawer.addEventListener('click', () => {
+        if (artifactsDialog) {
+          loadArtifactsList();
+          artifactsDialog.showModal();
+          announce('تم فتح قائمة المستندات والخطط');
+        }
+      });
+    }
+    if (btnCloseArtifacts && artifactsDialog) {
+      btnCloseArtifacts.addEventListener('click', () => artifactsDialog.close());
+    }
+    if (btnCloseArtifactsTop && artifactsDialog) {
+      btnCloseArtifactsTop.addEventListener('click', () => artifactsDialog.close());
+    }
+    if (btnCloseViewer && artifactViewerDialog) {
+      btnCloseViewer.addEventListener('click', () => artifactViewerDialog.close());
+    }
+    if (btnCloseViewerTop && artifactViewerDialog) {
+      btnCloseViewerTop.addEventListener('click', () => artifactViewerDialog.close());
+    }
+    if (btnCopyArtifactContent) {
+      btnCopyArtifactContent.addEventListener('click', async () => {
+        if (!currentViewerArtifact || !currentViewerArtifact.content) return;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(currentViewerArtifact.content);
+          }
+          playBeep(880, 0.1);
+          announce('تم نسخ نص المستند كاملاً إلى الحافظة بنجاح');
+        } catch(err) {
+          announce('تعذر نسخ المستند: ' + err.message);
+        }
+      });
+    }
+    if (btnViewerProceed) {
+      btnViewerProceed.addEventListener('click', () => {
+        if (artifactViewerDialog) artifactViewerDialog.close();
+        if (aiInput) {
+          aiInput.value = 'موافق، تابع التنفيذ وفقاً للخطة الموضوعة.';
+          aiInput.focus();
+          announce('تم تعيين الموافقة والمتابعة في حقل الإدخال');
+          if (btnAiSend) btnAiSend.focus();
+        }
+      });
     }
 
     
@@ -8074,6 +8550,34 @@ dialog.accessible-dialog::backdrop {
         if (!res.ok) return;
         const data = await res.json();
         const allMessages = data.messages || [];
+
+        // Live sync artifacts in background polling
+        if (data.artifacts && Array.isArray(data.artifacts)) {
+          let hasNewArt = false;
+          data.artifacts.forEach(art => {
+            if (!knownArtifacts.has(art.name)) {
+              knownArtifacts.set(art.name, art);
+              hasNewArt = true;
+            }
+          });
+          updateArtifactsUI(knownArtifacts.size);
+          if (hasNewArt) {
+            let sec = aiChatFeed.querySelector('.chat-artifacts-section');
+            if (!sec) {
+              sec = document.createElement('div');
+              sec.className = 'chat-artifacts-section';
+              sec.setAttribute('role', 'region');
+              sec.setAttribute('aria-label', 'مستندات وخطط المحادثة (Artifacts)');
+              sec.style.cssText = 'margin:12px 0; display:flex; flex-direction:column; gap:8px;';
+              aiChatFeed.appendChild(sec);
+            }
+            data.artifacts.forEach(art => {
+              if (!sec.querySelector(`[aria-label="مستند: ${art.name}"]`)) {
+                sec.appendChild(createArtifactCard(art));
+              }
+            });
+          }
+        }
         
         const textAgentMsgs = allMessages.filter(m => m.role === 'agent' && ((m.text && m.text.trim()) || m.thinking));
         if (textAgentMsgs.length === 0) return;
@@ -8489,6 +8993,7 @@ dialog.accessible-dialog::backdrop {
       dynamicSettingsEngine.fetchRemoteData();
     }
     updateSystemUsage();
+    loadArtifactsList();
     setInterval(updateSystemUsage, 25000);
 
     // Live Screen Visibility Sync: tells server if user is viewing this screen
