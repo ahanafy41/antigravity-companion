@@ -1402,10 +1402,101 @@ def handle_ai_stream(client_sock, body_bytes):
                 client_connected = False
                 return False
 
-        while True:
+        # Determine initial transcript position so we only stream new events from this turn
+        initial_transcript_lines = 0
+        cur_init_conv = persistent_ai_session.conversation_id or live_conv_id
+        if cur_init_conv:
+            init_tpath = os.path.join(BRAIN_DIR, cur_init_conv, ".system_generated", "logs", "transcript.jsonl")
+            if os.path.exists(init_tpath):
+                try:
+                    with open(init_tpath, "r", encoding="utf-8", errors="ignore") as f:
+                        initial_transcript_lines = sum(1 for _ in f)
+                except Exception:
+                    pass
+
+        last_synced_transcript_line = initial_transcript_lines
+        sent_thinking_blocks = set()
+        last_active_tool = ""
+        last_active_params = {}
+
+        def sync_transcript_updates():
+            nonlocal last_synced_transcript_line, last_active_tool, last_active_params
+            cur_conv = persistent_ai_session.conversation_id or live_conv_id
+            if not cur_conv:
+                return
+            t_path = os.path.join(BRAIN_DIR, cur_conv, ".system_generated", "logs", "transcript.jsonl")
+            if not os.path.exists(t_path):
+                return
             try:
-                line = line_queue.get(timeout=2.0)
+                with open(t_path, "r", encoding="utf-8", errors="ignore") as f:
+                    lines = f.readlines()
+                if len(lines) > last_synced_transcript_line:
+                    for line_idx in range(last_synced_transcript_line, len(lines)):
+                        raw_line = lines[line_idx].strip()
+                        if not raw_line:
+                            continue
+                        try:
+                            entry = json.loads(raw_line)
+                            etype = entry.get("type")
+                            step_idx = entry.get("step_index")
+
+                            # 1. Capture Inner Thinking / Reasoning from PLANNER_RESPONSE
+                            if etype == "PLANNER_RESPONSE":
+                                thinking = entry.get("thinking", "")
+                                if thinking and thinking not in sent_thinking_blocks:
+                                    sent_thinking_blocks.add(thinking)
+                                    th_payload = json.dumps({
+                                        "type": "thought",
+                                        "text": thinking,
+                                        "step_index": step_idx
+                                    }, ensure_ascii=False)
+                                    safe_send(f"data: {th_payload}\n\n")
+
+                                tool_calls = entry.get("tool_calls", [])
+                                if tool_calls and isinstance(tool_calls, list):
+                                    for tc in tool_calls:
+                                        t_name = tc.get("name", "")
+                                        t_args = tc.get("args", {})
+                                        if isinstance(t_args, str):
+                                            try: t_args = json.loads(t_args)
+                                            except Exception: pass
+                                        last_active_tool = t_name
+                                        last_active_params = t_args
+                                        tc_payload = json.dumps({
+                                            "type": "tool_step",
+                                            "state": "ACTIVE",
+                                            "tool": t_name,
+                                            "params": t_args,
+                                            "step_index": step_idx
+                                        }, ensure_ascii=False)
+                                        safe_send(f"data: {tc_payload}\n\n")
+
+                            # 2. Capture Real Tool Execution Result from GENERIC step
+                            elif etype == "GENERIC":
+                                content = entry.get("content", "")
+                                if content:
+                                    out_payload = json.dumps({
+                                        "type": "tool_step",
+                                        "state": "DONE",
+                                        "tool": last_active_tool,
+                                        "params": last_active_params,
+                                        "output": content,
+                                        "step_index": step_idx
+                                    }, ensure_ascii=False)
+                                    safe_send(f"data: {out_payload}\n\n")
+
+                        except Exception as ex:
+                            logger.debug("Error parsing transcript line: %s", ex)
+                    last_synced_transcript_line = len(lines)
+            except Exception as e:
+                logger.debug("Error syncing transcript updates: %s", e)
+
+        while True:
+            sync_transcript_updates()
+            try:
+                line = line_queue.get(timeout=0.5)
             except queue.Empty:
+                sync_transcript_updates()
                 # If AI process ended and queue is drained, stop
                 if proc.poll() is not None and line_queue.empty():
                     break
@@ -1462,6 +1553,9 @@ def handle_ai_stream(client_sock, body_bytes):
                         tool_name = step.get("tool_name", "")
                         tool_info = step.get("tool_info", {})
                         params = tool_info.get("parameters", {})
+                        last_active_tool = tool_name
+                        last_active_params = params
+                        step_idx = step.get("step_index")
 
                         category = TOOL_TO_CATEGORY.get(tool_name)
                         current_perms = settings.get("permissions", {}).get("allow", [])
@@ -1646,7 +1740,8 @@ def handle_ai_stream(client_sock, body_bytes):
                             "state": state,
                             "tool": tool_name,
                             "params": params,
-                            "output": tool_info.get("output", "")
+                            "output": tool_info.get("output", ""),
+                            "step_index": step_idx
                         }, ensure_ascii=False)
                         safe_send(f"data: {payload}\n\n")
 
@@ -1669,6 +1764,7 @@ def handle_ai_stream(client_sock, body_bytes):
                             safe_send(f"data: {payload}\n\n")
 
                 elif event_type == "result":
+                    sync_transcript_updates()
                     got_final_result = True
                     res = raw_event.get("result", {})
                     usage = res.get("usage", {})
@@ -1718,6 +1814,7 @@ def handle_ai_stream(client_sock, body_bytes):
                 payload = json.dumps({"type": "chunk", "text": line}, ensure_ascii=False)
                 safe_send(f"data: {payload}\n\n")
 
+        sync_transcript_updates()
         done_payload = json.dumps({
             "type": "done",
             "returncode": 0 if got_final_result else (proc.poll() or 0)
@@ -3714,6 +3811,15 @@ def handle_client(client_sock, backend_port, index_bytes):
             handle_ai_stream(client_sock, body_bytes)
             return
 
+        elif path.startswith("/api/shutdown"):
+            send_json_response(client_sock, {"status": "ok", "message": "Server shutting down cleanly"})
+            client_sock.close()
+            def _async_shutdown():
+                time.sleep(0.3)
+                os.kill(os.getpid(), signal.SIGTERM)
+            threading.Thread(target=_async_shutdown, daemon=True).start()
+            return
+
         elif path.startswith("/api/auth/status"):
             token_info = get_auth_token_info()
             wizard_state = auth_manager.get_state()
@@ -4166,6 +4272,24 @@ def handle_client(client_sock, backend_port, index_bytes):
                 b"Connection: close\r\n\r\n"
             )
             client_sock.sendall(header + i_bytes)
+            client_sock.close()
+            return
+
+        elif "/start.html" in path or "/start" in path or "/dashboard" in path:
+            start_path = os.path.join(BASE_DIR, "web", "start.html")
+            st_bytes = b""
+            if os.path.exists(start_path):
+                with open(start_path, "rb") as stf: st_bytes = stf.read()
+            else:
+                st_bytes = get_index_bytes()
+            header = (
+                b"HTTP/1.1 200 OK\r\n"
+                b"Content-Type: text/html; charset=utf-8\r\n"
+                b"Content-Length: " + str(len(st_bytes)).encode() + b"\r\n"
+                b"Cache-Control: no-cache, no-store, must-revalidate\r\n"
+                b"Connection: close\r\n\r\n"
+            )
+            client_sock.sendall(header + st_bytes)
             client_sock.close()
             return
 

@@ -823,18 +823,16 @@ await window.mainV1.ready;
 
       if (toolName === 'run_command') {
         const cmd = params.CommandLine || params.command || '';
-        const shortCmd = cmd.length > 80 ? (cmd.slice(0, 80) + '...') : cmd;
+        const shortCmd = cmd.length > 500 ? (cmd.slice(0, 500) + '...') : cmd;
         if (intent) return intent + (shortCmd ? ` (${shortCmd})` : '');
         return 'تشغيل أمر الطرفية: ' + shortCmd;
       } else if (toolName === 'view_file' || toolName === 'read_resource') {
         const p = params.AbsolutePath || params.TargetFile || params.path || '';
-        const name = p.split('/').pop() || p;
-        return (intent ? `${intent}: ` : 'قراءة وفحص الملف: ') + name;
+        return (intent ? `${intent}: ` : 'قراءة وفحص الملف: ') + (p || 'ملف');
       } else if (toolName === 'write_to_file' || toolName === 'replace_file_content') {
         const p = params.TargetFile || params.AbsolutePath || params.path || '';
-        const name = p.split('/').pop() || p;
         const desc = params.Description || '';
-        return (intent ? `${intent}: ` : 'تعديل أو كتابة الملف: ') + name + (desc ? ` (${desc})` : '');
+        return (intent ? `${intent}: ` : 'تعديل أو كتابة الملف: ') + p + (desc ? ` (${desc})` : '');
       } else if (toolName === 'list_dir' || toolName === 'find_by_name') {
         return intent || 'فحص محتويات المجلد';
       } else if (toolName === 'invoke_subagent') {
@@ -847,7 +845,7 @@ await window.mainV1.ready;
       } else if (toolName === 'manage_subagents' || toolName === 'manage_task') {
         return intent || '⚙️ إدارة ومتابعة مهام الوكلاء';
       } else if (toolName === 'search_web') {
-        return '🌐 بحث حي في الويب: ' + (params.query || '');
+        return '🌐 بحث حي في الويب: ' + (params.query || params.Query || intent || '');
       } else if (toolName === 'read_url_content') {
         return '🌐 قراءة وتلخيص صفحة ويب: ' + (params.Url || params.url || '');
       }
@@ -1372,16 +1370,23 @@ await window.mainV1.ready;
                     updateSubagentMessage(recipient, msg);
                   }
 
-                  // Check if there is an existing step for this tool to update in-place
+                  // Check if there is an existing step for this tool/step_index to update in-place
                   let stepLi = null;
-                  if (data.state !== 'ACTIVE') {
+                  if (data.step_index !== undefined && data.step_index !== null) {
+                    stepLi = stepsList.querySelector(`.step-item[data-step-index="${data.step_index}"]`);
+                  }
+                  if (!stepLi && data.state !== 'ACTIVE') {
                     const activeSteps = stepsList.querySelectorAll('.step-item.active');
                     for (let i = activeSteps.length - 1; i >= 0; i--) {
-                      if (activeSteps[i].dataset.tool === data.tool) {
+                      if (!data.tool || activeSteps[i].dataset.tool === data.tool) {
                         stepLi = activeSteps[i];
                         break;
                       }
                     }
+                  }
+                  if (!stepLi && data.state === 'DONE') {
+                    const lastStep = stepsList.querySelector('.step-item:last-child');
+                    if (lastStep) stepLi = lastStep;
                   }
 
                   const isDone = data.state === 'DONE';
@@ -1389,8 +1394,16 @@ await window.mainV1.ready;
 
                   if (!stepLi) {
                     stepLi = document.createElement('li');
-                    stepLi.dataset.tool = data.tool;
+                    if (data.step_index !== undefined && data.step_index !== null) {
+                      stepLi.dataset.stepIndex = data.step_index;
+                    }
+                    if (data.tool) stepLi.dataset.tool = data.tool;
                     stepsList.appendChild(stepLi);
+                  } else {
+                    if (data.step_index !== undefined && data.step_index !== null) {
+                      stepLi.dataset.stepIndex = data.step_index;
+                    }
+                    if (data.tool) stepLi.dataset.tool = data.tool;
                   }
 
                   stepLi.className = 'step-item ' + (data.state === 'ACTIVE' ? 'active' : (isError ? 'error' : 'done'));
@@ -1408,11 +1421,12 @@ await window.mainV1.ready;
                     stepLi.innerHTML = '<span class="step-icon">💬</span> ' +
                       '<span><strong class="main-style-144">' + escapeHtml(toolDesc) + '</strong></span>';
                   } else {
+                    const finalDesc = toolDesc || (stepLi.querySelector('.step-label') ? stepLi.querySelector('.step-label').textContent : 'تنفيذ أداة');
                     stepLi.innerHTML = '<span class="step-icon">' + stateIcon + '</span> ' +
-                      '<span>' + escapeHtml(toolDesc) + ' <small style="opacity:0.8;">(' + stateLabel + ')</small></span>';
+                      '<span class="step-label">' + escapeHtml(finalDesc) + ' <small style="opacity:0.8;">(' + stateLabel + ')</small></span>';
                   }
 
-                  // Render Real Tool Output & Execution Results
+                  // Render Real Tool Output & Execution Results (Complete Uncut Output)
                   if (data.output && String(data.output).trim()) {
                     let outDetails = stepLi.querySelector('.step-output-details');
                     if (!outDetails) {
@@ -1421,19 +1435,19 @@ await window.mainV1.ready;
                       outDetails.open = true;
                       const summary = document.createElement('summary');
                       summary.className = 'step-output-summary';
-                      summary.textContent = '📄 مخرجات الأداة ونتيجة التنفيذ';
+                      summary.textContent = '📄 مخرجات الأداة ونتيجة التنفيذ الكاملة';
                       const pre = document.createElement('pre');
                       pre.className = 'step-output-content';
                       pre.setAttribute('tabindex', '0');
                       pre.setAttribute('role', 'region');
-                      pre.setAttribute('aria-label', 'مخرجات ونتائج الأداة');
+                      pre.setAttribute('aria-label', 'مخرجات ونتائج الأداة الكاملة');
                       outDetails.append(summary, pre);
                       stepLi.appendChild(outDetails);
                     }
                     const pre = outDetails.querySelector('pre');
                     if (pre) {
                       const outStr = String(data.output).trim();
-                      pre.textContent = outStr.length > 2500 ? (outStr.slice(0, 2500) + '\n... [تم اختصار باقي المخرجات]') : outStr;
+                      pre.textContent = outStr;
                     }
                   }
 
@@ -1449,7 +1463,10 @@ await window.mainV1.ready;
                 // B) Thought / Reasoning event (Live Thinking Stream)
                 else if (data.type === 'thought' && data.text) {
                   const wasEmpty = !accumulatedThinking;
-                  accumulatedThinking += data.text;
+                  const newThinkingText = String(data.text).trim();
+                  if (!accumulatedThinking.includes(newThinkingText)) {
+                    accumulatedThinking += (accumulatedThinking ? '\n\n' : '') + newThinkingText;
+                  }
                   if (thinkingAccordion) {
                     thinkingAccordion.style.display = 'block';
                     thinkingBody.removeAttribute('hidden');
