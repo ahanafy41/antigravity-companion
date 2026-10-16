@@ -2987,45 +2987,49 @@ BRAIN_DIR = os.path.expanduser("~/.gemini/antigravity-cli/brain")
 def handle_conversations_list(client_sock):
     conversations = []
     if os.path.exists(BRAIN_DIR):
+        candidates = []
         for cid in os.listdir(BRAIN_DIR):
             cpath = os.path.join(BRAIN_DIR, cid)
             tfile = os.path.join(cpath, ".system_generated", "logs", "transcript.jsonl")
             if os.path.exists(tfile):
                 try:
-                    mtime = os.path.getmtime(tfile)
-                    title = ""
-                    step_count = 0
-                    with open(tfile, "r", encoding="utf-8", errors="ignore") as f:
-                        for line in f:
-                            step_count += 1
-                            if not title:
-                                try:
-                                    data = json.loads(line)
-                                    if data.get("type") == "USER_INPUT":
-                                        c = data.get("content", "")
-                                        if "<USER_REQUEST>" in c:
-                                            c = c.split("<USER_REQUEST>")[1].split("</USER_REQUEST>")[0].strip()
-                                        first_line = c.split("\n")[0].strip()
-                                        if first_line:
-                                            title = first_line[:60]
-                                except Exception:
-                                    pass
-                    if not title:
-                        title = f"محادثة {cid[:8]}"
-                    
-                    import datetime
-                    dt = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
-                    conversations.append({
-                        "id": cid,
-                        "title": title,
-                        "date": dt,
-                        "mtime": mtime,
-                        "steps": step_count
-                    })
+                    candidates.append((cid, tfile, os.path.getmtime(tfile)))
                 except Exception:
                     pass
-    conversations.sort(key=lambda x: x["mtime"], reverse=True)
-    send_json_response(client_sock, {"conversations": conversations[:40]})
+        candidates.sort(key=lambda x: x[2], reverse=True)
+        import datetime
+        for cid, tfile, mtime in candidates[:40]:
+            try:
+                title = ""
+                step_count = 0
+                with open(tfile, "r", encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        step_count += 1
+                        if not title:
+                            try:
+                                data = json.loads(line)
+                                if data.get("type") == "USER_INPUT":
+                                    c = data.get("content", "")
+                                    if "<USER_REQUEST>" in c:
+                                        c = c.split("<USER_REQUEST>")[1].split("</USER_REQUEST>")[0].strip()
+                                    first_line = c.split("\n")[0].strip()
+                                    if first_line:
+                                        title = first_line[:60]
+                            except Exception:
+                                pass
+                if not title:
+                    title = f"محادثة {cid[:8]}"
+                dt = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+                conversations.append({
+                    "id": cid,
+                    "title": title,
+                    "date": dt,
+                    "mtime": mtime,
+                    "steps": step_count
+                })
+            except Exception:
+                pass
+    send_json_response(client_sock, {"conversations": conversations})
 
 def handle_conversation_get(client_sock, cid):
     if not cid:
