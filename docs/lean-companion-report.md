@@ -51,7 +51,7 @@ README and SKILL describe current operation. task.md/project_state.md/CHANGELOG.
 | Impeccable mechanical detector on start HTML/JS/CSS | Empty finding array |
 | Lint | 0 errors/fatal;14 warnings |
 
-The202 server tests remain. Optional server device protocol fixtures do not imply the Android automation service or8765 listener still exists. Node features' retained server/browser voice-cancellation check likewise is distinct from removed Android native voice.
+The202 server tests remain. Optional server device protocol fixtures do not imply the Android automation service or8765 listener still exists. Correction recorded during final cleanup (2026-10-16): the old Node features checker actually loaded retired panels.js and exercised native start_voice/cancel_voice. Its previously recorded pass was historical legacy-test evidence, not proof of browser voice cancellation. The earlier description above was inaccurate; the final cleanup report records retirement of that obsolete test and migration of supported contracts to the active interface.
 
 Debug APK measured with the same existing version/signing/toolchain configuration: baseline4,454,748 bytes; final4,256,680 bytes; reduction198,068 bytes (about4.45%). The baseline APK's affected web bytes were verified against the original snapshots before comparison. Startup latency and the owner's <100ms observation were not measured here and are not claimed.
 

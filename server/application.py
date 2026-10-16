@@ -203,8 +203,6 @@ def register_routes(application):
         "state.js",
         "native.js",
         "ui.js",
-        "panels.js",
-        "app.js",
         "styles.css",
         "sw.js",
         "manifest.json",

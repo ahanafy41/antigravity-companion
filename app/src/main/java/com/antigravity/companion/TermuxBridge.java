@@ -12,9 +12,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import com.google.gson.JsonObject;
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -109,11 +106,6 @@ public final class TermuxBridge {
                 DEADLINES.removeCallbacks(request.timeout); request.callbackIntent.cancel();
             }
         }
-    }
-    public static boolean isPortOpen(String host, int port, int timeoutMs) {
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(host, port), timeoutMs); return true;
-        } catch (IOException offline) { return false; }
     }
     private static Integer integerField(Bundle command, String field) {
         Object value = command == null ? null : command.get(field);
