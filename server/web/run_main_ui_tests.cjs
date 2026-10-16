@@ -7,6 +7,7 @@ const {chromium} = require(process.env.CODEX_PLAYWRIGHT_MODULE || path.join(proc
 const requests = [];
 const settings = {model:'first',agent:'',effort:'medium',mode:'accept-edits',trustedWorkspaces:['.'],tones_enabled:false,haptic_enabled:false};
 let revision = 4;
+let serverHealthy = true;
 let policyWrites = 0;
 let settingsGetGate;
 let settingsPatchGate;
@@ -64,7 +65,8 @@ const server = http.createServer(async(request,response)=>{
   }
   if(request.url==='/api/v1/auth/status')return json(response,{authenticated:null,pending:false,reason:'agy owns account state'});
   if(request.url.startsWith('/api/v1/files'))return json(response,{path:'/workspace',entries:[{name:'file name.txt',path:'/workspace/file name.txt',is_dir:false,size:3},{name:'folder one',path:'/workspace/folder one',is_dir:true,size:0}]});
-  if(request.url==='/health')return json(response,{status:'ok'});
+  if(request.url==='/health')return json(response,{status:serverHealthy?'ok':'offline'},serverHealthy?200:503);
+  if(request.url==='/api/v1/system/shutdown'){assert.equal(request.headers['x-csrf-token'],'test-csrf');serverHealthy=false;return json(response,{status:'stopped'});}
   if(request.url==='/api/v1/runs/run-one/events'){
     response.writeHead(200,{'Content-Type':'text/event-stream'});
     if(resumeStream && !request.headers['last-event-id']){
@@ -98,9 +100,9 @@ const server = http.createServer(async(request,response)=>{
     const page=await context.newPage();
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
     await page.addInitScript(()=>{window.CompanionNative={postMessage(raw){const request=JSON.parse(raw);const outcomes={
-      get_app_version:{version:'2.0.0',can_install:true},is_accessibility_active:{active:false},get_connection_status:{server_available:true,server_authenticated:true,automation_ready:true},
+      get_app_version:{version:'2.0.0',can_install:true},get_connection_status:{server_available:true,version:'2.0.0',can_install:true},
       probe_server:{server_available:true,server_authenticated:true,legacy:false},
-      run_diagnostics:{status:'ok'},check_update:{hasUpdate:true,latestVersion:'2.1.0'}};
+      run_diagnostics:{status:'HEALTHY',issues_count:0,checks:['termux_installed','termux_run_command_permission','server_connectivity'].map(check=>({check,passed:true}))},check_update:{hasUpdate:true,latestVersion:'2.1.0'}};
       setTimeout(()=>window.dispatchEvent(new CustomEvent('companion-native-result',{detail:{request_id:request.request_id,success:true,result:outcomes[request.action]||{}}})),0);
     }};window.cspFailures=[];document.addEventListener('securitypolicyviolation',event=>window.cspFailures.push(event.violatedDirective));});
     const origin='http://127.0.0.1:'+server.address().port;
@@ -147,8 +149,6 @@ const server = http.createServer(async(request,response)=>{
     await page.waitForFunction(()=>document.getElementById('mcp-auth-status').textContent.includes('حُفظ'));
     assert.equal(oauth.has_client_secret,true);
     await page.evaluate(()=>{window.Companion.ui.dismissTopDialog();window.Companion.ui.dismissTopDialog();});
-    await page.evaluate(()=>window.dispatchEvent(new CustomEvent('companion-voice-input',{detail:{mode:'dictation',text:'draft only'}})));
-    assert.match(await page.locator('#ai-prompt-input').inputValue(),/draft only/);
     const previousRuns=requests.filter(entry=>entry.route.endsWith('/runs')).length;
     assert.equal(previousRuns,1);
     await page.reload();
@@ -310,17 +310,32 @@ const server = http.createServer(async(request,response)=>{
     await page.evaluate(()=>window.Companion.ui.dismissTopDialog());
     console.log('PASS settings ownership: stale two-tab baseline, invalidation payload, delayed/during-write GET, no mandatory reread, deep-copy edits during save, partial policy success, failed refresh retention');
     await page.goto(origin+'/start');
-    await page.waitForFunction(()=>document.getElementById('badge-a11y')?.textContent==='معطلة');
-    assert.equal(await page.locator('#badge-ws').textContent(),'متصل');
+    assert.equal(await page.locator('h1').textContent(),'Antigravity Companion');
+    await page.waitForFunction(()=>document.getElementById('badge-server')?.textContent==='خادم تيرمكس: نشط ومتصل');
+    assert.equal(await page.locator('button').count(),5);
+    assert.equal(await page.locator('#badge-a11y,#badge-ws,#btn-open-a11y').count(),0);
     assert.match(await page.locator('#app-version-label').textContent(),/2\.0\.0/);
     assert.equal(await page.locator('[onclick],[style]').count(),0);
     await page.locator('#btn-run-diag').click();
-    await page.waitForFunction(()=>document.getElementById('diag-output').textContent.includes('ok'));
+    await page.waitForFunction(()=>document.getElementById('diag-output').textContent.includes('الفحوص الثلاثة سليمة'));
     await page.locator('#btn-check-update').click();
     await page.getByRole('button',{name:'تثبيت التحديث الآن',exact:true}).waitFor();
     assert.equal(await page.locator('[onclick]').count(),0);
     assert.deepEqual(await page.evaluate(()=>window.cspFailures),[]);
     assert.deepEqual(errors,[]);
+    const browserOnly=await context.newPage();
+    const browserErrors=[];browserOnly.on('pageerror',error=>browserErrors.push(error.message));
+    await browserOnly.goto(origin+'/start');
+    await browserOnly.waitForFunction(()=>document.getElementById('btn-stop-server'));
+    browserOnly.on('dialog',dialog=>dialog.accept());
+    await browserOnly.evaluate(()=>{const button=document.getElementById('btn-stop-server');button.focus();button.click();button.click();});
+    await browserOnly.waitForFunction(()=>document.getElementById('btn-wake-server')&&!document.getElementById('btn-wake-server').hasAttribute('aria-disabled'));
+    assert.equal(requests.filter(entry=>entry.route==='/api/v1/system/shutdown').length,1);
+    assert.equal(await browserOnly.evaluate(()=>document.activeElement.id),'btn-wake-server');
+    await browserOnly.locator('#btn-wake-server').click();
+    assert.match(await browserOnly.locator('#live-announcer').textContent(),/تشغيل الخادم متاح داخل التطبيق/);
+    assert.deepEqual(browserErrors,[]);
+    await browserOnly.close();
     const bundled=await browser.newContext({serviceWorkers:'allow'});
     const bundledRequests=[];
     await bundled.route('https://appassets.androidplatform.net/**',async route=>{
@@ -335,37 +350,94 @@ const server = http.createServer(async(request,response)=>{
     const bundledErrors=[];dashboard.on('pageerror',error=>bundledErrors.push(error.message));
     await dashboard.addInitScript(()=>{
       Object.defineProperty(window,'indexedDB',{get(){throw new Error('IndexedDB unavailable');}});
-      window.nativeActions=[];window.serverAvailable=false;
+      window.nativeActions=[];window.serverAvailable=false;window.holdProbe=true;
+      window.doctorResult={status:'HEALTHY',issues_count:0,checks:['termux_installed','termux_run_command_permission','server_connectivity'].map(check=>({check,passed:true}))};
       window.CompanionNative={postMessage(raw){
         const request=JSON.parse(raw);window.nativeActions.push(request.action);
-        const outcomes={get_app_version:{version:'2.0.0',can_install:true},is_accessibility_active:{active:false},
-          get_connection_status:{server_available:window.serverAvailable,server_authenticated:false,automation_ready:true},
-          probe_server:{server_available:window.serverAvailable,server_authenticated:false,legacy:true},run_diagnostics:{status:'ok'}};
-        setTimeout(()=>window.dispatchEvent(new CustomEvent('companion-native-result',{detail:{request_id:request.request_id,success:true,result:outcomes[request.action]||{}}})),0);
+        const outcomes={get_app_version:{version:'2.0.0',can_install:true},
+          get_connection_status:{server_available:window.serverAvailable,version:'2.0.0',can_install:true},
+          probe_server:{server_available:window.serverAvailable},run_diagnostics:window.doctorResult};
+        const reply=()=>window.dispatchEvent(new CustomEvent('companion-native-result',{detail:{request_id:request.request_id,success:!(request.action==='run_diagnostics'&&window.rejectDoctor),error:'تعذر فحص Android',result:outcomes[request.action]||{}}}));
+        if(request.action==='probe_server'&&window.holdProbe){window.holdProbe=false;window.staleProbe=reply;window.failedStaleProbe=()=>window.dispatchEvent(new CustomEvent('companion-native-result',{detail:{request_id:request.request_id,success:false,error:'stale failed status'}}));return;}
+        if(request.action==='start_server'){window.serverAvailable=true;window.startReply=reply;return;}
+        if(request.action==='stop_server')window.serverAvailable=false;
+        if(request.action==='run_diagnostics'&&window.holdDoctor){window.doctorReply=reply;return;}
+        setTimeout(reply,0);
       }};
     });
     await dashboard.goto('https://appassets.androidplatform.net/assets/web/start.html');
-    await dashboard.waitForFunction(()=>document.getElementById('badge-server').textContent==='غير نشط (متوقف)');
-    await dashboard.locator('#btn-wake-server').click();
-    await dashboard.waitForFunction(()=>window.nativeActions.includes('start_server'));
-    await dashboard.locator('#btn-open-a11y').click();
-    await dashboard.waitForFunction(()=>window.nativeActions.includes('open_settings'));
-    await dashboard.evaluate(()=>{window.serverAvailable=true;});
-    await dashboard.locator('#btn-refresh-status').click();
-    await dashboard.waitForFunction(()=>document.getElementById('badge-server').textContent==='نشط وجاهز');
+    await dashboard.waitForFunction(()=>window.staleProbe);
+    assert.deepEqual(await dashboard.locator('button').evaluateAll(buttons=>buttons.map(button=>button.textContent)),
+      ['دخول الشات والمحادثة','تشغيل الخادم','فحص وإصلاح الأعطال','فحص التحديثات','تجهيز Termux لأول مرة']);
+    assert.equal(await dashboard.locator('#setup-heading').textContent(),'الإعداد الأولي والصيانة');
+    await dashboard.locator('#btn-wake-server').focus();
+    await dashboard.evaluate(()=>{const button=document.getElementById('btn-wake-server');button.click();button.click();});
+    await dashboard.waitForFunction(()=>window.startReply);
+    assert.equal(await dashboard.evaluate(()=>window.nativeActions.filter(action=>action==='start_server').length),1);
+    await dashboard.evaluate(()=>window.startReply());
+    await dashboard.waitForFunction(()=>document.getElementById('btn-stop-server'));
+    assert.equal(await dashboard.locator('#badge-server').textContent(),'خادم تيرمكس: نشط ومتصل');
+    assert.equal(await dashboard.evaluate(()=>document.activeElement.id),'btn-stop-server');
+    assert.equal(await dashboard.locator('#btn-stop-server').getAttribute('aria-disabled'),null);
+    await dashboard.evaluate(()=>window.failedStaleProbe());
+    assert.doesNotMatch(await dashboard.locator('#live-announcer').textContent(),/stale failed status/);
+    await dashboard.waitForFunction(()=>window.nativeActions.filter(action=>action==='probe_server').length>=2);
+    assert.equal(await dashboard.locator('#btn-stop-server').textContent(),'إيقاف الخادم');
     await dashboard.locator('#btn-go-chat').click();
     await dashboard.waitForFunction(()=>window.nativeActions.includes('open_chat'));
     dashboard.on('dialog',dialog=>dialog.accept());
-    await dashboard.locator('#btn-stop-server').click();
-    await dashboard.waitForFunction(()=>window.nativeActions.includes('stop_server'));
-    await dashboard.evaluate(async()=>{await window.AntigravityBridge.startServer();await window.AntigravityBridge.loadDashboardUrl();});
-    assert.equal(await dashboard.evaluate(()=>window.nativeActions.filter(action=>action==='start_server').length),2);
+    await dashboard.evaluate(()=>{const button=document.getElementById('btn-stop-server');button.focus();button.click();button.click();});
+    assert.equal(await dashboard.evaluate(()=>window.nativeActions.filter(action=>action==='stop_server').length),1);
+    await dashboard.waitForFunction(()=>document.getElementById('btn-wake-server')&&!document.getElementById('btn-wake-server').hasAttribute('aria-disabled'));
+    assert.equal(await dashboard.locator('#badge-server').textContent(),'خادم تيرمكس: متوقف');
+    assert.equal(await dashboard.evaluate(()=>document.activeElement.id),'btn-wake-server');
+    await dashboard.evaluate(()=>{window.holdDoctor=true;document.getElementById('btn-run-diag').click();document.getElementById('btn-run-diag').click();});
+    await dashboard.waitForFunction(()=>window.doctorReply);
+    assert.equal(await dashboard.evaluate(()=>window.nativeActions.filter(action=>action==='run_diagnostics').length),1);
+    await dashboard.evaluate(()=>{window.holdDoctor=false;window.doctorReply();});
+    await dashboard.waitForFunction(()=>document.getElementById('diag-output').textContent.includes('الفحوص الثلاثة سليمة'));
+    for(const result of [null,{status:'HEALTHY',issues_count:0,checks:[{check:'unknown',passed:true}]},
+      {status:'HEALTHY',issues_count:0,checks:['termux_installed','termux_run_command_permission','server_connectivity'].map(check=>({check,passed:'true'}))},
+      {status:'HEALTHY',issues_count:0,checks:['termux_installed','termux_run_command_permission','server_connectivity'].map(check=>({check,passed:check!=='server_connectivity'}))}]) {
+      await dashboard.evaluate(result=>{window.doctorResult=result;document.getElementById('btn-run-diag').click();},result);
+      await dashboard.waitForFunction(()=>document.getElementById('diag-output').textContent.includes('تعذر التحقق من اكتمال التشخيص'));
+      assert.doesNotMatch(await dashboard.locator('#diag-output').textContent(),/الفحوص الثلاثة سليمة|\{|unknown/);
+      await dashboard.waitForFunction(()=>!document.getElementById('btn-run-diag').hasAttribute('aria-disabled'));
+    }
+    await dashboard.evaluate(()=>{window.doctorResult={status:'NEEDS_ATTENTION',issues_count:1,checks:['termux_installed','termux_run_command_permission','server_connectivity'].map(check=>({check,passed:check!=='server_connectivity'}))};});
+    await dashboard.locator('#btn-run-diag').click();
+    await dashboard.waitForFunction(()=>document.getElementById('diag-output').textContent.includes('عدد الأعطال: 1'));
+    assert.match(await dashboard.locator('#live-announcer').textContent(),/اتصال خادم تيرمكس: يحتاج إلى إصلاح/);
+    await dashboard.evaluate(()=>{window.rejectDoctor=true;document.getElementById('btn-run-diag').click();});
+    await dashboard.waitForFunction(()=>!document.getElementById('btn-run-diag').hasAttribute('aria-disabled'));
+    assert.match(await dashboard.locator('#diag-output').textContent(),/تعذر التحقق/);
+    assert.doesNotMatch(await dashboard.locator('#diag-output').textContent(),/الفحوص الثلاثة سليمة/);
+    await dashboard.evaluate(()=>{for(const id of ['btn-setup-termux','btn-check-update']){const button=document.getElementById(id);button.click();button.click();}});
+    await dashboard.waitForFunction(()=>window.nativeActions.includes('open_termux_app'));
+    for(const action of ['copy_setup_command','open_termux_app','check_update'])assert.equal(await dashboard.evaluate(action=>window.nativeActions.filter(item=>item===action).length,action),1);
+    await dashboard.evaluate(async()=>{const started=window.AntigravityBridge.startServer();window.startReply();await started;await window.AntigravityBridge.loadDashboardUrl();});
     assert.equal(await dashboard.evaluate(()=>window.nativeActions.includes('open_dashboard')),true);
-    assert.equal(await dashboard.evaluate(()=>window.AntigravityBridge.isTermuxServerReady()),true);
+    assert.equal(await dashboard.evaluate(()=>Object.keys(window.AntigravityBridge).some(name=>/Accessibility|Automation/.test(name))),false);
+    assert.equal(await dashboard.evaluate(()=>window.nativeActions.some(action=>/accessibility|automation|speech/.test(action))),false);
     assert.equal(await dashboard.evaluate(()=>window.location.pathname),'/assets/web/start.html');
     assert.deepEqual(bundledRequests.filter(route=>route.startsWith('/api/')||route==='/health'||route==='/sw.js'),[]);
     assert.deepEqual(bundledErrors,[]);
+    const noNative=await bundled.newPage();
+    const noNativeErrors=[];noNative.on('pageerror',error=>noNativeErrors.push(error.message));
+    await noNative.goto('https://appassets.androidplatform.net/assets/web/start.html');
+    await noNative.waitForFunction(()=>document.getElementById('badge-server').textContent==='خادم تيرمكس: متوقف');
+    await noNative.evaluate(()=>document.activeElement.blur());
+    for(const id of ['btn-go-chat','btn-wake-server','btn-run-diag','btn-check-update','btn-setup-termux']) {
+      await noNative.keyboard.press('Tab');
+      assert.equal(await noNative.evaluate(()=>document.activeElement.id),id);
+    }
+    await noNative.locator('#btn-wake-server').click();
+    assert.match(await noNative.locator('#live-announcer').textContent(),/تشغيل الخادم متاح داخل التطبيق/);
+    await noNative.locator('#btn-run-diag').click();
+    assert.match(await noNative.locator('#diag-output').textContent(),/تعذر التحقق/);
+    assert.deepEqual(noNativeErrors,[]);
+    assert.deepEqual(bundledRequests.filter(route=>route.startsWith('/api/')||route==='/health'||route==='/sw.js'),[]);
     await bundled.close();
-    console.log('PASS main UI + actual v1 adapter: CSP, settings/revision/policy, tool safety, request retry identity, history/offline, native dictation, bundled dashboard without API/IndexedDB, native lifecycle/navigation aliases');
+    console.log('PASS main UI + actual v1 adapter: CSP, settings/revision/policy, tool safety, request retry identity, history/offline, lean dashboard races/Doctor, bundled dashboard without API/IndexedDB, native lifecycle/navigation aliases');
   }finally{await browser.close();server.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;server.close();});

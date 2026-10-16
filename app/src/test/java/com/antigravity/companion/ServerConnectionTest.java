@@ -76,6 +76,7 @@ public class ServerConnectionTest {
         private final String method;
         private final URI uri;
         private final RequestHeaders headers = new RequestHeaders();
+        private String responseHeaders = "";
 
         HttpExchange(Socket socket) throws IOException {
             this.socket = socket;
@@ -101,7 +102,7 @@ public class ServerConnectionTest {
         OutputStream getResponseBody() throws IOException { return socket.getOutputStream(); }
         void sendResponseHeaders(int status, long length) throws IOException {
             String head = "HTTP/1.1 " + status + " Fixture\r\nContent-Length: " + length
-                    + "\r\nConnection: close\r\n\r\n";
+                    + "\r\n" + responseHeaders + "Connection: close\r\n\r\n";
             socket.getOutputStream().write(head.getBytes(StandardCharsets.US_ASCII));
         }
         void close() throws IOException { socket.getOutputStream().flush(); socket.close(); }
@@ -173,6 +174,8 @@ public class ServerConnectionTest {
                 assertFalse(connection.authenticServer());
                 try { connection.bootstrapCookie(); fail("Bootstrap must require HMAC proof"); }
                 catch (ServerConnection.BootstrapUnauthorized expected) { }
+                try { connection.stopModern(); fail("Shutdown must require HMAC proof" ); }
+                catch (ServerConnection.BootstrapUnauthorized expected) { }
                 assertFalse(paths.contains("/api/v1/android/bootstrap"));
                 assertTrue(credentials.stream().allMatch(credential -> credential == null));
             } finally { server.stop(0); }
@@ -198,4 +201,62 @@ public class ServerConnectionTest {
             } finally { server.stop(0); }
         }
     }
+    @Test public void modernShutdownUsesProvedSessionRotatedCookieAndNeverReplaysPost() throws Exception {
+        for (int shutdownStatus : new int[]{200, 503, 307}) {
+            HttpServer target = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            List<String> leaked = java.util.Collections.synchronizedList(new ArrayList<>());
+            target.createContext("/", exchange -> { leaked.add(exchange.getRequestURI().toString()); reply(exchange, 200, "{}"); });
+            target.start();
+            HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            List<String> failures = java.util.Collections.synchronizedList(new ArrayList<>());
+            List<String> shutdowns = java.util.Collections.synchronizedList(new ArrayList<>());
+            String origin = "http://127.0.0.1:" + server.getAddress().getPort();
+            server.createContext("/", exchange -> {
+                String path = exchange.getRequestURI().getPath();
+                RequestHeaders headers = exchange.getRequestHeaders();
+                if (path.equals("/health")) {
+                    if (headers.getFirst("Authorization") != null || headers.getFirst("Cookie") != null) failures.add("Unproved credentials");
+                    String nonce = exchange.getRequestURI().getRawQuery().substring("android_nonce=".length());
+                    reply(exchange, 200, MODERN.substring(0, MODERN.length() - 1) + ",\"android_proof\":\"" + proof(nonce) + "\"}");
+                } else if (path.equals("/api/v1/android/bootstrap")) {
+                    if (!"Bearer private-token".equals(headers.getFirst("Authorization"))) failures.add("Missing private bearer");
+                    if (!origin.equals(headers.getFirst("Origin"))) failures.add("Bootstrap origin");
+                    exchange.responseHeaders = "Set-Cookie: session=first; HttpOnly\r\n";
+                    reply(exchange, 200, "{}");
+                } else if (path.equals("/api/v1/auth/session")) {
+                    if (!"session=first".equals(headers.getFirst("Cookie"))) failures.add("Initial cookie");
+                    if (headers.getFirst("Authorization") != null) failures.add("Bearer leaked to session");
+                    exchange.responseHeaders = "Set-Cookie: session=rotated; HttpOnly\r\n";
+                    reply(exchange, 200, "{\"csrf_token\":\"csrf-secret\"}");
+                } else if (path.equals("/api/v1/system/shutdown")) {
+                    shutdowns.add(exchange.getRequestMethod());
+                    if (!"session=rotated".equals(headers.getFirst("Cookie"))) failures.add("Rotated cookie");
+                    if (!"csrf-secret".equals(headers.getFirst("X-CSRF-Token"))) failures.add("CSRF");
+                    if (!origin.equals(headers.getFirst("Origin"))) failures.add("Shutdown origin");
+                    if (headers.getFirst("Authorization") != null) failures.add("Bearer leaked to shutdown");
+                    exchange.responseHeaders = "Retry-After: 0\r\nLocation: http://127.0.0.1:" + target.getAddress().getPort() + "/leak\r\n";
+                    reply(exchange, shutdownStatus, "{}");
+                } else { failures.add(path); reply(exchange, 404, "{}"); }
+            });
+            server.start();
+            try (ServerConnection connection = new ServerConnection(server.getAddress().getPort(), "private-token")) {
+                try { connection.stopModern(); assertEquals(200, shutdownStatus); }
+                catch (IOException rejected) { assertNotEquals(200, shutdownStatus); }
+                assertEquals(java.util.Collections.singletonList("POST"), shutdowns);
+                assertTrue(failures.toString(), failures.isEmpty());
+                assertTrue("Redirect leaked authenticated request", leaked.isEmpty());
+            } finally { server.stop(0); target.stop(0); }
+        }
+    }
+    private static String proof(String nonce) {
+        try {
+            javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec("private-token".getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            StringBuilder result = new StringBuilder();
+            for (byte octet : mac.doFinal(nonce.getBytes(StandardCharsets.UTF_8)))
+                result.append(String.format(java.util.Locale.ROOT, "%02x", octet & 255));
+            return result.toString();
+        } catch (java.security.GeneralSecurityException impossible) { throw new AssertionError(impossible); }
+    }
+
 }

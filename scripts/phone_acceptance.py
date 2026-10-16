@@ -119,28 +119,6 @@ class PhoneClient:
                 )
         return events
 
-    def action(self, action, arguments=None):
-        action_id = uuid.uuid4().hex
-        if action not in ("tree", "select", "screenshot"):
-            identity = self.request("/api/v1/device/epoch")
-            epoch = identity.get("epoch", "")
-            require(
-                len(epoch) == 32
-                and all(char in "0123456789abcdef" for char in epoch),
-                "device_journal_identity_invalid",
-            )
-            action_id = epoch + ":" + action_id
-        outcome = self.request(
-            "/api/v1/device/actions",
-            {
-                "action_id": action_id,
-                "action": action,
-                "args": arguments or {},
-            },
-        )
-        require(outcome.get("status") == "completed", "device_action_failed")
-        return outcome.get("result", {})
-
 
 def process_snapshot():
     processes = {}
@@ -444,150 +422,6 @@ class Acceptance:
                 }
                 self.save()
 
-    def tree(self):
-        snapshot = self.client.action("tree")
-        require(
-            isinstance(snapshot.get("root"), dict)
-            and bool(snapshot.get("snapshot_id")),
-            "tree_invalid",
-        )
-        return snapshot
-
-    def menu_click(self):
-        snapshot = self.tree()
-        candidates = [
-            node
-            for node in nodes(snapshot["root"])
-            if node.get("clickable")
-            and node_text(node) in ("القائمة", "فتح القائمة")
-        ]
-        if len(candidates) != 1:
-            raise Blocked("safe_menu_target_missing")
-        arguments = target_arguments(snapshot, candidates[0])
-        performed = self.client.action("click", arguments)
-        require(performed.get("performed") is True, "click_not_performed")
-        time.sleep(0.5)
-        require(menu_visible(self.tree()), "menu_did_not_open")
-
-    def menu_back(self):
-        if not menu_visible(self.tree()):
-            raise Blocked("menu_not_open")
-        performed = self.client.action("back")
-        require(performed.get("performed") is True, "back_not_performed")
-        time.sleep(0.5)
-        snapshot = self.tree()
-        require(not menu_visible(snapshot), "menu_still_open")
-        require(
-            any(
-                node_text(node) == "القائمة"
-                for node in nodes(snapshot["root"])
-            ),
-            "back_left_companion",
-        )
-
-    def scroll(self):
-        snapshot = self.tree()
-        if not menu_visible(snapshot):
-            raise Blocked("safe_menu_not_open_for_scroll")
-        candidates = [
-            node for node in nodes(snapshot["root"]) if node.get("scrollable")
-        ]
-        if len(candidates) != 1:
-            raise Blocked("safe_scroll_target_ambiguous")
-        require(
-            any(
-                node_text(node) == "القائمة"
-                for node in nodes(snapshot["root"])
-            ),
-            "companion_foreground_not_verified",
-        )
-        before = visible_signature({"root": candidates[0]})
-        arguments = target_arguments(snapshot, candidates[0])
-        arguments["direction"] = "forward"
-        performed = self.client.action("scroll", arguments)
-        require(performed.get("performed") is True, "scroll_not_performed")
-        time.sleep(0.5)
-        after = self.tree()
-        moved = [
-            node for node in nodes(after["root"]) if node.get("scrollable")
-        ]
-        require(
-            menu_visible(after) and len(moved) == 1, "scroll_target_changed"
-        )
-        require(
-            visible_signature({"root": moved[0]}) != before,
-            "scroll_did_not_change_visible_content",
-        )
-
-    def voice_snapshot(self):
-        sessions = self.client.request("/api/v1/sessions")["sessions"]
-        return {
-            session["session_id"]: sorted(session.get("runs", []))
-            for session in sessions
-        }
-
-    def voice_before(self):
-        def remember():
-            self.state["voice_baseline"] = self.voice_snapshot()
-            self.save()
-
-        self.scenario("voice_baseline", remember)
-
-    def voice_after(self):
-        def compare():
-            require("voice_baseline" in self.state, "voice_baseline_missing")
-            require(
-                self.voice_snapshot() == self.state["voice_baseline"],
-                "voice_created_or_sent_chat_turn",
-            )
-
-        self.scenario("voice_no_auto_send", compare)
-
-    def device(self):
-        if self.scenario("device_menu_click", self.menu_click):
-            self.scenario("device_scroll", self.scroll)
-            self.scenario("device_menu_back", self.menu_back)
-        else:
-            for name in ("device_scroll", "device_menu_back"):
-                self.checks.setdefault(
-                    name,
-                    {"status": "blocked", "error_code": "dependency_failed"},
-                )
-            self.save()
-
-
-def nodes(root):
-    yield root
-    for child in root.get("children", []):
-        yield from nodes(child)
-
-
-def node_text(node):
-    return (node.get("text") or node.get("content_description") or "").strip()
-
-
-def target_arguments(snapshot, node):
-    return {
-        "snapshot_id": snapshot["snapshot_id"],
-        "element_id": node["element_id"],
-    }
-
-
-def menu_visible(snapshot):
-    return any(
-        node_text(node) == "إغلاق القائمة" for node in nodes(snapshot["root"])
-    )
-
-
-def visible_signature(snapshot):
-    visible = [
-        (node_text(node), node.get("bounds"))
-        for node in nodes(snapshot["root"])
-    ]
-    return hashlib.sha256(
-        json.dumps(visible, sort_keys=True).encode()
-    ).digest()
-
 
 def public_report(checks):
     statuses = {
@@ -632,7 +466,7 @@ def parse_arguments():
     parser.add_argument("--timeout", type=float, default=90)
     parser.add_argument(
         "--phase",
-        choices=("chat", "device", "voice-before", "voice-after"),
+        choices=("chat",),
         required=True,
     )
     parser.add_argument("--delay", type=float, default=4)
@@ -653,7 +487,7 @@ def main():
     try:
         time.sleep(arguments.delay)
         acceptance = Acceptance(arguments)
-        getattr(acceptance, arguments.phase.replace("-", "_"))()
+        acceptance.chat()
         acceptance.finish_phase()
         phase_checks = [
             outcome

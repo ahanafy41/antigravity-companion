@@ -9,16 +9,11 @@ import shutil
 import subprocess
 import sys
 import time
-import unicodedata
 import uuid
-import wave
 import xml.etree.ElementTree as ET
 
 PACKAGE = "com.antigravity.companion"
-START_VOICE = "إملاء رسالة للمساعد"
-OPEN_CHAT = "الانتقال لواجهة الشات والمحادثة"
-CANCEL_VOICE = "إلغاء الإملاء"
-DEFAULT_SPEECH = "هذه رسالة اختبار صوتي لا ترسلها"
+OPEN_CHAT = "دخول الشات والمحادثة"
 SAFE_PATH = re.compile(r"/[A-Za-z0-9_./-]+\Z")
 SAFE_ENUM = re.compile(r"[a-z0-9_-]{1,100}\Z")
 
@@ -90,10 +85,8 @@ def parser():
     )
     options.add_argument("--timeout", type=int, default=90)
     options.add_argument(
-        "--phase", choices=["all", "chat", "device", "voice"], default="all"
+        "--phase", choices=["all", "dashboard", "chat"], default="all"
     )
-    options.add_argument("--speech-audio", type=Path)
-    options.add_argument("--speech-text", default=DEFAULT_SPEECH)
     options.add_argument("--root")
     options.add_argument("--model")
     options.add_argument("--cwd")
@@ -173,7 +166,7 @@ def termux_python(adb):
 
 
 def phase_report_path(options, phase):
-    phase_key = "voiceaudit" if phase.startswith("voice-") else phase
+    phase_key = phase
     progress_path = options.output / ".progress.json"
     try:
         progress = json.loads(progress_path.read_text(encoding="utf-8"))
@@ -314,7 +307,7 @@ def launch_phase(adb, options, phase):
             if not re.fullmatch(r"[A-Za-z0-9_./:-]+", argument):
                 raise AcceptanceError("phone_argument_invalid")
             command.extend(["--" + key, argument])
-    if options.resume or phase == "voice-after":
+    if options.resume:
         command.append("--resume")
     pending_path = options.output / "pending.json"
     pending_path.write_text("{}", encoding="utf-8")
@@ -371,6 +364,9 @@ def composer_text(hierarchy):
         for node in hierarchy.iter("node")
         if node.get("package") == PACKAGE
         and node.get("class") == "android.widget.EditText"
+        and node.get("content-desc") == "اكتب رسالتك"
+        and node.get("focusable") == "true"
+        and node.get("enabled") == "true"
     ]
     if len(composers) != 1:
         raise AcceptanceError("composer_not_uniquely_accessible")
@@ -393,175 +389,51 @@ def open_chat(adb):
     raise AcceptanceError("chat_composer_unavailable")
 
 
-def activate_voice(adb, source, target):
-    hierarchy = adb.hierarchy()
-    node = control(hierarchy, source)
-    if node is None:
-        raise AcceptanceError("voice_control_unavailable")
-    adb.tap(node)
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
-        hierarchy = adb.hierarchy()
-        if source == START_VOICE:
-            if control(hierarchy, target) is not None:
-                return
-        elif control(hierarchy, CANCEL_VOICE) is None:
-            # The overlay remains visible during capture; its presence alone
-            # cannot prove that cancellation closed the capture Activity.
-            try:
-                composer_text(hierarchy)
-                return
-            except AcceptanceError:
-                pass
-        time.sleep(0.2)
-    raise AcceptanceError("voice_control_transition_failed")
-
-
-def microphone_stopped(adb):
-    recognizer = adb.shell(
-        "settings", "get", "secure", "voice_recognition_service"
-    )
-    provider = recognizer.strip().split("/", 1)[0]
-    if not re.fullmatch(r"[A-Za-z0-9_.]+", provider) or provider == "null":
-        raise AcceptanceError("recognizer_microphone_state_unavailable")
-    for package in (PACKAGE, provider):
-        app_ops = adb.shell("cmd", "appops", "get", package, "RECORD_AUDIO")
-        if "RECORD_AUDIO" not in app_ops:
-            raise AcceptanceError("recognizer_microphone_state_unavailable")
-        if re.search(r"running=true|\(running\)", app_ops, re.IGNORECASE):
-            return False
-    return True
-
-
-def normalized_words(text):
-    decomposed = unicodedata.normalize("NFKD", text)
-    plain = "".join(
-        character
-        for character in decomposed
-        if not unicodedata.combining(character)
-    )
-    return set(re.findall(r"[^\W\d_]+", plain.casefold()))
-
-
-def dictation(adb, options, initial_draft):
-    if options.speech_audio is None:
-        return {
-            "name": "voice_dictation",
-            "status": "blocked",
-            "reason": "speech_audio_required",
-        }
-    if sys.platform != "win32":
-        return {
-            "name": "voice_dictation",
-            "status": "blocked",
-            "reason": "physical_audio_playback_unavailable",
-        }
-    with wave.open(str(options.speech_audio), "rb") as recording:
-        if recording.getnframes() == 0:
-            raise AcceptanceError("speech_audio_empty")
-    expected = normalized_words(options.speech_text)
-    required = normalized_words("اختبار صوتي")
-    if not required.issubset(expected):
-        raise AcceptanceError("speech_text_requires_test_words")
-    expected = required
-    import winsound
-
-    if initial_draft.strip():
-        return {
-            "name": "voice_dictation",
-            "status": "blocked",
-            "reason": "existing_draft_preserved",
-        }
-    activate_voice(adb, START_VOICE, CANCEL_VOICE)
-    winsound.PlaySound(
-        str(options.speech_audio), winsound.SND_FILENAME | winsound.SND_ASYNC
-    )
-    deadline = time.monotonic() + min(options.timeout, 35)
-    try:
-        if observed_dictation(adb, expected, initial_draft, deadline):
-            return {"name": "voice_dictation", "status": "pass"}
-        return {
-            "name": "voice_dictation",
-            "status": "blocked",
-            "reason": "expected_speech_not_in_draft",
-            "non_blocking": True,
-        }
-    finally:
-        winsound.PlaySound(None, 0)
-        if control(adb.hierarchy(), CANCEL_VOICE) is not None:
-            activate_voice(adb, CANCEL_VOICE, START_VOICE)
-
-
-def observed_dictation(adb, expected, initial_draft, deadline):
-    while time.monotonic() < deadline:
-        hierarchy = adb.hierarchy()
-        try:
-            draft = composer_text(hierarchy)
-        except AcceptanceError:
-            # The capture Activity hides the editor until recognition ends.
-            time.sleep(0.5)
-            continue
-        if draft != initial_draft and expected.issubset(
-            normalized_words(draft)
-        ):
-            return True
-        time.sleep(0.5)
-    return False
-
-
-def voice_phase(adb, options, checkpoint):
+def dashboard_phase(adb):
     adb.open_companion()
-    adb.shell("wm", "size")
-    initial_draft = composer_text(open_chat(adb))
-    audit_before = phone_phase(adb, options, "voice-before")
-    for case in audit_before:
-        checkpoint(case)
-    if any(case["status"] != "pass" for case in audit_before):
-        return
-    open_chat(adb)
-    activate_voice(adb, START_VOICE, CANCEL_VOICE)
-    activate_voice(adb, CANCEL_VOICE, START_VOICE)
-    unchanged = composer_text(adb.hierarchy()) == initial_draft
-    checkpoint(
-        {"name": "voice_cancel", "status": "pass" if unchanged else "fail"}
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        screen = adb.hierarchy()
+        if control(screen, OPEN_CHAT) is not None:
+            break
+        time.sleep(0.2)
+    labels = (
+        OPEN_CHAT,
+        "فحص وإصلاح الأعطال",
+        "فحص التحديثات",
+        "تجهيز Termux لأول مرة",
     )
-    try:
-        stopped = microphone_stopped(adb)
-        microphone_case = {
-            "name": "voice_microphone_released",
-            "status": "pass" if stopped else "fail",
+    cases = [
+        {
+            "name": "dashboard_action_" + str(index),
+            "status": "pass" if control(screen, label) is not None else "fail",
         }
-    except AcceptanceError as failure:
-        microphone_case = {
-            "name": "voice_microphone_released",
-            "status": "blocked",
-            "reason": str(failure),
+        for index, label in enumerate(labels, 1)
+    ]
+    toggles = [
+        node
+        for node in screen.iter("node")
+        if node.get("package") == PACKAGE
+        and node.get("class") == "android.widget.Button"
+        and node.get("enabled") == "true"
+        and any(
+            label in (node.get("text"), node.get("content-desc"))
+            for label in ("تشغيل الخادم", "إيقاف الخادم")
+        )
+    ]
+    cases.append(
+        {
+            "name": "dashboard_server_toggle",
+            "status": ("pass" if len(toggles) == 1 else "fail"),
         }
-    checkpoint(microphone_case)
-    try:
-        dictation_case = dictation(adb, options, initial_draft)
-    except AcceptanceError as failure:
-        dictation_case = {
-            "name": "voice_dictation",
-            "status": "blocked",
-            "reason": str(failure),
-        }
-    except (
-        OSError,
-        subprocess.TimeoutExpired,
-        ET.ParseError,
-        wave.Error,
-    ) as failure:
-        dictation_case = {
-            "name": "voice_dictation",
-            "status": "blocked",
-            "reason": type(failure).__name__.lower(),
-        }
-    if dictation_case["status"] != "pass":
-        dictation_case["non_blocking"] = True
-    checkpoint(dictation_case)
-    for case in phone_phase(adb, options, "voice-after"):
-        checkpoint(case)
+    )
+    return cases
+
+
+def chat_navigation(adb):
+    screen = open_chat(adb)
+    composer_text(screen)
+    return {"name": "chat_composer_accessible", "status": "pass"}
 
 
 def run(options, cases, report_path, started):
@@ -575,15 +447,14 @@ def run(options, cases, report_path, started):
     if not SAFE_PATH.fullmatch(options.device_dir):
         raise AcceptanceError("device_directory_invalid")
     adb = authorized_device(options)
-    script = Path(__file__).with_name("phone_acceptance.py")
-    adb.shell("mkdir", "-p", options.device_dir)
-    adb.command(
-        "push", str(script), options.device_dir + "/phone_acceptance.py"
-    )
+    if options.phase in ("all", "chat"):
+        script = Path(__file__).with_name("phone_acceptance.py")
+        adb.shell("mkdir", "-p", options.device_dir)
+        adb.command(
+            "push", str(script), options.device_dir + "/phone_acceptance.py"
+        )
     phases = (
-        ["chat", "device", "voice"]
-        if options.phase == "all"
-        else [options.phase]
+        ["dashboard", "chat"] if options.phase == "all" else [options.phase]
     )
 
     def checkpoint(case):
@@ -592,9 +463,11 @@ def run(options, cases, report_path, started):
 
     try:
         for phase in phases:
-            if phase == "voice":
-                voice_phase(adb, options, checkpoint)
+            if phase == "dashboard":
+                for case in dashboard_phase(adb):
+                    checkpoint(case)
             else:
+                checkpoint(chat_navigation(adb))
                 for case in phone_phase(adb, options, phase):
                     checkpoint(case)
     finally:
@@ -615,7 +488,6 @@ def main():
         OSError,
         subprocess.TimeoutExpired,
         ET.ParseError,
-        wave.Error,
         json.JSONDecodeError,
     ) as error:
         cases.append(
@@ -629,17 +501,7 @@ def main():
     for case in cases:
         print(case["name"] + ": " + case["status"])
     return (
-        0
-        if cases
-        and all(
-            case["status"] == "pass"
-            or (
-                case["name"] == "voice_dictation"
-                and case.get("non_blocking") is True
-            )
-            for case in cases
-        )
-        else 1
+        0 if cases and all(case["status"] == "pass" for case in cases) else 1
     )
 
 

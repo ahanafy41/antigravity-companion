@@ -1,4 +1,7 @@
 {
+  "document_status": "historical_superseded",
+  "superseded_by": "docs/lean-companion-spec.json",
+  "status_note": "Original contents below preserve prior planning evidence; retired native automation/voice contracts are not current requirements.",
   "manifest_version": "1.0.0",
   "reference_sources": [
     {

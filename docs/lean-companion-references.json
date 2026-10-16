@@ -1,0 +1,29 @@
+{
+  "verified_by": "lean_contract_inventory",
+  "sources": [
+    {
+      "url": "https://developer.android.com/guide/topics/manifest/manifest-intro",
+      "contract": "Retired classes require removing component declarations."
+    },
+    {
+      "url": "https://developer.android.com/reference/android/speech/SpeechRecognizer",
+      "contract": "Native recognition requires RECORD_AUDIO; remove only without retained consumer."
+    },
+    {
+      "url": "https://developer.android.com/guide/topics/ui/accessibility/apps",
+      "contract": "Screen reader text/names/semantics remain."
+    },
+    {
+      "url": "https://www.w3.org/TR/wai-aria-1.2/",
+      "contract": "Names, roles and live announcements remain."
+    },
+    {
+      "url": "https://github.com/termux/termux-app/wiki/RUN_COMMAND-Intent",
+      "contract": "Keep RUN_COMMAND permission, allow-external-apps and service/extras/callback."
+    },
+    {
+      "url": "https://developer.android.com/topic/performance/issues/launch-time",
+      "contract": "APK size is not a startup measurement."
+    }
+  ]
+}
