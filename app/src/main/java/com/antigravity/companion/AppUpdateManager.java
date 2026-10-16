@@ -98,7 +98,7 @@ public final class AppUpdateManager implements AutoCloseable {
                 || !release.get("prerelease").getAsJsonPrimitive().isBoolean()) throw new IOException("Malformed GitHub release");
         if (release.get("draft").getAsBoolean() || release.get("prerelease").getAsBoolean())
             throw new IOException("Release is not stable");
-        String tag = ScreenSnapshot.required(release, "tag_name");
+        String tag = NativeActionArguments.required(release, "tag_name");
         JsonObject description = new JsonObject(); description.addProperty("latestVersion", tag);
         description.addProperty("currentVersion", getCurrentVersionName());
         description.addProperty("releaseName", release.has("name") && !release.get("name").isJsonNull() ? release.get("name").getAsString() : tag);
@@ -107,8 +107,8 @@ public final class AppUpdateManager implements AutoCloseable {
         for (JsonElement entry : release.getAsJsonArray("assets")) {
             if (!entry.isJsonObject()) throw new IOException("Malformed release asset");
             JsonObject asset = entry.getAsJsonObject();
-            if (!"app-release.apk".equals(ScreenSnapshot.required(asset, "name"))) continue;
-            String url = ScreenSnapshot.required(asset, "browser_download_url");
+            if (!"app-release.apk".equals(NativeActionArguments.required(asset, "name"))) continue;
+            String url = NativeActionArguments.required(asset, "browser_download_url");
             if (!UpdatePolicy.trustedAsset(url)) throw new IOException("Untrusted release APK URL");
             if (!asset.has("size") || !asset.get("size").isJsonPrimitive()
                     || !asset.get("size").getAsJsonPrimitive().isNumber()) throw new IOException("Missing APK size");
@@ -262,7 +262,7 @@ public final class AppUpdateManager implements AutoCloseable {
                 while (count < bytes.length && (read = input.read(bytes, count, bytes.length - count)) != -1) count += read;
                 if (count > 4096) throw new IOException("Embedded server version exceeds limit");
                 JsonObject version = JsonParser.parseString(new String(bytes, 0, count, StandardCharsets.UTF_8)).getAsJsonObject();
-                String name = ScreenSnapshot.required(version, "version_name");
+                String name = NativeActionArguments.required(version, "version_name");
                 if (!UpdateCompatibility.embeddedVersionMatches(version, archive.versionName, versionCode(archive)))
                     throw new IOException("APK and embedded server versions differ");
                 return name;

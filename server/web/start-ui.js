@@ -10,51 +10,35 @@ function reportError(error) {
             }
         }
 
-        async function checkStatus() {
-            announce('جاري فحص حالة الخدمات...');
-            const badgeA11y = document.getElementById('badge-a11y');
-            const badgeWs = document.getElementById('badge-ws');
-            const badgeServer = document.getElementById('badge-server');
+        let serverReady = false;
+        let statusRevision = 0;
+        let serverBusy = false;
+        const serverButton = document.getElementById('btn-wake-server');
+        const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
-            let a11yActive = false;
-            let ws8765Ready = false;
-            let py7681Ready = false;
-            const bridge = window.AntigravityBridge;
-
-            if (bridge) {
-                if (typeof bridge.isAccessibilityActive === 'function') {
-                    a11yActive = await bridge.isAccessibilityActive();
-                }
-                if (typeof bridge.isAutomationServerReady === 'function') {
-                    ws8765Ready = await bridge.isAutomationServerReady();
-                }
-                if (typeof bridge.isTermuxServerReady === 'function') {
-                    py7681Ready = await bridge.isTermuxServerReady();
-                }
-            } else {
-                py7681Ready = await window.mainV1.healthy();
-            }
-
-            badgeA11y.className = 'status-badge ' + (a11yActive ? 'badge-active' : 'badge-inactive');
-            badgeA11y.textContent = a11yActive ? 'مفعلة' : 'معطلة';
-
-            badgeWs.className = 'status-badge ' + (ws8765Ready ? 'badge-active' : 'badge-inactive');
-            badgeWs.textContent = ws8765Ready ? 'متصل' : 'غير متصل';
-
-            badgeServer.className = 'status-badge ' + (py7681Ready ? 'badge-active' : 'badge-inactive');
-            badgeServer.textContent = py7681Ready ? 'نشط وجاهز' : 'غير نشط (متوقف)';
-
-            announce('حالة النظام: خدمة الوصول ' + (a11yActive ? 'مفعلة' : 'معطلة') +
-                     '، وخادم الأتمتة ' + (ws8765Ready ? 'متصل' : 'غير متصل') +
-                     '، وخادم تيرمكس ' + (py7681Ready ? 'نشط وجاهز' : 'متوقف'));
+        function showServerStatus(ready) {
+            serverReady = ready;
+            const status = document.getElementById('badge-server');
+            status.className = 'status-box ' + (ready ? 'badge-active' : 'badge-inactive');
+            status.textContent = 'خادم تيرمكس: ' + (ready ? 'نشط ومتصل' : 'متوقف');
+            serverButton.id = ready ? 'btn-stop-server' : 'btn-wake-server';
+            serverButton.textContent = ready ? 'إيقاف الخادم' : 'تشغيل الخادم';
+            serverButton.className = 'btn ' + (ready ? 'btn-danger' : 'btn-success');
         }
 
-        async function openA11ySettings() {
-            if (window.AntigravityBridge && typeof window.AntigravityBridge.openSettings === 'function') {
-                await window.AntigravityBridge.openSettings();
-                announce('تم فتح إعدادات إمكانية الوصول');
-            } else {
-                alert('الجسر الأصلي غير متوفر');
+        async function checkStatus() {
+            const revision = ++statusRevision;
+            const bridge = window.AntigravityBridge;
+            try {
+                const ready = bridge?.isTermuxServerReady
+                    ? await bridge.isTermuxServerReady() === true
+                    : await window.mainV1.healthy();
+                if (revision !== statusRevision) return null;
+                showServerStatus(ready);
+                return ready;
+            } catch (error) {
+                if (revision !== statusRevision) return null;
+                throw error;
             }
         }
 
@@ -62,140 +46,121 @@ function reportError(error) {
             if (window.AntigravityBridge && typeof window.AntigravityBridge.copySetupCommand === 'function') {
                 await window.AntigravityBridge.copySetupCommand();
                 announce('تم نسخ كود التجهيز في الحافظة بنجاح، جاري فتح Termux...');
-                setTimeout(async function() {
-                    if (typeof window.AntigravityBridge.openTermuxApp === 'function') {
-                        await window.AntigravityBridge.openTermuxApp();
-                    }
-                }, 400);
+                await pause(400);
+                if (typeof window.AntigravityBridge.openTermuxApp === 'function') {
+                    await window.AntigravityBridge.openTermuxApp();
+                }
             } else {
                 await navigator.clipboard.writeText('curl -fsSL https://raw.githubusercontent.com/ahanafy41/antigravity-companion/main/setup.sh | bash');
                 alert('تم نسخ كود التجهيز إلى الحافظة');
             }
         }
 
-        async function wakeServer() {
-            if (window.AntigravityBridge && typeof window.AntigravityBridge.triggerServerWakeup === 'function') {
-                await window.AntigravityBridge.triggerServerWakeup();
-                announce('تم إرسال أمر إيقاظ خادم تيرمكس في الخلفية');
-                setTimeout(checkStatus, 2000);
-            } else {
-                announce('الجسر الأصلي غير متوفر لإيقاظ الخادم');
+        async function changeServerState(start) {
+            if (serverBusy) return false;
+            if (!start && !confirm('هل تريد إيقاف خادم تيرمكس نهائياً؟')) return false;
+            if (start && !window.AntigravityBridge?.triggerServerWakeup) {
+                announce('تشغيل الخادم متاح داخل التطبيق؛ شغّله عبر Termux ثم أعد فتح الصفحة.');
+                return false;
             }
-        }
-
-        async function stopServer() {
-            if (!confirm('هل تريد إيقاف خادم تيرمكس نهائياً؟')) {
-                return;
-            }
-            announce('جاري إيقاف خادم تيرمكس نهائياً...');
-            const badgeServer = document.getElementById('badge-server');
-            if (badgeServer) {
-                badgeServer.className = 'status-badge badge-pending';
-                badgeServer.textContent = 'جاري الإيقاف...';
-            }
-            if (window.AntigravityBridge?.stopServer) {
-                await window.AntigravityBridge.stopServer();
-            } else {
-                const stopped = await window.mainV1Fetch('/api/shutdown', { method: 'POST' });
-                if (!stopped.ok) { reportError(new Error((await stopped.json()).error)); return; }
-            }
-            let attempts = 0;
-            const pollInterval = setInterval(async function() {
-                attempts++;
-                let ready = true;
-                if (window.AntigravityBridge && typeof window.AntigravityBridge.isTermuxServerReady === 'function') {
-                    ready = await window.AntigravityBridge.isTermuxServerReady();
+            serverBusy = true;
+            ++statusRevision;
+            serverButton.setAttribute('aria-disabled', 'true');
+            announce(start ? 'جارٍ تشغيل خادم تيرمكس...' : 'جارٍ إيقاف خادم تيرمكس...');
+            try {
+                if (start) {
+                    await window.AntigravityBridge.triggerServerWakeup();
+                } else if (window.AntigravityBridge?.stopServer) {
+                    await window.AntigravityBridge.stopServer();
                 } else {
-                    ready = await window.mainV1.healthy();
+                    const stopped = await window.mainV1Fetch('/api/shutdown', {method: 'POST'});
+                    if (!stopped.ok) throw new Error((await stopped.json()).error || 'تعذر إيقاف الخادم');
                 }
-                if (!ready || attempts >= 8) {
-                    clearInterval(pollInterval);
-                    await checkStatus();
-                    announce(!ready ? 'خادم تيرمكس متوقف الآن.' : 'لم يتأكد إيقاف الخادم؛ أعد فحص الحالة.');
+                for (let attempt = 0; attempt < (start ? 15 : 8); attempt++) {
+                    if (await checkStatus() === start) {
+                        announce(start ? 'خادم تيرمكس نشط ومتصل.' : 'خادم تيرمكس متوقف الآن.');
+                        return true;
+                    }
+                    await pause(start ? 800 : 500);
                 }
-            }, 500);
+                announce(start ? 'لم يتأكد تشغيل الخادم؛ افحص Termux وأعد المحاولة.' : 'لم يتأكد إيقاف الخادم؛ أعد فتح الصفحة لفحص الحالة.');
+                return false;
+            } finally {
+                serverBusy = false;
+                serverButton.removeAttribute('aria-disabled');
+            }
         }
 
         let isNavigatingToChat = false;
         async function goToChat() {
-            if (isNavigatingToChat) return;
-
-            let bridgeAvailable = !!(window.AntigravityBridge);
-            let py7681Ready = false;
-            if (bridgeAvailable && typeof window.AntigravityBridge.isTermuxServerReady === 'function') {
-                py7681Ready = await window.AntigravityBridge.isTermuxServerReady();
-            } else {
-                py7681Ready = await window.mainV1.healthy();
-            }
-
-            if (py7681Ready) {
-                announce('جاري فتح واجهة الشات والمحادثة...');
-                if (bridgeAvailable && typeof window.AntigravityBridge.loadChatUrl === 'function') {
+            if (isNavigatingToChat || serverBusy) return;
+            isNavigatingToChat = true;
+            try {
+                let ready = await checkStatus();
+                if (ready === null) return;
+                if (!ready) ready = await changeServerState(true);
+                if (!ready) return;
+                announce('جارٍ فتح الشات والمحادثة...');
+                if (window.AntigravityBridge?.loadChatUrl) {
                     await window.AntigravityBridge.loadChatUrl();
                 } else {
                     window.location.href = '/';
                 }
-                return;
+            } finally {
+                isNavigatingToChat = false;
             }
+        }
 
-            isNavigatingToChat = true;
-            announce('خادم تيرمكس غير نشط حالياً. جاري تشغيله تلقائياً والانتظار ثوانٍ...');
-            const badgeServer = document.getElementById('badge-server');
-            if (badgeServer) {
-                badgeServer.className = 'status-badge badge-pending';
-                badgeServer.textContent = 'جاري البدء...';
-            }
-
-            if (bridgeAvailable && typeof window.AntigravityBridge.triggerServerWakeup === 'function') {
-                await window.AntigravityBridge.triggerServerWakeup();
-            }
-
-            let attempts = 0;
-            const maxAttempts = 15;
-            const pollInterval = setInterval(async function() {
-                attempts++;
-                let readyNow = false;
-                if (window.AntigravityBridge && typeof window.AntigravityBridge.isTermuxServerReady === 'function') {
-                    readyNow = await window.AntigravityBridge.isTermuxServerReady();
-                } else {
-                    readyNow = await window.mainV1.healthy();
-                }
-
-                if (readyNow) {
-                    clearInterval(pollInterval);
-                    isNavigatingToChat = false;
-                    announce('تم تشغيل خادم تيرمكس بنجاح، جاري فتح الشات الآن...');
-                    if (window.AntigravityBridge && typeof window.AntigravityBridge.loadChatUrl === 'function') {
-                        await window.AntigravityBridge.loadChatUrl();
-                    } else {
-                        window.location.href = '/';
-                    }
-                } else if (attempts >= maxAttempts) {
-                    clearInterval(pollInterval);
-                    isNavigatingToChat = false;
-                    announce('استغرق تشغيل الخادم وقتاً أطول. يمكنك نسخ كود التجهيز أو تشغيله يدوياً عبر Termux.');
-                    checkStatus();
-                }
-            }, 800);
+        let diagnosticsBusy = false;
+        function showDiagnostics(result) {
+            const labels = {
+                termux_installed: 'تثبيت Termux',
+                termux_run_command_permission: 'صلاحية تشغيل أوامر Termux',
+                server_connectivity: 'اتصال خادم تيرمكس'
+            };
+            const checks = Array.isArray(result?.checks) ? result.checks : [];
+            const values = Object.keys(labels).map(name => {
+                const matches = checks.filter(item => item?.check === name);
+                return matches.length === 1 && typeof matches[0].passed === 'boolean' ? matches[0].passed : null;
+            });
+            const complete = checks.length === 3 && values.every(value => value !== null);
+            const issues = values.filter(value => value === false).length;
+            const consistent = complete && result.issues_count === issues &&
+                result.status === (issues ? 'NEEDS_ATTENTION' : 'HEALTHY');
+            const lines = Object.values(labels).map((label, index) => label + ': ' +
+                (values[index] === true ? 'سليم' : values[index] === false ? 'يحتاج إلى إصلاح' : 'تعذر التحقق'));
+            const summary = !consistent ? 'تعذر التحقق من اكتمال التشخيص؛ أعد الفحص.' :
+                issues ? 'اكتمل التشخيص؛ عدد الأعطال: ' + issues + '.' : 'اكتمل التشخيص؛ الفحوص الثلاثة سليمة.';
+            const out = document.getElementById('diag-output');
+            out.classList.remove('start-style-1');
+            out.textContent = lines.join('\n') + '\n' + summary;
+            announce(out.textContent);
         }
 
         async function runDiagnostics() {
-            const out = document.getElementById('diag-output');
-            announce('جاري تشغيل الفحص والتشخيص الشامل...');
-            if (window.AntigravityBridge && typeof window.AntigravityBridge.runDiagnostics === 'function') {
-                const jsonStr = await window.AntigravityBridge.runDiagnostics();
-                try {
-                    const parsed = JSON.parse(jsonStr);
-                    out.style.display = 'block';
-                    out.textContent = JSON.stringify(parsed, null, 2);
-                    announce('اكتمل التشخيص. الحالة العامة: ' + (parsed.status || 'مكتمل'));
-                } catch(e) {
-                    out.style.display = 'block';
-                    out.textContent = jsonStr;
+            if (diagnosticsBusy) return;
+            diagnosticsBusy = true;
+            const button = document.getElementById('btn-run-diag');
+            button.setAttribute('aria-disabled', 'true');
+            announce('جارٍ فحص Termux واتصال الخادم...');
+            try {
+                if (!window.AntigravityBridge?.runDiagnostics) {
+                    showDiagnostics(null);
+                    return;
                 }
-            } else {
-                out.style.display = 'block';
-                out.textContent = 'أداة التشخيص المدمجة غير متوفرة حالياً خارج التطبيق.';
+                const outcome = await window.AntigravityBridge.runDiagnostics();
+                let parsed = outcome;
+                if (typeof outcome === 'string') {
+                    try { parsed = JSON.parse(outcome); }
+                    catch (error) { parsed = null; }
+                }
+                showDiagnostics(parsed);
+            } catch (error) {
+                showDiagnostics(null);
+                throw error;
+            } finally {
+                diagnosticsBusy = false;
+                button.removeAttribute('aria-disabled');
             }
         }
 
@@ -262,18 +227,31 @@ function reportError(error) {
                     }
                 } catch(e) {}
             }
-            setTimeout(() => checkStatus().catch(reportError), 400);
+            await checkStatus();
         }
         initializeDashboard().catch(reportError);
 
-document.getElementById("btn-refresh-status").addEventListener("click", () => checkStatus().catch(reportError));
+function bindSingleAction(id, action) {
+    const button = document.getElementById(id);
+    let busy = false;
+    button.addEventListener('click', async () => {
+        if (busy) return;
+        busy = true;
+        button.setAttribute('aria-disabled', 'true');
+        try { await action(); }
+        catch (error) { reportError(error); }
+        finally {
+            busy = false;
+            button.removeAttribute('aria-disabled');
+        }
+    });
+}
+
 document.getElementById("btn-go-chat").addEventListener("click", () => goToChat().catch(reportError));
-document.getElementById("btn-wake-server").addEventListener("click", () => wakeServer().catch(reportError));
-document.getElementById("btn-stop-server").addEventListener("click", () => stopServer().catch(reportError));
-document.getElementById("btn-setup-termux").addEventListener("click", () => setupTermux().catch(reportError));
-document.getElementById("btn-open-a11y").addEventListener("click", () => openA11ySettings().catch(reportError));
+serverButton.addEventListener("click", () => changeServerState(!serverReady).catch(reportError));
+bindSingleAction("btn-setup-termux", setupTermux);
 document.getElementById("btn-run-diag").addEventListener("click", () => runDiagnostics().catch(reportError));
-document.getElementById("btn-check-update").addEventListener("click", () => checkAppUpdate().catch(reportError));
+bindSingleAction("btn-check-update", checkAppUpdate);
 
 })().catch(error => {
   const status = document.getElementById('live-announcer');

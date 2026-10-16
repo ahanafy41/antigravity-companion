@@ -12,12 +12,10 @@ import android.webkit.CookieManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.Button;
 import androidx.webkit.ScriptHandler;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.Arrays;
-import android.widget.LinearLayout;
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.webkit.WebViewAssetLoader;
@@ -28,7 +26,6 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonParseException;
 import java.io.File;
 import java.io.IOException;
-import java.lang.ref.WeakReference;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,16 +34,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class MainActivity extends AppCompatActivity {
-    private static WeakReference<MainActivity> activeActivity = new WeakReference<>(null);
     private WebView webView;
     private OriginPolicy origins;
     private AppUpdateManager updates;
     private ServerConnection server;
-    private VoiceCapture voice;
-    private Button accessibilityBanner;
     private ScriptHandler legacyScript;
     private boolean serverAvailable;
-    private boolean legacyServer;
     private final ExecutorService connectionExecutor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean connecting = new AtomicBoolean();
     private final Map<String, NativeAction> actions = new HashMap<>();
@@ -68,32 +61,20 @@ public final class MainActivity extends AppCompatActivity {
     @Override protected void onCreate(Bundle savedState) {
         super.onCreate(savedState);
         origins = new OriginPolicy(NativeSecrets.serverPort(this));
-        updates = new AppUpdateManager(this); server = new ServerConnection(this); voice = new VoiceCapture(this);
-        buildViews(); configureWebView(); registerActions(); updateAccessibilityBanner();
+        updates = new AppUpdateManager(this); server = new ServerConnection(this);
+        buildViews(); configureWebView(); registerActions();
         installBackHandler();
         webView.loadUrl(OriginPolicy.DASHBOARD_URL); probeServer(null, false);
     }
     private void buildViews() {
-        LinearLayout panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL);
-        accessibilityBanner = new Button(this);
-        accessibilityBanner.setText("خدمة الوصول غير مفعلة؛ افتح إعدادها");
-        accessibilityBanner.setOnClickListener(view -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
-        panel.addView(accessibilityBanner);
-        updateAccessibilityBanner();
         webView = new WebView(this); webView.setContentDescription("Antigravity Companion");
-        panel.addView(webView, new LinearLayout.LayoutParams(-1, 0, 1)); setContentView(panel);
+        setContentView(webView);
     }
     private void showStatus(String message) {
         if (!destroyed && webView != null && origins.allowsNativePage(webView.getUrl()))
             webView.evaluateJavascript("(function(){const el=document.getElementById('live-announcer')"
                     + "||document.getElementById('sr-announcer');if(el)el.textContent="
                     + new com.google.gson.JsonPrimitive(message) + ";})();", null);
-    }
-    private void updateAccessibilityBanner() {
-        if (!bridgeSupported) accessibilityBanner.setText("حدّث Android System WebView لتفعيل جسر التطبيق");
-        else accessibilityBanner.setText("خدمة الوصول غير مفعلة؛ افتح إعدادها");
-        accessibilityBanner.setVisibility(bridgeSupported && AntigravityAccessibilityService.isServiceRunning()
-                ? android.view.View.GONE : android.view.View.VISIBLE);
     }
     @SuppressLint("SetJavaScriptEnabled") private void configureWebView() {
         WebSettings settings = webView.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
@@ -120,7 +101,7 @@ public final class MainActivity extends AppCompatActivity {
         try { startActivity(new Intent(Intent.ACTION_VIEW, url).addCategory(Intent.CATEGORY_BROWSABLE)); }
         catch (ActivityNotFoundException unavailable) { showStatus("لا متصفح متاح لفتح الرابط"); }
     }
-    void navigationStarted() { pageGeneration++; requestIds.clear(); serverConnected = false; voice.cancel(); }
+    void navigationStarted() { pageGeneration++; requestIds.clear(); serverConnected = false; }
     void navigationFinished() {
         reportVisibility();
         if (destroyed || !origins.allowsBridge(webView.getUrl())) return;
@@ -135,22 +116,21 @@ public final class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 if (destroyed || generation != pageGeneration) return;
                 serverAvailable = availability != ServerConnection.Availability.OFFLINE;
-                legacyServer = availability == ServerConnection.Availability.LEGACY;
                 serverConnected = proved;
                 refreshLegacyState();
-                if (proved) { BootReceiver.recovered(this); showStatus("الخادم متصل ومصادق"); deliverPendingVoice(); }
+                if (proved) { BootReceiver.recovered(this); showStatus("الخادم متصل ومصادق"); }
                 else showStatus("جسر الهاتف غير مصادق؛ الاقتران اليدوي متاح للمحادثة فقط");
             });
         });
     }
     void serverConnectionLost() {
-        serverConnected = false; serverAvailable = false; legacyServer = false;
+        serverConnected = false; serverAvailable = false;
         showStatus("تعذر الاتصال. أعد تشغيل الخادم."); webView.loadUrl(OriginPolicy.DASHBOARD_URL);
     }
     private void registerActions() {
         actions.put("get_app_version", request -> {
             JsonObject version = new JsonObject(); version.addProperty("version", updates.getCurrentVersionName());
-            version.add("native_status", DoctorDiagnosticEngine.runDiagnosis(this));
+            version.add("native_status", DoctorDiagnosticEngine.runDiagnosis(this, serverAvailable));
             version.add("connection_status", connectionStatus());
             com.google.gson.JsonArray supported = new com.google.gson.JsonArray();
             for (String action : actions.keySet()) supported.add(action);
@@ -159,11 +139,13 @@ public final class MainActivity extends AppCompatActivity {
             reply(request, version);
         });
         actions.put("get_connection_status", request -> reply(request, connectionStatus()));
-        actions.put("run_diagnostics", request -> reply(request, DoctorDiagnosticEngine.runDiagnosis(this)));
-        actions.put("is_accessibility_active", request -> reply(request,
-                flag("active", AntigravityAccessibilityService.isServiceRunning())));
+        actions.put("run_diagnostics", request -> connectionExecutor.execute(() -> {
+            boolean available = server.healthReady();
+            JsonObject diagnosis = DoctorDiagnosticEngine.runDiagnosis(this, available);
+            runOnUiThread(() -> { if (!destroyed) reply(request, diagnosis); });
+        }));
         actions.put("open_settings", request -> {
-            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); reply(request, flag("opened", true));
+            startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()))); reply(request, flag("opened", true));
         });
         actions.put("open_termux_app", request -> {
             Intent launch = getPackageManager().getLaunchIntentForPackage(TermuxBridge.TERMUX_PACKAGE);
@@ -174,13 +156,9 @@ public final class MainActivity extends AppCompatActivity {
         actions.put("check_update", request -> updates.checkForUpdates(outcome -> reply(request, outcome)));
         actions.put("download_update", this::downloadUpdate);
         actions.put("open_install_permission", request -> { updates.openInstallPermissionSettings(this); reply(request, flag("opened", true)); });
-        actions.put("start_voice", request -> {
-            voice.start(speech -> reply(request, speech));
-        });
-        actions.put("cancel_voice", request -> { voice.cancel(); reply(request, new JsonObject()); });
-        actions.put("login_cli", request -> reply(request, TermuxBridge.startInteractive(this, "account", request.args.has("cwd") ? ScreenSnapshot.required(request.args, "cwd") : null)));
-        actions.put("mcp_cli", request -> reply(request, TermuxBridge.startInteractive(this, "mcp", request.args.has("cwd") ? ScreenSnapshot.required(request.args, "cwd") : null)));
-        actions.put("logout_cli", request -> reply(request, TermuxBridge.startInteractive(this, "logout", request.args.has("cwd") ? ScreenSnapshot.required(request.args, "cwd") : null)));
+        actions.put("login_cli", request -> reply(request, TermuxBridge.startInteractive(this, "account", request.args.has("cwd") ? NativeActionArguments.required(request.args, "cwd") : null)));
+        actions.put("mcp_cli", request -> reply(request, TermuxBridge.startInteractive(this, "mcp", request.args.has("cwd") ? NativeActionArguments.required(request.args, "cwd") : null)));
+        actions.put("logout_cli", request -> reply(request, TermuxBridge.startInteractive(this, "logout", request.args.has("cwd") ? NativeActionArguments.required(request.args, "cwd") : null)));
         actions.put("start_server", this::connectServer); actions.put("bootstrap", this::connectServer);
         actions.put("probe_server", request -> probeServer(request, false));
         actions.put("open_chat", request -> probeServer(request, true));
@@ -191,13 +169,9 @@ public final class MainActivity extends AppCompatActivity {
     }
     private JsonObject connectionStatus() {
         JsonObject connection = new JsonObject();
-        connection.addProperty("server_connected", serverAvailable);
         connection.addProperty("server_available", serverAvailable);
-        connection.addProperty("legacy", legacyServer);
-        connection.addProperty("server_authenticated", serverConnected);
-        connection.addProperty("connecting", connecting.get());
-        connection.addProperty("automation_ready", AntigravityAccessibilityService.isAutomationServerReady());
-        connection.addProperty("accessibility_active", AntigravityAccessibilityService.isServiceRunning());
+        connection.addProperty("version", updates.getCurrentVersionName());
+        connection.addProperty("can_install", updates.canInstallUnknownApps());
         return connection;
     }
     private void copySetupCommand(NativeRequest request) {
@@ -217,12 +191,12 @@ public final class MainActivity extends AppCompatActivity {
             com.google.gson.JsonElement root = JsonParser.parseString(message);
             if (!root.isJsonObject()) throw new IllegalArgumentException("Native request must be an object");
             JsonObject payload = root.getAsJsonObject();
-            String id = ScreenSnapshot.required(payload, "request_id");
+            String id = NativeActionArguments.required(payload, "request_id");
             if (!id.matches("[A-Za-z0-9._:-]{1,128}")) throw new IllegalArgumentException("Invalid request_id");
             if (!payload.has("args") || !payload.get("args").isJsonObject()) throw new IllegalArgumentException("Missing args");
             requestIds.reserve(id);
             request = new NativeRequest(id, payload.getAsJsonObject("args"), pageGeneration);
-            String actionName = ScreenSnapshot.required(payload, "action");
+            String actionName = NativeActionArguments.required(payload, "action");
             if (!origins.allowsNativePage(webView.getUrl()) || !NativeBridgePolicy.allows(actionName,
                     serverConnected, OriginPolicy.DASHBOARD_URL.equals(webView.getUrl())))
                 throw new IllegalStateException("Native action needs an authenticated server page");
@@ -282,7 +256,7 @@ public final class MainActivity extends AppCompatActivity {
                 if (availability == ServerConnection.Availability.LEGACY) {
                     runOnUiThread(() -> {
                         if (destroyed || request != null && request.generation != pageGeneration) return;
-                        serverAvailable = true; legacyServer = true; serverConnected = false;
+                        serverAvailable = true; serverConnected = false;
                         refreshLegacyState();
                         JsonObject ready = connectionStatus(); ready.addProperty("state", "health_ready");
                         if (request != null) reply(request, ready);
@@ -306,7 +280,7 @@ public final class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 if (destroyed || request != null && request.generation != pageGeneration) return;
                 serverAvailable = availability != ServerConnection.Availability.OFFLINE;
-                legacyServer = availability == ServerConnection.Availability.LEGACY; serverConnected = proved;
+                serverConnected = proved;
                 refreshLegacyState();
                 if (openChat && !serverAvailable) {
                     reply(request, error("Server unavailable; start it from the dashboard")); return;
@@ -321,14 +295,10 @@ public final class MainActivity extends AppCompatActivity {
             try {
                 ServerConnection.Availability availability = server.probe();
                 if (availability == ServerConnection.Availability.LEGACY) server.stopLegacy();
-                else if (availability == ServerConnection.Availability.MODERN) {
-                    try (HeadlessVoiceApi api = new HeadlessVoiceApi(this)) {
-                        api.request("POST", "/system/shutdown", new JsonObject());
-                    }
-                }
+                else if (availability == ServerConnection.Availability.MODERN) server.stopModern();
                 runOnUiThread(() -> {
                     if (destroyed) return;
-                    serverConnected = false; serverAvailable = false; legacyServer = false;
+                    serverConnected = false; serverAvailable = false;
                     refreshLegacyState(); reply(request, flag("stopping", true));
                 });
             } catch (IOException failure) {
@@ -337,8 +307,7 @@ public final class MainActivity extends AppCompatActivity {
         });
     }
     private JsonObject legacyState() {
-        JsonObject state = connectionStatus(); state.addProperty("version", updates.getCurrentVersionName());
-        state.addProperty("can_install", updates.canInstallUnknownApps()); return state;
+        return connectionStatus();
     }
     private void refreshLegacyState() {
         if (!destroyed && webView != null && origins.allowsBridge(webView.getUrl()))
@@ -397,7 +366,7 @@ public final class MainActivity extends AppCompatActivity {
             if (destroyed) return;
             serverConnected = false; showStatus("اقترن يدويًا بالخادم؛ جسر الهاتف غير مصادق. " + connectionFailureReason(reason));
             if (request != null) reply(request, error("Manual pairing required; phone bridge is not authenticated"));
-            serverAvailable = true; legacyServer = false; refreshLegacyState();
+            serverAvailable = true; refreshLegacyState();
         });
     }
     private void launchTermux() {
@@ -450,11 +419,10 @@ public final class MainActivity extends AppCompatActivity {
             if (destroyed || request != null && request.generation != pageGeneration) return;
             if (!accepted) { showStatus("تعذر حفظ جلسة الخادم"); if (request != null) reply(request, error("Session cookie rejected")); return; }
             CookieManager.getInstance().flush();
-            serverAvailable = true; legacyServer = false; serverConnected = true;
+            serverAvailable = true; serverConnected = true;
             refreshLegacyState();
             showStatus("الخادم متصل");
             JsonObject ready = new JsonObject(); ready.addProperty("state", "health_ready"); if (request != null) reply(request, ready);
-            deliverPendingVoice();
         });
     }
     private void reply(NativeRequest request, JsonObject outcome) {
@@ -494,45 +462,16 @@ public final class MainActivity extends AppCompatActivity {
         try { getOnBackPressedDispatcher().onBackPressed(); }
         finally { callback.setEnabled(true); }
     }
-    private boolean isChatPage() {
-        if (!origins.allowsBridge(webView.getUrl())) return false;
-        String path = Uri.parse(webView.getUrl()).getPath();
-        return path == null || path.isEmpty() || path.equals("/");
-    }
-    private void deliverPendingVoice() {
-        String text = getIntent().getStringExtra("voice_text");
-        if (text == null || !serverConnected || !isChatPage()) return;
-        JsonObject speech = new JsonObject(); speech.addProperty("text", text);
-        speech.addProperty("task_id", getIntent().getStringExtra("voice_task_id"));
-        speech.addProperty("mode", getIntent().getBooleanExtra("voice_agent", false) ? "agent" : "dictation");
-        emit("companion-voice-input", speech, pageGeneration); getIntent().removeExtra("voice_text"); getIntent().removeExtra("voice_task_id"); getIntent().removeExtra("voice_agent");
-    }
     private void reportVisibility() {
         if (destroyed || !serverConnected || !origins.allowsBridge(webView.getUrl())) return;
         JsonObject visibility = new JsonObject(); visibility.addProperty("visible", activityVisible);
         emit("companion-native-visibility", visibility, pageGeneration);
     }
-    public static boolean deliverVoiceDictation(JsonObject speech) {
-        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) return false;
-        MainActivity activity = activeActivity.get();
-        if (activity == null || activity.destroyed || !activity.serverConnected
-                || !activity.isChatPage() || speech == null
-                || speech.has("error") || !speech.has("text") || !speech.has("task_id")) return false;
-        JsonObject dictation = speech.deepCopy(); dictation.addProperty("mode", "dictation");
-        activity.emit("companion-voice-input", dictation, activity.pageGeneration); return true;
-    }
-    @Override protected void onStart() { super.onStart(); activeActivity = new WeakReference<>(this); }
-    @Override protected void onStop() {
-        if (activeActivity.get() == this) activeActivity.clear();
-        super.onStop();
-    }
-    @Override protected void onResume() { super.onResume(); activityVisible = true; updateAccessibilityBanner(); reportVisibility(); refreshLegacyState(); }
+    @Override protected void onResume() { super.onResume(); activityVisible = true; reportVisibility(); refreshLegacyState(); }
     @Override protected void onPause() { activityVisible = false; reportVisibility(); super.onPause(); }
-    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); deliverPendingVoice(); }
     private static JsonObject error(String message) { JsonObject failure = new JsonObject(); failure.addProperty("error", message); return failure; }
     @Override protected void onDestroy() {
-        if (activeActivity.get() == this) activeActivity.clear();
-        destroyed = true; TermuxBridge.cancelRequests(this); voice.close(); updates.close(); server.close(); connectionExecutor.shutdownNow();
+        destroyed = true; TermuxBridge.cancelRequests(this); updates.close(); server.close(); connectionExecutor.shutdownNow();
         if (bridgeSupported) WebViewCompat.removeWebMessageListener(webView, "CompanionNative");
         if (legacyScript != null) legacyScript.remove();
         webView.stopLoading(); webView.setWebViewClient(new WebViewClient()); webView.destroy(); super.onDestroy();

@@ -1,8 +1,7 @@
 (function (global) {
   'use strict';
   if (global !== global.top || global.AntigravityBridge || !global.Companion?.native.available()) return;
-  let probing;
-  let diagnostics = {status: 'pending'};
+  let probeRevision = 0;
   let installed = false;
   const snapshot = () => global.CompanionLegacyState || {};
   function report(error) {
@@ -11,27 +10,22 @@
     else console.error(error.message);
   }
   function command(action) {
-    global.Companion.native.request(action).catch(report);
+    return global.Companion.native.request(action);
   }
-  function refreshServer() {
-    if (probing) return;
-    probing = global.Companion.native.request('probe_server').then(status => {
-      global.CompanionLegacyState = {...snapshot(), server_available: status.server_available === true};
-    }).catch(report).finally(() => { probing = null; });
+  async function refreshServer() {
+    const revision = ++probeRevision;
+    const status = await global.Companion.native.request('probe_server');
+    const ready = status.server_available === true;
+    if (revision === probeRevision) global.CompanionLegacyState = {...snapshot(), server_available: ready};
+    return ready;
   }
-  function runDiagnostics() {
-    global.Companion.native.request('run_diagnostics').then(outcome => {
-      diagnostics = outcome;
-      if (global.onDiagnosticsResult) global.onDiagnosticsResult(outcome);
-      else {
-        const output = document.getElementById('diag-output');
-        if (output) { output.style.display = 'block'; output.textContent = JSON.stringify(outcome, null, 2); }
-      }
-    }).catch(report);
-    return JSON.stringify(diagnostics);
+  async function runDiagnostics() {
+    const outcome = await global.Companion.native.request('run_diagnostics');
+    global.onDiagnosticsResult?.(outcome);
+    return outcome;
   }
   function checkForUpdate() {
-    global.Companion.native.request('check_update').then(outcome => {
+    return global.Companion.native.request('check_update').then(outcome => {
       global.onUpdateCheckResult?.({...outcome, isUpdateAvailable: outcome.isUpdateAvailable === true || outcome.hasUpdate === true});
     }).catch(error => {
       if (global.onUpdateCheckError) global.onUpdateCheckError({error: error.message});
@@ -40,7 +34,7 @@
   }
   function startUpdateDownload() {
     // Android chooses the verified release; legacy URL arguments never select an APK.
-    global.Companion.native.request('download_update').then(outcome => {
+    return global.Companion.native.request('download_update').then(outcome => {
       installed = outcome.installed === true;
       global.onUpdateDownloadComplete?.(outcome);
     }).catch(error => {
@@ -51,16 +45,13 @@
   global.AntigravityBridge = {
     getAppVersion: () => String(snapshot().version || ''),
     canInstallUnknownApps: () => snapshot().can_install === true,
-    isAccessibilityActive: () => snapshot().accessibility_active === true,
-    isAutomationServerReady: () => snapshot().automation_ready === true,
-    isTermuxServerReady: () => { const ready = snapshot().server_available === true; refreshServer(); return ready; },
+    isTermuxServerReady: refreshServer,
     startServer: () => command('start_server'),
     triggerServerWakeup: () => command('start_server'),
     stopServer: () => command('stop_server'),
     loadChatUrl: () => command('open_chat'),
     loadDashboardUrl: () => command('open_dashboard'),
     openSettings: () => command('open_settings'),
-    openAccessibilitySettings: () => command('open_settings'),
     openTermuxApp: () => command('open_termux_app'),
     copySetupCommand: () => command('copy_setup_command'),
     openInstallPermissionSettings: () => command('open_install_permission'),

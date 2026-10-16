@@ -1,5 +1,8 @@
 # Antigravity Companion & Bridge - Execution Tasks
 
+Current architecture (2026-10-16): [lean RFC](docs/lean-companion-architecture-rfc.md), [spec](docs/lean-companion-spec.json), [plan](docs/lean-companion-plan.md), [report](docs/lean-companion-report.md). Earlier native voice, AccessibilityService and port8765 requirements below are historical and superseded. Canonical web remains server/web; build-generated mirrors must match. Native connection status contains only server_available/version/can_install; Doctor contains only termux_installed/termux_run_command_permission/server_connectivity. Retain private HMAC/session/CSRF/origin guards, settings drafts/revisions and browser accessibility. Host acceptance phases are all/dashboard/chat; on-device phase is chat. No runtime version/signing change or phone acceptance is implied.
+
+
 ## Phase 1: Project Scaffolding & Permissions
 - [ ] Initialize Android project skeleton with Gradle (minSdk 24, targetSdk 34, compileSdk 34).
 - [ ] Declare permissions in `AndroidManifest.xml` (`android.permission.BIND_ACCESSIBILITY_SERVICE`, `com.termux.permission.RUN_COMMAND`, `android.permission.INTERNET`).

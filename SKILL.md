@@ -1,5 +1,8 @@
 # مرجع تشغيل Antigravity Companion
 
+Current architecture (2026-10-16): [lean RFC](docs/lean-companion-architecture-rfc.md), [spec](docs/lean-companion-spec.json), [plan](docs/lean-companion-plan.md), [report](docs/lean-companion-report.md). Earlier native voice, AccessibilityService and port8765 requirements below are historical and superseded. Canonical web remains server/web; build-generated mirrors must match. Native connection status contains only server_available/version/can_install; Doctor contains only termux_installed/termux_run_command_permission/server_connectivity. Retain private HMAC/session/CSRF/origin guards, settings drafts/revisions and browser accessibility. Host acceptance phases are all/dashboard/chat; on-device phase is chat. No runtime version/signing change or phone acceptance is implied.
+
+
 ## refactor: simplicity phases 2 and 3 — 2026-10-16
 
 أذن المستخدم بعد المواصفة بتنفيذ المرحلتين ورفعهما والرد، مع صون حماية الرابعة. الإذن الجديد من المستخدم، ولا يُنسب إلى المطور اعتماد إضافي يتجاوز تجميده السابق. [المواصفة](docs/simplicity-phases-2-3-design.md) و[الخطة](docs/simplicity-phases-2-3-plan.md) و[الحصيلة المتحققة](docs/simplicity-phases-2-3-report.md) وdebug_manifest.json مراجع الاستئناف. المرحلة الثانية محصورة في الجرد المهمل وبقايا private وتسجيل SW المكرر؛ الثالثة منجزة: adapter يملك الصورة ومراجعتي settings/policy، والمحرر يصون draft/baseline؛ الحفظ الجزئي ظاهر، والقراءات المتأخرة وإشعار النافذة لا يتجاوزان الحراسة. لا ادعاء نجاح الفاحص النصي كله؛ إنذارات النسخ السابقة وmentions موثقة. لا تغيير للواجهة أو الأصول أو الحماية، ولا دمج أو Release أو تثبيت هاتف.

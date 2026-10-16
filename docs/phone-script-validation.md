@@ -1,5 +1,7 @@
 # قبول الهاتف بالسكربت
 
+Historical evidence (2026-10-04), superseded by the [lean architecture report](lean-companion-report.md). The old device/voice phases and speech-audio command below are retired and must not be used for current acceptance.
+
 2026-10-04؛ الإصدار المثبت 1.3.2/8. طلب المستخدم تنفيذ أول أبواب القبول المتبقية كاملة بالسكربت.
 
 ## التشغيل

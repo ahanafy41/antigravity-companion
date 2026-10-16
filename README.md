@@ -1,60 +1,55 @@
 # Antigravity Companion
 
-تطبيق Android وواجهة محلية لمحادثات `agy` وإدارة وظائفه المتاحة، مع خدمة وصول لأفعال الهاتف المحددة. يعمل Python داخل Termux؛ ويستهلك التطبيق والمتصفح API محليًا. بياناتك محفوظة محليًا، ولا تحتاج قاعدة سحابية.
+An Android shell and local web interface for `agy` chat and its available CLI functions. Python runs in Termux; Android and the browser use the local server, whose default port is 7681. Conversations and settings stay in local files; no cloud database is required.
 
-المصدر الجاري يعيد بناء الإصدار السابق. نجاح الفحوص المحلية لا يثبت عمل الهاتف أو توافق قارئات الشاشة؛ أدلة القبول في [سجل التحقق](docs/refactor-validation.md).
+The current lean architecture follows the maintainer's [RFC](docs/lean-companion-architecture-rfc.md) and [specification](docs/lean-companion-spec.json). See the [implementation report](docs/lean-companion-report.md) for verification and remaining device acceptance.
 
-## التثبيت والتشغيل
+## Install and run
 
-يلزم Python و`agy` على PATH، واعتمادات [requirements.txt](requirements.txt). يحتاج Android تطبيق Termux وإذن RUN_COMMAND وإعداد allow-external-apps الذي تختاره أنت؛ لا يعدله المُثبّت خفيةً. الملفات القديمة والمحادثات لا تحذف عند الإعداد.
+Install Python, put `agy` on PATH, and install [requirements.txt](requirements.txt). Android also needs Termux, the RUN_COMMAND permission and your chosen allow-external-apps setting. Setup preserves existing conversations and configuration; it does not silently enable that Termux setting.
 
-مثال تشغيل واحد من جذر المشروع:
+One example, from the project root:
 
 ```bash
 python -m pip install -r requirements.txt
 python server/server.py
 ```
 
-افتح العنوان المحلي الذي يطبعه الخادم؛ يتصل التطبيق والمتصفح المحلي بلا كود يدوي. تُصدر جلسة HttpOnly وSameSite=Strict بعد فحص عنوان الاتصال وHost وOrigin، وتحتاج أوامر التغيير CSRF. هذه السياسة تثق بالبرامج المحلية؛ حراسة الأصل لا تثبت هوية البرنامج المحلي. الحساب والإذن للنموذج من اختصاص `agy`؛ تعرض الواجهة سبب تعذر الوظيفة بدل اختلاق نجاح أو استهلاك.
+Open the local address printed by the server. The local browser receives an HttpOnly, SameSite=Strict session after connection, Host and Origin checks; state-changing requests require CSRF. This boundary trusts local programs. CLI account login and model authorization remain with `agy`; unavailable functions show an explanation.
 
-لتثبيت إصدار ثابت في Termux، استعمل ZIP وmanifest وsignature صادرة مع الحزمة، والشهادة العامة المثبتة، وأداة OpenSSL (حزمة openssl-tool في Termux)، واعتمادات requirements.txt. المُثبّت يرفض فساد الملفات وخروج المسار واختلاف الشهادة، ثم يختار الإصدار ذريًا. البيانات خارج releases. الرجوع يبدّل الشفرة ويحتفظ بالبيانات الحديثة؛ أعد تشغيل العملية المملوكة لتطبيق الاختيار. تفاصيل [التثبيت والتوقيع](docs/release-and-recovery.md).
+For a fixed Termux release, use its ZIP, manifest, signature, pinned public certificate, OpenSSL (`openssl-tool` in Termux), and Python requirements. The installer verifies file integrity, paths and certificate before selecting a release atomically. Data lives outside releases; rollback keeps newer data. Restart the owned process after changing the selected release. See [release and recovery](docs/release-and-recovery.md).
 
-## مرجع CLI
+## Android and chat
 
-| الأداة | المدخل والغرض |
+Android opens the bundled HTTPS dashboard through WebViewAssetLoader. It has five core controls: chat, one start/stop toggle, diagnostics, updates, and setup under its own heading. One Arabic status describes server availability. Diagnostics checks Termux installation, RUN_COMMAND permission and server connectivity.
+
+The app's AccessibilityService, local automation WebSocket on 8765, and native voice capture/TTS have been retired. Browser speech synthesis, WebAudio and haptics remain independent features. Semantic controls, Arabic labels, live announcements and keyboard focus remain; TalkBack and Jieshuo acceptance still requires a real phone.
+
+Chat and the dashboard retain the approved main interface. Settings preserve drafts, revision conflict protection and partial-save feedback. Local history can be read offline; sending requires the server. The Service Worker caches no API paths and does not replay pending requests after reconnection.
+
+The native bridge restricts navigation and messages to the main frame and approved bundled/server origins. Modern private requests require HMAC verification before credential bootstrap. Modern shutdown uses the session Cookie, CSRF and Origin, without POST replay or redirects. Legacy readiness allows display without sending private Bearer credentials; legacy shutdown retains its existing API contract.
+
+`debug` uses its separate package identity. `release` requires the original signing key and private environment values. Keys stay outside Git; no release is published automatically. [server/version.json](server/version.json) records release identity. User settings live in settings.json under data-dir; unknown values survive saves.
+
+## CLI reference
+
+| Tool | Inputs and purpose |
 |---|---|
-| scripts/run_phone_tests.py | --help؛ فحص الهاتف عبر ADB؛ --phase all/chat/device/voice، --speech-audio لملف WAV مسموع أمام الميكروفون، --output للتقرير، --resume لحفظ التقدم |
-| scripts/phone_acceptance.py | فاحص API داخل Termux؛ --phase و--report لازمان، --root و--timeout و--resume؛ يبقي الرموز ومحتوى الشاشة داخل الهاتف |
-| server/server.py | --help، --host 127.0.0.1، --port، --data-dir؛ تشغيلAPI المحلي |
-| scripts/phase1_preflight.py | --help؛ فحص عقودالمساعدة وHTTP محليًا؛ --strict يرفض القبول الناقص |
-| scripts/prepare_web_release.py | --check؛ تحقق revision للأصول المحفوظة محليًا |
-| scripts/sync_android_web.py | --help؛ نسخ أصول الويب؛ --check للفحص دون نسخ، و--source و--destination لاختيار المسارين |
-| scripts/run_android_web_asset_tests.py | --help؛ فحوص النسخ المحلية؛ --apk لفحص نسختَي الويب داخل APK |
-| scripts/package_release.py | --version، --output، --keystore؛ حزمة ثابتة موقعة دون نشر |
-| scripts/install_release.py | --archive، --manifest، --signature، --root؛ تثبيت متحقق؛ --rollback للرجوع، --verify-selected للتحقق |
+| server/server.py | --help; --host, --port, --data-dir: run the local API |
+| scripts/doctor.py | --doctor: inspect the CLI/Termux environment and server connection |
+| scripts/run_phone_tests.py | --help; --phase all/dashboard/chat, --adb, --serial, --output, --device-dir, --timeout, --root, --model, --cwd, --resume: host ADB acceptance |
+| scripts/phone_acceptance.py | --help; --phase chat, --report, --root, --timeout, --delay, --model, --cwd, --resume: on-device chat API acceptance |
+| scripts/phase1_preflight.py | --help; --strict: check CLI help and local HTTP contracts |
+| scripts/prepare_web_release.py | --check: verify the static cache revision |
+| scripts/sync_android_web.py | --help; --check, --source, --destination: mirror canonical web assets |
+| scripts/run_android_web_asset_tests.py | --help; --apk: verify local and packaged web assets |
+| scripts/package_release.py | --version, --output, --keystore: prepare a signed fixed release |
+| scripts/install_release.py | --archive, --manifest, --signature, --root; --rollback, --verify-selected: verify and select a release |
 
-[server/version.json](server/version.json) مرجع الإصدار وهوية الحزمة. إعدادات المستخدم في settings.json تحت data-dir، بقيم مجهولة محفوظة ورقم مراجعة لمنع تعارض الحفظ. اعتماديات الحساب الأصلية تبقى لدى CLI؛ لا تستخرج الواجهة رموزه. [SKILL.md](SKILL.md) مرجع الأدوات وقواعد العمل.
+Retired device/voice acceptance phases and speech-audio flags are rejected. Reports exclude private tokens and screen content. Browser development checks use [requirements-dev.txt](requirements-dev.txt); COMPANION_BROWSER_EXECUTABLE selects an existing browser without downloading one. [SKILL.md](SKILL.md) documents the repository tools.
 
-## Android والواجهة
+## Contribute
 
-في التعديلات المحلية الجارية، يسلك الأمر الصوتي الخادم القديم مباشرةً عبر /api/device_agent/turn عند اكتشاف LEGACY، ويستعمل TTS والأفعال المحصورة دون فتح المحادثة؛ يبقى الخادم الحديث على HMAC. يعيد بث GET الاتصال ثلاث مرات بفواصل1/2/4ثوانٍ دون إعادة الرسالة. رُفعت هذه الجولة لفحص المطور بأمر المستخدم، مع بقاء فحوص راسبة؛ [حصيلتها وموانع تسليمها](docs/scoped-maintainer-follow-up-report.md) تبيّن فاحصَي المتصفح الراسبين وحد استئناف agy الداخلي.
+Read the [current plan](docs/lean-companion-plan.md), [project state](project_state.md), and [CHANGELOG.md](CHANGELOG.md). Send a focused issue with reproduction steps and sanitized version details, or a small pull request with verification evidence. Remove credentials and private chat content from reports.
 
-يفتح Android صفحة البدء المضمّنة start.html من HTTPS عبر WebViewAssetLoader. تشغل WebView المساحة المتاحة، ولا يعلوها إلا تنبيه خدمة الوصول عند تعطيلها. تعمل مفاتيح الهاتف المحلية دون تشغيل Python أو فتح IndexedDB؛ تحتاج المحادثة خادمًا. ظهور الخادم القديم برد HTTP 200 يثبت إمكان عرضه وحده؛ لا يثبت مصادقة HMAC.
-
-واجهة المحادثة في `/` وصفحة البدء في `/start` مأخوذتان من واجهة المشروع الأصلية المعتمدة، وتستعملان API v1. الإعدادات قوائم ومفاتيح معنونة؛ تفاصيل الأدوات عربية مع إعلان حي. الرسائل أثناء الدور تُحفظ للدور التالي. حالة حساب `agy` غير متاحة آليًا؛ المصادقة في طرفيته، وإعداد OAuth يحفظ نطاق المالك دون كشف السر. الخيارات التي لا يجيزها العقد معطلة مع بيان السبب.
-
-الأمر الصوتي يعمل في الخلفية وينطق الرد بـ`ar-EG` دون فتح شاشة المحادثة. الإملاء يملأ المحرر المفتوح دون إرسال. يستثني WebSocket المحلي على 8765 اتصال loopback من Bearer مع حراسة Origin؛ والثقة هنا تشمل البرامج المحلية. إيقاف الخادم الحديث يطلب إغلاق العملية المملوكة مع CSRF؛ أما القديم فيستعمل POST /api/shutdown دون Bearer ويشترط نجاح الرد. [حصيلة التنفيذ والفحص](docs/ui-main-adaptation-report.md).
-
-`debug` حزمة منفصلة؛ أما `release` فيحتاج المفتاح الأصلي وقيم التوقيع الخاصة من البيئة. مفتاح الإصدار لا يضاف إلى Git، ولا تنشر Actions إصدارًا تلقائيًا. server/web مصدر الويب؛ ينسخه scripts/sync_android_web.py حرفيًّا إلى app/src/main/assets/web بعد prepare_web_release، ثم يضم Gradle المسارين assets/web وassets/server/web إلى APK، ويستبعد ملفات الفحص وذاكرة Python المؤقتة.
-
-أفعال الهاتف محددة بمعرف يحفظ قبل التنفيذ، فلا يعاد فعل مجهول النتيجة. التقاط الشاشة يحتاج API30؛ سائر التطبيق يحتفظ بـminSdk24. الصوت مهمة واحدة قابلة للإلغاء. CompanionNative مقيد بالإطار الرئيس وصفحة البدء المضمّنة وأصل الخادم المحلي المعين. تعمل أوامر البدء والإيقاف والتنقل والاستكشاف المحلية دون مصادقة الخادم؛ أما إرسال سر Android وأفعال الخادم الخاصة فيحتاجان إثبات HMAC. يتيح legacy-native.js للخادم القديم AntigravityBridge بقراءة حالة متزامنة وأوامر تمر عبر CompanionNative؛ لا يرسل Bearer إليه.
-
-فُحصت تسميات الأزرار وترتيب Tab والحوارات وعودة التركيز والدلالة النصية التي لا تعتمد على اللون. يلزم اختبار TalkBack وJieshuo على هاتف فعلي قبل اعتماد الإصدار. السجل المحلي يقرأ دون شبكة، والإرسال يتعطل؛ لا تحفظ Service Worker مسارات API ولا تعيد طلبًا معلقًا عند عودة الشبكة.
-
-فحوص المتصفح تستعمل Playwright الموجود محليًا؛ اعتماد فحوص التطوير في [requirements-dev.txt](requirements-dev.txt). تُختار نسخة المتصفح عند الحاجة بالمتغير COMPANION_BROWSER_EXECUTABLE، دون تنزيل متصفح خفي.
-
-## المساهمة
-
-راجع [الخطة](docs/refactor-plan.md) و[حالة المشروع](project_state.md) و[CHANGELOG.md](CHANGELOG.md). أرسل بلاغ الخلل بخطوات تكراره ومعلومات الإصدار المنقحة، أو طلب دمج محدودًا مع دليل الفحص؛ احذف الأسرار ومحتوى المحادثات الخاصة من البلاغ.
-
-صاحب العمل الجاري: **كمال ياسر — Kamal Yaser**؛ [البريد](mailto:kamalyaser31@gmail.com)، [Telegram](https://t.me/kamalyaser31). ينسب التطبيق أصله إلى Ahmed Hanafy؛ بقيت نسبته في الواجهة.
+Current contributor: **Kamal Yaser**; [email](mailto:kamalyaser31@gmail.com), [Telegram](https://t.me/kamalyaser31). Original application attribution to Ahmed Hanafy is preserved.

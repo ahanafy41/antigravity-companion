@@ -4,68 +4,39 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <meta name="theme-color" content="#090d13">
-    <title>لوحة تحكم وبدء تشغيل Antigravity</title>
+    <title>Antigravity Companion</title>
     <link rel="stylesheet" href="/start-ui.css">
 </head>
 <body>
 
     <header role="banner">
-        <h1>مساعد Antigravity المستقل</h1>
-        <p class="subtitle">لوحة التحكم وبدء التشغيل الذكية</p>
+        <h1>Antigravity Companion</h1>
     </header>
 
     <main role="main">
         <!-- Live region for Screen Reader announcements -->
         <div id="live-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
-        <!-- Section: Service Status -->
         <section class="card" aria-labelledby="status-heading">
-            <h2 id="status-heading">حالة الاتصال والخدمة</h2>
-            <div id="status-text" class="status-box" role="status">
-                <div class="status-row">
-                    <span>خدمة إمكانية الوصول:</span>
-                    <span id="badge-a11y" class="status-badge badge-pending">جاري الفحص...</span>
-                </div>
-                <div class="status-row">
-                    <span>خادم الأتمتة الداخلي (8765):</span>
-                    <span id="badge-ws" class="status-badge badge-pending">جاري الفحص...</span>
-                </div>
-                <div class="status-row">
-                    <span>خادم تيرمكس للشات (7681):</span>
-                    <span id="badge-server" class="status-badge badge-pending">جاري الفحص...</span>
-                </div>
-            </div>
-            <button type="button" id="btn-refresh-status" class="btn">تحديث الحالة الآن</button>
+            <h2 id="status-heading">حالة خادم تيرمكس</h2>
+            <p id="badge-server" class="status-box badge-pending" role="status" aria-live="polite" aria-atomic="true">خادم تيرمكس: جارٍ الفحص</p>
         </section>
 
-        <!-- Section: Core Actions & Server Management -->
         <section class="card" aria-labelledby="actions-heading">
-            <h2 id="actions-heading">الإجراءات والتحكم في الخادم</h2>
+            <h2 id="actions-heading">المحادثة وإدارة الخادم</h2>
             <div class="btn-group">
-                <button type="button" id="btn-go-chat" class="btn btn-primary">الانتقال لواجهة الشات والمحادثة</button>
-                <button type="button" id="btn-wake-server" class="btn btn-success">تشغيل / إيقاظ خادم تيرمكس</button>
-                <button type="button" id="btn-stop-server" class="btn btn-danger">إيقاف خادم تيرمكس نهائياً</button>
-                <button type="button" id="btn-setup-termux" class="btn">نسخ كود تجهيز Termux وفتح الطرفية</button>
-                <button type="button" id="btn-open-a11y" class="btn">فتح إعدادات إمكانية الوصول</button>
-            </div>
-        </section>
-
-        <!-- Section: Self Diagnostics -->
-        <section class="card" aria-labelledby="diag-heading">
-            <h2 id="diag-heading">الفحص والتشخيص الذاتي (Doctor)</h2>
-            <div class="btn-group">
-                <button type="button" id="btn-run-diag" class="btn">تشغيل الفحص الشامل للبيئة</button>
+                <button type="button" id="btn-go-chat" class="btn btn-primary">دخول الشات والمحادثة</button>
+                <button type="button" id="btn-wake-server" class="btn btn-success">تشغيل الخادم</button>
+                <button type="button" id="btn-run-diag" class="btn">فحص وإصلاح الأعطال</button>
+                <button type="button" id="btn-check-update" class="btn">فحص التحديثات</button>
             </div>
             <div id="diag-output" class="diag-box start-style-1" tabindex="0" role="region" aria-label="نتائج التشخيص"></div>
+            <div id="update-status" class="start-style-2"></div>
         </section>
 
-        <!-- Section: App Update -->
-        <section class="card" aria-labelledby="update-heading">
-            <h2 id="update-heading">تحديثات التطبيق</h2>
-            <div class="btn-group">
-                <button type="button" id="btn-check-update" class="btn">التحقق من وجود تحديثات</button>
-            </div>
-            <div id="update-status" class="start-style-2"></div>
+        <section class="card" aria-labelledby="setup-heading">
+            <h2 id="setup-heading">الإعداد الأولي والصيانة</h2>
+            <button type="button" id="btn-setup-termux" class="btn">تجهيز Termux لأول مرة</button>
         </section>
     </main>
 

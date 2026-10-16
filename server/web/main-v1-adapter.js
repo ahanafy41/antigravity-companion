@@ -11,8 +11,6 @@
     global.AntigravityBridge = {
       getAppVersion: async () => (await native('get_app_version')).version,
       canInstallUnknownApps: async () => (await native('get_app_version')).can_install,
-      isAccessibilityActive: async () => (await native('is_accessibility_active')).active,
-      isAutomationServerReady: async () => (await native('get_connection_status')).automation_ready,
       isTermuxServerReady: async () => (await native('probe_server')).server_available === true,
       openSettings: () => native('open_settings'), openTermuxApp: () => native('open_termux_app'),
       copySetupCommand: () => native('copy_setup_command'),

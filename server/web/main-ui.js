@@ -2081,14 +2081,6 @@ await window.mainV1.ready;
             legend: 'إمكانية الوصول والتنبيهات',
             fields: [
               {
-                id: 'field-voice-speech',
-                key: 'speech_enabled',
-                type: 'switch',
-                label: 'النطق الصوتي الداخلي',
-                hint: 'قراءة الردود صوتياً (يُفضل إيقافه لمستخدمي TalkBack أو Jieshuo).',
-                default: false
-              },
-              {
                 id: 'field-voice-tones',
                 key: 'tones_enabled',
                 type: 'switch',
@@ -2189,7 +2181,6 @@ await window.mainV1.ready;
           sandbox: !!raw.sandbox,
           allowNonWorkspaceAccess: raw.allowNonWorkspaceAccess !== undefined ? !!raw.allowNonWorkspaceAccess : true,
           whitelist: Array.isArray(raw.whitelist) ? [...raw.whitelist] : [],
-          speech_enabled: !!raw.speech_enabled,
           tones_enabled: raw.tones_enabled !== undefined ? !!raw.tones_enabled : true,
           haptic_enabled: raw.haptic_enabled !== undefined ? !!raw.haptic_enabled : true,
           trustedWorkspaces: Array.isArray(raw.trustedWorkspaces) ? [...raw.trustedWorkspaces] : []
@@ -2226,7 +2217,7 @@ await window.mainV1.ready;
       buildFieldElement(f) {
         const container = document.createElement('div');
         container.className = 'form-group';
-        const unsupported = ['autopilot', 'allowNonWorkspaceAccess', 'allow_write', 'allow_web', 'allow_subagent', 'allow_schedule', 'speech_enabled'].includes(f.key);
+        const unsupported = ['autopilot', 'allowNonWorkspaceAccess', 'allow_write', 'allow_web', 'allow_subagent', 'allow_schedule'].includes(f.key);
 
         if (f.type === 'select_models') {
           const label = document.createElement('label');
@@ -5549,13 +5540,6 @@ await window.mainV1.ready;
 
     let isAppExplicitlyMinimized = false;
 
-    window.addEventListener('companion-voice-input', event => {
-      const speech = event.detail;
-      if (!aiInput || speech?.mode !== 'dictation' || typeof speech.text !== 'string') return;
-      aiInput.value += (aiInput.value ? ' ' : '') + speech.text;
-      aiInput.dispatchEvent(new Event('input', {bubbles: true}));
-      announce('أُضيف الإملاء إلى المسودة دون إرسال.');
-    });
     window.addEventListener('companion-native-visibility', event => window.setAppVisibility(event.detail?.visible === true));
 
     window.setAppVisibility = function(vis) {

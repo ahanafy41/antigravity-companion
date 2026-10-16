@@ -82,7 +82,6 @@ public final class TermuxBridge {
     private static Intent launcherIntent(Context context, String applicationDataDir, PendingIntent pending) {
         JsonObject credentials = new JsonObject();
         credentials.addProperty("android_token", NativeSecrets.androidToken(context));
-        credentials.addProperty("android_port", LocalAutomationServer.PORT);
         return new Intent("com.termux.RUN_COMMAND")
                 .setComponent(new ComponentName(TERMUX_PACKAGE, "com.termux.app.RunCommandService"))
                 .putExtra("com.termux.RUN_COMMAND_PATH", TermuxLaunchContract.executable(applicationDataDir))

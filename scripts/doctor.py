@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 Antigravity Companion - Doctor Diagnostic Tool
-Verifies local connectivity, WebSocket bridge,
-and Termux external app permissions.
+Verifies the Termux server connection and external app settings.
 """
 
 import sys
@@ -48,25 +47,6 @@ def run_doctor():
 
     results = {"status": "PASS", "checks": []}
 
-    # 1. Check Local WebSocket Automation Bridge
-    ws_port = 8765
-    ws_ok = check_port("127.0.0.1", ws_port)
-    results["checks"].append(
-        {
-            "name": "WebSocket Automation Bridge (127.0.0.1:8765)",
-            "passed": ws_ok,
-            "detail": (
-                "يعمل بنجاح"
-                if ws_ok
-                else (
-                    "غير متصل (تأكد من تثبيت التطبيق "
-                    "وتفعيل خدمة إمكانية الوصول)"
-                )
-            ),
-        }
-    )
-
-    # 2. Check Local Python Server
     py_port = 7681
     py_ok = check_port("127.0.0.1", py_port)
     results["checks"].append(
@@ -76,12 +56,11 @@ def run_doctor():
             "detail": (
                 "يعمل بنجاح"
                 if py_ok
-                else "غير متصل (يتم تشغيله تلقائياً عند فتح التطبيق)"
+                else "غير متصل (شغّل خادم تيرمكس ثم أعد الفحص)"
             ),
         }
     )
 
-    # 3. Check Termux Properties for allow-external-apps
     props_ok = check_termux_properties()
     results["checks"].append(
         {

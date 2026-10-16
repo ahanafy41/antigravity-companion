@@ -1,8 +1,7 @@
-"""Check phone harness accessibility selection and capture cancellation."""
+"""Check lean dashboard navigation and named chat editor selection."""
 
 from pathlib import Path
 import runpy
-import time
 import xml.etree.ElementTree as ET
 
 runner = runpy.run_path(str(Path(__file__).with_name("run_phone_tests.py")))
@@ -18,83 +17,118 @@ def hierarchy(*controls):
     return root
 
 
-OVERLAY = {
+CHAT_BUTTON = {
     "class": "android.widget.Button",
-    "text": "إملاء",
-    "content-desc": "إملاء رسالة للمساعد",
+    "text": runner["OPEN_CHAT"],
 }
-CANCEL = {"class": "android.widget.Button", "text": "إلغاء الإملاء"}
-COMPOSER = {"class": "android.widget.EditText", "text": "preserved draft"}
-DASHBOARD = {
-    "class": "android.widget.Button",
-    "text": "الانتقال لواجهة الشات والمحادثة",
+COMPOSER = {
+    "class": "android.widget.EditText",
+    "content-desc": "اكتب رسالتك",
+    "text": "preserved draft",
+    "enabled": "true",
+    "focusable": "true",
 }
 
 
 class Device:
+    """An XML device boundary with delayed WebView navigation."""
+
     def __init__(self):
         self.screen = "dashboard"
-        self.cancel_pending = False
-        self.capture_polls = 0
+        self.polls = 0
 
     def hierarchy(self):
         if self.screen == "dashboard":
-            return hierarchy(OVERLAY, DASHBOARD)
-        if self.screen == "capture":
-            if self.cancel_pending:
-                self.capture_polls += 1
-                if self.capture_polls == 2:
-                    self.screen = "chat"
-                    return hierarchy(OVERLAY, COMPOSER)
-            return hierarchy(OVERLAY, CANCEL)
-        return hierarchy(OVERLAY, COMPOSER)
+            return hierarchy(CHAT_BUTTON)
+        self.polls += 1
+        if self.polls == 1:
+            return hierarchy()
+        return hierarchy(
+            {"class": "android.widget.EditText", "text": "search"}, COMPOSER
+        )
 
     def tap(self, node):
-        if node.get("text") == DASHBOARD["text"]:
-            self.screen = "chat"
-        elif node.get("content-desc") == OVERLAY["content-desc"]:
-            self.screen = "capture"
-        elif node.get("text") == CANCEL["text"]:
-            self.cancel_pending = True
-        else:
-            raise AssertionError("Unexpected control")
+        assert node.get("text") == CHAT_BUTTON["text"]
+        self.screen = "chat"
+
+
+def test_named_composer_ignores_other_editors():
+    screen = hierarchy(
+        {"class": "android.widget.EditText", "text": "search"}, COMPOSER
+    )
+    assert runner["composer_text"](screen) == "preserved draft"
+    for controls in (
+        (),
+        ({**COMPOSER, "package": "other.app"},),
+        ({**COMPOSER, "enabled": "false"},),
+        ({**COMPOSER, "focusable": "false"},),
+        (COMPOSER, COMPOSER),
+    ):
+        try:
+            runner["composer_text"](hierarchy(*controls))
+        except runner["AcceptanceError"]:
+            continue
+        raise AssertionError("Missing or ambiguous composer accepted")
+
+
+def test_chat_navigation_waits_for_named_editor():
+    device = Device()
+    screen = runner["open_chat"](device)
+    assert device.polls == 2
+    assert runner["composer_text"](screen) == "preserved draft"
+    assert (
+        runner["control"](
+            hierarchy({**CHAT_BUTTON, "package": "other.app"}),
+            runner["OPEN_CHAT"],
+        )
+        is None
+    )
+
+
+def test_dashboard_requires_one_server_toggle():
+    class DashboardDevice:
+        def __init__(self, toggles):
+            self.toggles = toggles
+
+        def open_companion(self):
+            pass
+
+        def hierarchy(self):
+            labels = [
+                runner["OPEN_CHAT"],
+                "فحص وإصلاح الأعطال",
+                "فحص التحديثات",
+                "تجهيز Termux لأول مرة",
+                *self.toggles,
+            ]
+            return hierarchy(
+                *(
+                    {"class": "android.widget.Button", "text": label}
+                    for label in labels
+                )
+            )
+
+    for toggles, expected in (
+        (["تشغيل الخادم"], "pass"),
+        (["إيقاف الخادم"], "pass"),
+        (["تشغيل الخادم", "تشغيل الخادم"], "fail"),
+        (["إيقاف الخادم", "إيقاف الخادم"], "fail"),
+        (["تشغيل الخادم", "إيقاف الخادم"], "fail"),
+        ([], "fail"),
+    ):
+        cases = runner["dashboard_phase"](DashboardDevice(toggles))
+        assert len(cases) == 5
+        assert all(case["status"] == "pass" for case in cases[:4])
+        assert cases[-1]["status"] == expected
 
 
 def main():
-    device = Device()
-    chat = runner["open_chat"](device)
-    assert runner["composer_text"](chat) == "preserved draft"
-    assert runner["control"](chat, runner["START_VOICE"]) is not None
-    impostor = hierarchy({**OVERLAY, "package": "other.app"})
-    assert runner["control"](impostor, runner["START_VOICE"]) is None
-    runner["activate_voice"](
-        device, runner["START_VOICE"], runner["CANCEL_VOICE"]
-    )
-    assert device.screen == "capture"
-    runner["activate_voice"](
-        device, runner["CANCEL_VOICE"], runner["START_VOICE"]
-    )
-    assert device.capture_polls == 2
-    assert runner["composer_text"](device.hierarchy()) == "preserved draft"
-
-    class RecognizingDevice:
-        def __init__(self):
-            self.polls = 0
-
-        def hierarchy(self):
-            self.polls += 1
-            if self.polls == 1:
-                return hierarchy(OVERLAY, CANCEL)
-            return hierarchy(OVERLAY, {**COMPOSER, "text": "اختبار صوتي"})
-
-    recognizing = RecognizingDevice()
-    assert runner["observed_dictation"](
-        recognizing, {"اختبار", "صوتي"}, "", time.monotonic() + 2
-    )
-    assert recognizing.polls == 2
+    test_named_composer_ignores_other_editors()
+    test_chat_navigation_waits_for_named_editor()
+    test_dashboard_requires_one_server_toggle()
     print(
-        "PASS phone harness: public accessibility name, dashboard navigation, "
-        "capture cancellation wait, preserved draft"
+        "PASS lean phone harness: named focusable editor, delayed navigation, "
+        "five dashboard actions"
     )
 
 

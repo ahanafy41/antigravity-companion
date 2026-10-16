@@ -1,5 +1,7 @@
 # سجل التغيير
 
+- 2026-10-16 — refactor: retire native automation/voice and Java-WebSocket, reduce the dashboard to five controls and diagnostics to three checks, preserve private shutdown and settings guards, and migrate acceptance tools to the lean chat shell.
+
 - 2026-10-16 — refactor: centralize adapter-owned settings with draft revision and race guards, preserve partial saves and accessible feedback, and remove redundant MCP listing, private native remnants and duplicate SW registration; prior validator/mentions findings remain disclosed.
 
 - 2026-10-16 — fix: accept plugin/skill toggle id when name is absent in the API adapter and Android mirror; published in f3f5c35, with maintainer sign-off and explicit exemptions for the existing mentions selector and validator Regex false positive.

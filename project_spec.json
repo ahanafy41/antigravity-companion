@@ -1,4 +1,7 @@
 {
+  "document_status": "historical_superseded",
+  "superseded_by": "docs/lean-companion-spec.json",
+  "status_note": "Original contents below preserve prior planning evidence; retired native automation/voice contracts are not current requirements.",
   "$schema": "https://json-schema.org/draft-07/schema#",
   "project_name": "Antigravity Companion & Bridge",
   "version": "1.2.2",

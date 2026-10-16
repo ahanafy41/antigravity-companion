@@ -6,13 +6,12 @@ import java.util.Set;
 
 final class NativeBridgePolicy {
     private static final Set<String> LOCAL_CONTROLS = new HashSet<>(Arrays.asList(
-            "get_app_version", "get_connection_status", "is_accessibility_active",
+            "get_app_version", "get_connection_status",
             "run_diagnostics", "start_server", "bootstrap", "probe_server", "stop_server",
             "open_chat", "open_dashboard", "open_settings", "open_termux_app",
-            "copy_setup_command", "check_update", "download_update", "open_install_permission",
-            "cancel_voice"));
+            "copy_setup_command", "check_update", "download_update", "open_install_permission"));
     private static final Set<String> AUTHENTICATED_CONTROLS = new HashSet<>(Arrays.asList(
-            "start_voice", "login_cli", "mcp_cli", "logout_cli"));
+            "login_cli", "mcp_cli", "logout_cli"));
 
     private NativeBridgePolicy() { }
 
