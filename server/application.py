@@ -159,6 +159,8 @@ def register_routes(application):
         web.get("/api/v1/runs/{run_id}", run_detail),
         web.post("/api/v1/runs/{run_id}/cancel", cancel_run),
         web.get("/api/v1/runs/{run_id}/events", stream_events),
+        web.get("/api/v1/artifacts", list_artifacts),
+        web.get("/api/v1/artifacts/content", read_artifact),
         web.get("/api/v1/files", list_files),
         web.get("/api/v1/file", read_file),
         web.post("/api/v1/directories", create_directory),
@@ -784,6 +786,89 @@ async def send_event(response, event):
             f"data: {payload}\n\n"
         ).encode()
     )
+
+
+BRAIN_DIR = Path.home() / ".gemini" / "antigravity-cli" / "brain"
+
+
+async def list_artifacts(request):
+    cid = request.query.get("conversation_id", "")
+    if not cid:
+        sessions = request.app.get("sessions")
+        if sessions:
+            for sess in sessions.sessions.values():
+                if sess.get("conversation_id"):
+                    cid = sess["conversation_id"]
+                    break
+    if not cid and BRAIN_DIR.is_dir():
+        try:
+            subdirs = [d for d in BRAIN_DIR.iterdir() if d.is_dir()]
+            if subdirs:
+                subdirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+                cid = subdirs[0].name
+        except Exception:
+            pass
+    artifacts = []
+    if cid and BRAIN_DIR.is_dir():
+        clean_cid = Path(cid).name
+        target_dir = BRAIN_DIR / clean_cid
+        if target_dir.is_dir():
+            for fname in target_dir.iterdir():
+                if fname.name.endswith(".metadata.json"):
+                    base_name = fname.name[:-14]
+                    doc_path = target_dir / base_name
+                    if doc_path.is_file():
+                        mdata = {}
+                        try:
+                            mdata = json.loads(
+                                fname.read_text(encoding="utf-8", errors="ignore")
+                            )
+                        except Exception:
+                            pass
+                        st = doc_path.stat()
+                        artifacts.append({
+                            "name": base_name,
+                            "summary": mdata.get("summary", "") or mdata.get("Summary", ""),
+                            "requestFeedback": bool(
+                                mdata.get("requestFeedback", False)
+                                or mdata.get("RequestFeedback", False)
+                            ),
+                            "userFacing": bool(
+                                mdata.get("userFacing", True)
+                                if "userFacing" in mdata
+                                else mdata.get("UserFacing", True)
+                            ),
+                            "updatedAt": mdata.get("updatedAt", ""),
+                            "mtime": st.st_mtime,
+                            "size": st.st_size,
+                            "path": str(doc_path),
+                        })
+            artifacts.sort(key=lambda x: x.get("mtime", 0), reverse=True)
+    return web.json_response({
+        "status": "ok",
+        "conversation_id": cid,
+        "artifacts": artifacts,
+    })
+
+
+async def read_artifact(request):
+    cid = request.query.get("conversation_id", "")
+    name = request.query.get("name", "")
+    if not cid or not name:
+        return error("invalid_request", "Missing conversation_id or name", 400)
+    clean_cid = Path(cid).name
+    clean_name = Path(name).name
+    doc_path = BRAIN_DIR / clean_cid / clean_name
+    if not doc_path.is_file():
+        return error("not_found", f"Artifact {clean_name} not found", 404)
+    content = doc_path.read_text(encoding="utf-8", errors="ignore")
+    return web.json_response({
+        "status": "ok",
+        "conversation_id": clean_cid,
+        "name": clean_name,
+        "path": str(doc_path),
+        "content": content,
+    })
 
 
 async def list_files(request):

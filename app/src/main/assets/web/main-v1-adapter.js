@@ -503,6 +503,8 @@
         const report = await request('/quota' + (query.get('refresh') === '1' ? '?refresh=1' : ''));
         return {...report, quotas: report.quotas.map(quota => ({...quota, pct: quota.remaining_percent + '%', pct_val: quota.remaining_percent}))};
       }
+      case 'ai/artifacts': return request('/artifacts' + (query.get('conversation_id') ? '?conversation_id=' + encode(query.get('conversation_id')) : ''));
+      case 'ai/artifacts/content': return request('/artifacts/content?conversation_id=' + encode(query.get('conversation_id')) + '&name=' + encode(query.get('name')));
       case 'ai/tasks': return tasks();
       case 'ai/tasks/manage':
         if (body.action === 'delete') unsupported('سجل الأدوار محفوظ؛ لا يتيح API حذفه.');

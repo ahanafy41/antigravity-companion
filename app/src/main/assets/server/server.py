@@ -1402,136 +1402,10 @@ def handle_ai_stream(client_sock, body_bytes):
                 client_connected = False
                 return False
 
-        # Determine initial transcript position so we only stream new events from this turn
-        initial_transcript_lines = 0
-        cur_init_conv = persistent_ai_session.conversation_id or live_conv_id
-        if cur_init_conv:
-            init_tpath = os.path.join(BRAIN_DIR, cur_init_conv, ".system_generated", "logs", "transcript.jsonl")
-            if os.path.exists(init_tpath):
-                try:
-                    with open(init_tpath, "r", encoding="utf-8", errors="ignore") as f:
-                        initial_transcript_lines = sum(1 for _ in f)
-                except Exception:
-                    pass
-
-        last_synced_transcript_line = initial_transcript_lines
-        sent_thinking_blocks = set()
-        last_active_tool = ""
-        last_active_params = {}
-
-        def sync_transcript_updates():
-            nonlocal last_synced_transcript_line, last_active_tool, last_active_params
-            cur_conv = persistent_ai_session.conversation_id or live_conv_id
-            if not cur_conv:
-                return
-            t_path = os.path.join(BRAIN_DIR, cur_conv, ".system_generated", "logs", "transcript.jsonl")
-            if not os.path.exists(t_path):
-                return
-            try:
-                with open(t_path, "r", encoding="utf-8", errors="ignore") as f:
-                    lines = f.readlines()
-                if len(lines) > last_synced_transcript_line:
-                    for line_idx in range(last_synced_transcript_line, len(lines)):
-                        raw_line = lines[line_idx].strip()
-                        if not raw_line:
-                            continue
-                        try:
-                            entry = json.loads(raw_line)
-                            etype = entry.get("type")
-                            step_idx = entry.get("step_index")
-
-                            # 1. Capture Inner Thinking / Reasoning from PLANNER_RESPONSE
-                            if etype == "PLANNER_RESPONSE":
-                                thinking = entry.get("thinking", "")
-                                if thinking and thinking not in sent_thinking_blocks:
-                                    sent_thinking_blocks.add(thinking)
-                                    th_payload = json.dumps({
-                                        "type": "thought",
-                                        "text": thinking,
-                                        "step_index": step_idx
-                                    }, ensure_ascii=False)
-                                    safe_send(f"data: {th_payload}\n\n")
-
-                                tool_calls = entry.get("tool_calls", [])
-                                if tool_calls and isinstance(tool_calls, list):
-                                    for tc in tool_calls:
-                                        t_name = tc.get("name", "")
-                                        t_args = tc.get("args", {})
-                                        if isinstance(t_args, str):
-                                            try: t_args = json.loads(t_args)
-                                            except Exception: pass
-                                        last_active_tool = t_name
-                                        last_active_params = t_args
-                                        tc_payload = json.dumps({
-                                            "type": "tool_step",
-                                            "state": "ACTIVE",
-                                            "tool": t_name,
-                                            "params": t_args,
-                                            "step_index": step_idx
-                                        }, ensure_ascii=False)
-                                        safe_send(f"data: {tc_payload}\n\n")
-
-                                        # Artifacts detection in live stream
-                                        if t_name == "write_to_file":
-                                            t_file = t_args.get("TargetFile", "")
-                                            t_meta = t_args.get("ArtifactMetadata", {})
-                                            if isinstance(t_meta, str):
-                                                try: t_meta = json.loads(t_meta)
-                                                except Exception: pass
-                                            if t_meta or (t_file and "brain" in t_file):
-                                                art_name = os.path.basename(t_file) if t_file else "artifact"
-                                                cur_conv = persistent_ai_session.conversation_id or live_conv_id
-                                                if cur_conv and t_file:
-                                                    meta_disk = os.path.join(BRAIN_DIR, cur_conv, f"{art_name}.metadata.json")
-                                                    if os.path.exists(meta_disk):
-                                                        try:
-                                                            with open(meta_disk, "r", encoding="utf-8", errors="ignore") as mf:
-                                                                disk_meta = json.load(mf)
-                                                                if not t_meta: t_meta = disk_meta
-                                                                else:
-                                                                    for k, v in disk_meta.items():
-                                                                        t_meta.setdefault(k, v)
-                                                        except Exception: pass
-                                                art_summary = t_meta.get("Summary") or t_meta.get("summary") or t_args.get("Description", "")
-                                                art_feedback = bool(t_meta.get("RequestFeedback") or t_meta.get("requestFeedback", False))
-                                                art_user_facing = bool(t_meta.get("UserFacing", True) if "UserFacing" in t_meta else t_meta.get("userFacing", True))
-                                                art_payload = json.dumps({
-                                                    "type": "artifact",
-                                                    "name": art_name,
-                                                    "path": t_file,
-                                                    "summary": art_summary,
-                                                    "requestFeedback": art_feedback,
-                                                    "userFacing": art_user_facing,
-                                                    "step_index": step_idx
-                                                }, ensure_ascii=False)
-                                                safe_send(f"data: {art_payload}\n\n")
-
-                            # 2. Capture Real Tool Execution Result from GENERIC step
-                            elif etype == "GENERIC":
-                                content = entry.get("content", "")
-                                if content:
-                                    out_payload = json.dumps({
-                                        "type": "tool_step",
-                                        "state": "DONE",
-                                        "tool": last_active_tool,
-                                        "params": last_active_params,
-                                        "output": content,
-                                        "step_index": step_idx
-                                    }, ensure_ascii=False)
-                                    safe_send(f"data: {out_payload}\n\n")
-
-                        except Exception as ex:
-                            logger.debug("Error parsing transcript line: %s", ex)
-                    last_synced_transcript_line = len(lines)
-            except Exception as e:
-                logger.debug("Error syncing transcript updates: %s", e)
-
         while True:
-            sync_transcript_updates()
             try:
-                line = line_queue.get(timeout=0.5)
+                line = line_queue.get(timeout=2.0)
             except queue.Empty:
-                sync_transcript_updates()
                 # If AI process ended and queue is drained, stop
                 if proc.poll() is not None and line_queue.empty():
                     break
@@ -1588,9 +1462,6 @@ def handle_ai_stream(client_sock, body_bytes):
                         tool_name = step.get("tool_name", "")
                         tool_info = step.get("tool_info", {})
                         params = tool_info.get("parameters", {})
-                        last_active_tool = tool_name
-                        last_active_params = params
-                        step_idx = step.get("step_index")
 
                         category = TOOL_TO_CATEGORY.get(tool_name)
                         current_perms = settings.get("permissions", {}).get("allow", [])
@@ -1775,8 +1646,7 @@ def handle_ai_stream(client_sock, body_bytes):
                             "state": state,
                             "tool": tool_name,
                             "params": params,
-                            "output": tool_info.get("output", ""),
-                            "step_index": step_idx
+                            "output": tool_info.get("output", "")
                         }, ensure_ascii=False)
                         safe_send(f"data: {payload}\n\n")
 
@@ -1799,7 +1669,6 @@ def handle_ai_stream(client_sock, body_bytes):
                             safe_send(f"data: {payload}\n\n")
 
                 elif event_type == "result":
-                    sync_transcript_updates()
                     got_final_result = True
                     res = raw_event.get("result", {})
                     usage = res.get("usage", {})
@@ -1849,7 +1718,6 @@ def handle_ai_stream(client_sock, body_bytes):
                 payload = json.dumps({"type": "chunk", "text": line}, ensure_ascii=False)
                 safe_send(f"data: {payload}\n\n")
 
-        sync_transcript_updates()
         done_payload = json.dumps({
             "type": "done",
             "returncode": 0 if got_final_result else (proc.poll() or 0)
@@ -3126,101 +2994,11 @@ def handle_conversation_get(client_sock, cid):
         send_json_response(client_sock, {"error": str(e)}, status_code=500)
         return
 
-    arts = get_conversation_artifacts(cid)
     send_json_response(client_sock, {
         "id": cid,
         "messages": messages,
-        "total_tokens": total_tokens,
-        "artifacts": arts
+        "total_tokens": total_tokens
     })
-
-def get_conversation_artifacts(cid):
-    if not cid:
-        return []
-    clean_cid = os.path.basename(cid)
-    b_dir = os.path.join(BRAIN_DIR, clean_cid)
-    if not os.path.isdir(b_dir):
-        return []
-    artifacts = []
-    try:
-        for fname in os.listdir(b_dir):
-            if fname.endswith(".metadata.json"):
-                base_name = fname[:-14]
-                meta_path = os.path.join(b_dir, fname)
-                doc_path = os.path.join(b_dir, base_name)
-                if os.path.exists(doc_path):
-                    try:
-                        with open(meta_path, "r", encoding="utf-8", errors="ignore") as mf:
-                            mdata = json.load(mf)
-                    except Exception:
-                        mdata = {}
-                    st = os.stat(doc_path)
-                    artifacts.append({
-                        "name": base_name,
-                        "summary": mdata.get("summary", "") or mdata.get("Summary", ""),
-                        "requestFeedback": bool(mdata.get("requestFeedback", False) or mdata.get("RequestFeedback", False)),
-                        "userFacing": bool(mdata.get("userFacing", True) if "userFacing" in mdata else mdata.get("UserFacing", True)),
-                        "updatedAt": mdata.get("updatedAt", ""),
-                        "mtime": st.st_mtime,
-                        "size": st.st_size,
-                        "path": doc_path
-                    })
-    except Exception as e:
-        logger.debug("Error listing artifacts for %s: %s", cid, e)
-    artifacts.sort(key=lambda x: x.get("mtime", 0), reverse=True)
-    return artifacts
-
-def handle_artifacts_list(client_sock, cid):
-    if not cid:
-        cid = persistent_ai_session.conversation_id or ""
-    if not cid:
-        try:
-            cids = [d for d in os.listdir(BRAIN_DIR) if os.path.isdir(os.path.join(BRAIN_DIR, d))]
-            if cids:
-                cids.sort(key=lambda d: os.path.getmtime(os.path.join(BRAIN_DIR, d)), reverse=True)
-                cid = cids[0]
-        except Exception:
-            pass
-    artifacts = get_conversation_artifacts(cid)
-    send_json_response(client_sock, {
-        "status": "ok",
-        "conversation_id": cid,
-        "artifacts": artifacts
-    })
-
-def handle_artifact_content(client_sock, cid, filename):
-    if not cid:
-        cid = persistent_ai_session.conversation_id or ""
-    if not cid or not filename:
-        send_json_response(client_sock, {"error": "Missing conversation_id or name"}, status_code=400)
-        return
-    clean_name = os.path.basename(filename)
-    clean_cid = os.path.basename(cid)
-    doc_path = os.path.join(BRAIN_DIR, clean_cid, clean_name)
-    meta_path = os.path.join(BRAIN_DIR, clean_cid, f"{clean_name}.metadata.json")
-    if not os.path.isfile(doc_path):
-        send_json_response(client_sock, {"error": f"Artifact {clean_name} not found"}, status_code=404)
-        return
-    try:
-        with open(doc_path, "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read()
-        metadata = {}
-        if os.path.isfile(meta_path):
-            try:
-                with open(meta_path, "r", encoding="utf-8", errors="ignore") as mf:
-                    metadata = json.load(mf)
-            except Exception:
-                pass
-        send_json_response(client_sock, {
-            "status": "ok",
-            "name": clean_name,
-            "conversation_id": clean_cid,
-            "content": content,
-            "metadata": metadata
-        })
-    except Exception as e:
-        send_json_response(client_sock, {"error": str(e)}, status_code=500)
-
 
 
 # ==============================================================================
@@ -3936,15 +3714,6 @@ def handle_client(client_sock, backend_port, index_bytes):
             handle_ai_stream(client_sock, body_bytes)
             return
 
-        elif path.startswith("/api/shutdown"):
-            send_json_response(client_sock, {"status": "ok", "message": "Server shutting down cleanly"})
-            client_sock.close()
-            def _async_shutdown():
-                time.sleep(0.3)
-                os.kill(os.getpid(), signal.SIGTERM)
-            threading.Thread(target=_async_shutdown, daemon=True).start()
-            return
-
         elif path.startswith("/api/auth/status"):
             token_info = get_auth_token_info()
             wizard_state = auth_manager.get_state()
@@ -4293,23 +4062,6 @@ def handle_client(client_sock, backend_port, index_bytes):
             client_sock.close()
             return
 
-        elif path.startswith("/api/ai/artifacts/content"):
-            import urllib.parse
-            parsed_q = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
-            cid = parsed_q.get("conversation_id", [""])[0] or persistent_ai_session.conversation_id or ""
-            fname = parsed_q.get("name", [""])[0]
-            handle_artifact_content(client_sock, cid, fname)
-            client_sock.close()
-            return
-
-        elif path.startswith("/api/ai/artifacts"):
-            import urllib.parse
-            parsed_q = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
-            cid = parsed_q.get("conversation_id", [""])[0] or persistent_ai_session.conversation_id or ""
-            handle_artifacts_list(client_sock, cid)
-            client_sock.close()
-            return
-
         elif path.startswith("/api/ai/conversations"):
             handle_conversations_list(client_sock)
             client_sock.close()
@@ -4414,24 +4166,6 @@ def handle_client(client_sock, backend_port, index_bytes):
                 b"Connection: close\r\n\r\n"
             )
             client_sock.sendall(header + i_bytes)
-            client_sock.close()
-            return
-
-        elif "/start.html" in path or "/start" in path or "/dashboard" in path:
-            start_path = os.path.join(BASE_DIR, "web", "start.html")
-            st_bytes = b""
-            if os.path.exists(start_path):
-                with open(start_path, "rb") as stf: st_bytes = stf.read()
-            else:
-                st_bytes = get_index_bytes()
-            header = (
-                b"HTTP/1.1 200 OK\r\n"
-                b"Content-Type: text/html; charset=utf-8\r\n"
-                b"Content-Length: " + str(len(st_bytes)).encode() + b"\r\n"
-                b"Cache-Control: no-cache, no-store, must-revalidate\r\n"
-                b"Connection: close\r\n\r\n"
-            )
-            client_sock.sendall(header + st_bytes)
             client_sock.close()
             return
 

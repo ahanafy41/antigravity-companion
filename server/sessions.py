@@ -481,6 +481,21 @@ class Sessions:
             self.emit(run, "delta", {"text_delta": delta})
         elif step.get("step_type") == "tool":
             self.emit(run, "tool", redact(step))
+            tool_name = step.get("tool_name") or step.get("tool") or ""
+            args = step.get("parameters") or step.get("args") or {}
+            target = args.get("TargetFile") or args.get("target_file") or ""
+            if "brain" in str(target) and tool_name in ("write_to_file", "write"):
+                art_name = Path(target).name
+                meta = args.get("ArtifactMetadata") or {}
+                self.emit(run, "artifact", {
+                    "name": art_name,
+                    "path": str(target),
+                    "summary": meta.get("Summary") or meta.get("summary") or args.get("Description", ""),
+                    "requestFeedback": bool(meta.get("RequestFeedback") or meta.get("requestFeedback", False)),
+                    "userFacing": bool(meta.get("UserFacing", True) if "UserFacing" in meta else meta.get("userFacing", True)),
+                })
+        elif step.get("step_type") == "thought":
+            self.emit(run, "thought", {"text": step.get("thought") or step.get("text") or ""})
         self.persist()
 
     def consume_result(self, session, run, result):
