@@ -722,7 +722,25 @@ await window.mainV1.ready;
     const mcpCustomName = document.getElementById('mcp-custom-name');
     const mcpCustomType = document.getElementById('mcp-custom-type');
     const mcpCustomCommand = document.getElementById('mcp-custom-command');
-    const mcpCustomEnv = document.getElementById('mcp-custom-env');
+    // Artifacts & Work Documents elements
+    const btnHeaderArtifacts = document.getElementById('btn-header-artifacts');
+    const headerArtifactsBadge = document.getElementById('header-artifacts-badge');
+    const btnOpenArtifactsDrawer = document.getElementById('btn-open-artifacts-drawer');
+    const valArtifactsCountDrawer = document.getElementById('val-artifacts-count-drawer');
+    const artifactsDialog = document.getElementById('artifacts-dialog');
+    const btnCloseArtifacts = document.getElementById('btn-close-artifacts');
+    const btnCloseArtifactsTop = document.getElementById('btn-close-artifacts-top');
+    const artifactsListContainer = document.getElementById('artifacts-list-container');
+    const artifactViewerDialog = document.getElementById('artifact-viewer-dialog');
+    const artifactViewerTitle = document.getElementById('artifact-viewer-title');
+    const artifactViewerSummary = document.getElementById('artifact-viewer-summary');
+    const artifactViewerContent = document.getElementById('artifact-viewer-content');
+    const btnCopyArtifactContent = document.getElementById('btn-copy-artifact-content');
+    const btnViewerProceed = document.getElementById('btn-viewer-proceed');
+    const btnCloseViewer = document.getElementById('btn-close-viewer');
+    const btnCloseViewerTop = document.getElementById('btn-close-viewer-top');
+    const knownArtifacts = new Map();
+    let currentViewerArtifact = null;
 
     // Conversation History & System Resources elements
     const btnOpenConversations = document.getElementById('btn-open-conversations');
@@ -1340,6 +1358,7 @@ await window.mainV1.ready;
                 // 0) Session Init event
                 if (data.type === 'init' && data.conversation_id) {
                   currentActiveConversationId = data.conversation_id;
+                  loadArtifactsList();
                 }
 
                 // A) Live tool step event
@@ -1499,7 +1518,27 @@ await window.mainV1.ready;
                   accumulatedText += '\n[خطأ: ' + (data.message || '') + ']';
                   scheduleAiRender(true);
                 }
-                // E) Permission Request from Safe Mode middleware
+                // E) Artifact event
+                else if (data.type === 'artifact' && (data.artifact || data.name)) {
+                  playSuccessChime();
+                  const art = data.artifact || {
+                    name: data.name,
+                    path: data.path,
+                    summary: data.summary,
+                    requestFeedback: data.requestFeedback,
+                    userFacing: data.userFacing
+                  };
+                  knownArtifacts.set(art.name, art);
+                  updateArtifactsUI(knownArtifacts.size);
+                  const artCard = createArtifactCard(art);
+                  const feed = aiChatFeed || document.getElementById('ai-chat-feed');
+                  if (feed) {
+                    feed.appendChild(artCard);
+                    scrollChatIfNearBottom();
+                  }
+                  announce(`تم إنشاء وثيقة عمل جديدة: ${art.name}. ${art.summary || ''}`);
+                }
+                // F) Permission Request from Safe Mode middleware
                 else if (data.type === 'permission_request') {
                   playBeep(900, 0.2);
                   announce('انتباه! مطلوب إذنك: ' + data.question);
@@ -1726,6 +1765,8 @@ await window.mainV1.ready;
         if (aiAbortController) aiAbortController.abort();
         forceNewSession = true;
         currentActiveConversationId = null;
+        knownArtifacts.clear();
+        updateArtifactsUI(0);
         if (valSessionTitle) valSessionTitle.textContent = 'محادثة جديدة';
         if (settingsActiveConv) settingsActiveConv.textContent = 'جديدة';
         aiChatFeed.innerHTML = '';
@@ -2963,6 +3004,7 @@ await window.mainV1.ready;
 
         currentActiveConversationId = convId;
         forceNewSession = false;
+        loadArtifactsList();
 
         if (valSessionTitle) {
           valSessionTitle.textContent = convTitle.length > 25 ? convTitle.slice(0, 22) + '...' : convTitle;
@@ -3079,6 +3121,230 @@ await window.mainV1.ready;
       btnCloseConversationsTop.addEventListener('click', () => conversationsDialog.close());
     }
 
+    // ==========================================
+    // ANTIGRAVITY ARTIFACTS CONTROLLER
+    // ==========================================
+    function updateArtifactsUI(count) {
+      const cnt = count !== undefined ? count : knownArtifacts.size;
+      if (headerArtifactsBadge) headerArtifactsBadge.textContent = cnt;
+      if (valArtifactsCountDrawer) valArtifactsCountDrawer.textContent = cnt;
+      if (btnHeaderArtifacts) {
+        btnHeaderArtifacts.style.display = cnt > 0 ? 'inline-flex' : 'none';
+        btnHeaderArtifacts.setAttribute('aria-label', `عرض مستندات وخطط المحادثة (${cnt} مستند)`);
+      }
+    }
+
+    async function openArtifactViewer(artName, artPath, artSummary, requestFeedback) {
+      if (!artifactViewerDialog) return;
+      currentViewerArtifact = { name: artName, path: artPath, summary: artSummary, requestFeedback: requestFeedback };
+      if (artifactViewerTitle) artifactViewerTitle.textContent = `📄 ${artName}`;
+      if (artifactViewerSummary) artifactViewerSummary.textContent = artSummary || '';
+      if (artifactViewerContent) artifactViewerContent.innerHTML = '<p>⏳ جاري تحميل محتوى المستند...</p>';
+
+      if (btnViewerProceed) {
+        btnViewerProceed.style.display = requestFeedback ? 'inline-block' : 'none';
+      }
+
+      artifactViewerDialog.showModal();
+      announce(`تم فتح مستند: ${artName}`);
+
+      try {
+        const cid = currentActiveConversationId || '';
+        const url = `/api/ai/artifacts/content?conversation_id=${encodeURIComponent(cid)}&name=${encodeURIComponent(artName)}`;
+        const res = await (window.mainV1Fetch ? window.mainV1Fetch(url) : fetch(url));
+        if (!res.ok) throw new Error(`رمز الخطأ ${res.status}`);
+        const data = await res.json();
+        const rawContent = data.content || '';
+        currentViewerArtifact.content = rawContent;
+        if (artifactViewerContent) {
+          artifactViewerContent.innerHTML = renderMarkdown(rawContent);
+        }
+      } catch (err) {
+        if (artifactViewerContent) {
+          artifactViewerContent.innerHTML = `<div style="color:var(--accent-red); padding:10px;">تعذر قراءة المستند: ${escapeHtml(err.message)}</div>`;
+        }
+      }
+    }
+
+    function createArtifactCard(art) {
+      const card = document.createElement('div');
+      card.className = 'artifact-card';
+      card.setAttribute('role', 'region');
+      card.setAttribute('aria-label', `مستند: ${art.name}`);
+      card.style.cssText = 'background:rgba(163, 113, 247, 0.08); border:2px solid var(--accent-purple); border-radius:10px; padding:14px; margin:12px 0;';
+
+      const summaryText = art.summary || 'مستند تم إنشاؤه بواسطة الوكيل الذكي';
+      const isFeedback = Boolean(art.requestFeedback);
+
+      card.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
+          <div style="display:flex; align-items:center; gap:8px; font-weight:bold; color:var(--accent-purple); font-size:1.05rem;">
+            <span aria-hidden="true" style="font-size:1.3rem;">📄</span>
+            <span>مستند / خطة: <strong class="artifact-name">${escapeHtml(art.name)}</strong></span>
+          </div>
+          <span class="badge" style="background:var(--accent-purple); color:#fff; border-radius:6px; padding:2px 8px; font-size:0.8rem;">وثيقة عمل (Artifact)</span>
+        </div>
+        <p class="artifact-summary" style="margin:6px 0 12px 0; color:var(--text-main); font-size:0.95rem; line-height:1.6; background:rgba(0,0,0,0.35); padding:10px 12px; border-radius:6px; border-right:4px solid var(--accent-purple);">
+          ${escapeHtml(summaryText)}
+        </p>
+        <div class="artifact-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm btn-view-art" aria-label="فتح وقراءة المستند ${escapeHtml(art.name)}" style="background:var(--accent-purple); color:#fff; font-weight:bold; border-radius:6px; padding:8px 14px; cursor:pointer;">
+            📖 فتح وقراءة المستند
+          </button>
+          <button type="button" class="btn btn-sm btn-copy-art" aria-label="نسخ محتوى المستند ${escapeHtml(art.name)}" style="background:var(--bg-card); color:var(--text-main); border:1px solid var(--border-main); border-radius:6px; padding:8px 14px; cursor:pointer;">
+            📋 نسخ المحتوى
+          </button>
+          ${isFeedback ? `
+            <button type="button" class="btn btn-sm btn-proceed-art" aria-label="موافقة ومتابعة تنفيذ الخطة (Proceed)" style="background:var(--accent-green); color:#000; font-weight:bold; border-radius:6px; padding:8px 14px; cursor:pointer;">
+              🚀 موافقة ومتابعة (Proceed)
+            </button>
+          ` : ''}
+        </div>
+      `;
+
+      const btnView = card.querySelector('.btn-view-art');
+      if (btnView) {
+        btnView.addEventListener('click', () => {
+          openArtifactViewer(art.name, art.path, art.summary, art.requestFeedback);
+        });
+      }
+
+      const btnCopy = card.querySelector('.btn-copy-art');
+      if (btnCopy) {
+        btnCopy.addEventListener('click', async () => {
+          try {
+            const cid = currentActiveConversationId || '';
+            const res = await (window.mainV1Fetch ? window.mainV1Fetch(`/api/ai/artifacts/content?conversation_id=${encodeURIComponent(cid)}&name=${encodeURIComponent(art.name)}`) : fetch(`/api/ai/artifacts/content?conversation_id=${encodeURIComponent(cid)}&name=${encodeURIComponent(art.name)}`));
+            if (!res.ok) throw new Error('فشل جلب النص');
+            const data = await res.json();
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(data.content || '');
+            }
+            playBeep(880, 0.1);
+            announce(`تم نسخ محتوى ${art.name} إلى الحافظة بنجاح`);
+          } catch(err) {
+            announce('تعذر نسخ المستند: ' + err.message);
+          }
+        });
+      }
+
+      const btnProceed = card.querySelector('.btn-proceed-art');
+      if (btnProceed) {
+        btnProceed.addEventListener('click', () => {
+          if (aiInput) {
+            aiInput.value = 'موافق، تابع التنفيذ وفقاً للخطة الموضوعة.';
+            aiInput.focus();
+            announce('تم تعيين الموافقة والمتابعة في حقل الإدخال');
+            if (btnAiSend) btnAiSend.focus();
+          }
+        });
+      }
+
+      return card;
+    }
+
+    async function loadArtifactsList() {
+      if (!artifactsListContainer) return;
+      artifactsListContainer.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:20px;">جاري تحميل المستندات والخطط...</div>';
+      try {
+        const cid = currentActiveConversationId || '';
+        const res = await (window.mainV1Fetch ? window.mainV1Fetch(`/api/ai/artifacts?conversation_id=${encodeURIComponent(cid)}`) : fetch(`/api/ai/artifacts?conversation_id=${encodeURIComponent(cid)}`));
+        if (!res.ok) throw new Error('فشل جلب المستندات');
+        const data = await res.json();
+        const arts = data.artifacts || [];
+        artifactsListContainer.innerHTML = '';
+        if (arts.length === 0) {
+          artifactsListContainer.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:20px;">لا توجد مستندات أو خطط منشأة في هذه المحادثة حتى الآن.</div>';
+          updateArtifactsUI(0);
+          return;
+        }
+        updateArtifactsUI(arts.length);
+        arts.forEach(art => {
+          knownArtifacts.set(art.name, art);
+          const item = document.createElement('div');
+          item.className = 'conversation-item';
+          item.setAttribute('role', 'listitem');
+          item.style.cssText = 'padding:12px; border:1px solid var(--border-main); border-radius:8px; background:var(--bg-card); display:flex; flex-direction:column; gap:8px;';
+          const sizeKb = art.size ? (art.size / 1024).toFixed(1) + ' KB' : '';
+          item.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <strong style="color:var(--accent-purple); font-size:1rem;">📄 ${escapeHtml(art.name)}</strong>
+              <span style="font-size:0.8rem; color:var(--text-muted);">${sizeKb}</span>
+            </div>
+            <p style="margin:0; font-size:0.9rem; color:var(--text-main); line-height:1.5;">${escapeHtml(art.summary || 'بدون ملخص')}</p>
+            <div style="display:flex; gap:8px; margin-top:4px;">
+              <button type="button" class="btn btn-sm btn-art-list-view" aria-label="عرض ${escapeHtml(art.name)}" style="background:var(--accent-purple); color:#fff; font-size:0.88rem; padding:6px 12px; border-radius:6px; cursor:pointer;">
+                عرض المستند
+              </button>
+            </div>
+          `;
+          const vBtn = item.querySelector('.btn-art-list-view');
+          if (vBtn) {
+            vBtn.addEventListener('click', () => {
+              if (artifactsDialog) artifactsDialog.close();
+              openArtifactViewer(art.name, art.path, art.summary, art.requestFeedback);
+            });
+          }
+          artifactsListContainer.appendChild(item);
+        });
+      } catch (err) {
+        artifactsListContainer.innerHTML = `<div style="color:var(--accent-red); padding:12px;">تعذر تحميل المستندات: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    if (btnHeaderArtifacts && artifactsDialog) {
+      btnHeaderArtifacts.addEventListener('click', async () => {
+        artifactsDialog.showModal();
+        announce('تم فتح نافذة مستندات وخطط المحادثة');
+        await loadArtifactsList();
+      });
+    }
+    if (btnOpenArtifactsDrawer && artifactsDialog) {
+      btnOpenArtifactsDrawer.addEventListener('click', async () => {
+        const drawer = document.getElementById('antigravity-drawer');
+        if (drawer && drawer.close) drawer.close();
+        artifactsDialog.showModal();
+        announce('تم فتح نافذة مستندات وخطط المحادثة');
+        await loadArtifactsList();
+      });
+    }
+    if (btnCloseArtifacts && artifactsDialog) {
+      btnCloseArtifacts.addEventListener('click', () => artifactsDialog.close());
+    }
+    if (btnCloseArtifactsTop && artifactsDialog) {
+      btnCloseArtifactsTop.addEventListener('click', () => artifactsDialog.close());
+    }
+    if (btnCloseViewer && artifactViewerDialog) {
+      btnCloseViewer.addEventListener('click', () => artifactViewerDialog.close());
+    }
+    if (btnCloseViewerTop && artifactViewerDialog) {
+      btnCloseViewerTop.addEventListener('click', () => artifactViewerDialog.close());
+    }
+    if (btnCopyArtifactContent) {
+      btnCopyArtifactContent.addEventListener('click', async () => {
+        if (!currentViewerArtifact || !currentViewerArtifact.content) return;
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(currentViewerArtifact.content);
+          }
+          playBeep(880, 0.1);
+          announce('تم نسخ نص المستند كاملاً إلى الحافظة');
+        } catch(err) {
+          announce('تعذر النسخ: ' + err.message);
+        }
+      });
+    }
+    if (btnViewerProceed) {
+      btnViewerProceed.addEventListener('click', () => {
+        if (artifactViewerDialog) artifactViewerDialog.close();
+        if (aiInput) {
+          aiInput.value = 'موافق، تابع التنفيذ وفقاً للخطة الموضوعة.';
+          aiInput.focus();
+          announce('تم تعيين الموافقة والمتابعة في حقل الإدخال');
+          if (btnAiSend) btnAiSend.focus();
+        }
+      });
+    }
 
     // ==========================================
     // ANTIGRAVITY QUOTA CONTROLLER
