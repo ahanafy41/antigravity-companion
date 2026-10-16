@@ -814,35 +814,44 @@ await window.mainV1.ready;
     // Pure Accessible Agent Mode - AI Studio is always active
     if (aiViewport) aiViewport.style.display = 'flex';
 
-    // Friendly Arabic labels for tools
+    // Friendly Arabic labels for tools with semantic intent support
     function getToolLabel(toolName, params) {
+      if (!params || typeof params !== 'object') params = {};
+      const action = params.toolAction || params.action || '';
+      const summary = params.toolSummary || params.summary || '';
+      const intent = action || summary;
+
       if (toolName === 'run_command') {
-        const cmd = params.CommandLine || '';
-        return 'تشغيل أمر: ' + cmd;
+        const cmd = params.CommandLine || params.command || '';
+        const shortCmd = cmd.length > 80 ? (cmd.slice(0, 80) + '...') : cmd;
+        if (intent) return intent + (shortCmd ? ` (${shortCmd})` : '');
+        return 'تشغيل أمر الطرفية: ' + shortCmd;
       } else if (toolName === 'view_file' || toolName === 'read_resource') {
-        const p = params.AbsolutePath || params.TargetFile || '';
+        const p = params.AbsolutePath || params.TargetFile || params.path || '';
         const name = p.split('/').pop() || p;
-        return 'قراءة الملف: ' + name;
+        return (intent ? `${intent}: ` : 'قراءة وفحص الملف: ') + name;
       } else if (toolName === 'write_to_file' || toolName === 'replace_file_content') {
-        const p = params.TargetFile || params.AbsolutePath || '';
+        const p = params.TargetFile || params.AbsolutePath || params.path || '';
         const name = p.split('/').pop() || p;
-        return 'تعديل أو كتابة الملف: ' + name;
+        const desc = params.Description || '';
+        return (intent ? `${intent}: ` : 'تعديل أو كتابة الملف: ') + name + (desc ? ` (${desc})` : '');
       } else if (toolName === 'list_dir' || toolName === 'find_by_name') {
-        return 'فحص محتويات المجلد';
+        return intent || 'فحص محتويات المجلد';
       } else if (toolName === 'invoke_subagent') {
         const subagents = params.Subagents || [];
         const roles = subagents.map(s => s.Role || s.TypeName).join(', ');
-        return '🤖 إطلاق وكيل فرعي متخصص: ' + (roles || 'وكيل جديد');
+        return '🤖 إطلاق فريق وكلاء متخصصين: ' + (roles || 'وكيل جديد');
       } else if (toolName === 'send_message') {
-        return '💬 تواصل وتنسيق مع وكيل فرعي';
+        const recipient = params.Recipient || 'وكيل فرعي';
+        return `💬 تواصل وتنسيق مع ${recipient}`;
       } else if (toolName === 'manage_subagents' || toolName === 'manage_task') {
-        return '⚙️ إدارة ومتابعة مهام الوكلاء';
+        return intent || '⚙️ إدارة ومتابعة مهام الوكلاء';
       } else if (toolName === 'search_web') {
         return '🌐 بحث حي في الويب: ' + (params.query || '');
       } else if (toolName === 'read_url_content') {
-        return '🌐 قراءة صفحة ومصدر ويب';
+        return '🌐 قراءة وتلخيص صفحة ويب: ' + (params.Url || params.url || '');
       }
-      return 'تنفيذ أداة: ' + toolName;
+      return intent || ('تنفيذ أداة: ' + toolName);
     }
 
     // Robust Accessible Markdown Parser
@@ -1363,34 +1372,103 @@ await window.mainV1.ready;
                     updateSubagentMessage(recipient, msg);
                   }
 
-                  const li = document.createElement('li');
-                  li.className = 'step-item ' + (data.state === 'ACTIVE' ? 'active' : 'done');
-                  if (data.tool === 'invoke_subagent') {
-                    li.style.background = 'rgba(57, 197, 187, 0.12)';
-                    li.style.border = '1px solid var(--accent-cyan)';
-                    li.innerHTML = '<span class="step-icon">👥</span> ' +
-                      '<span><strong class="main-style-12">' + toolDesc + '</strong></span>';
-                  } else if (data.tool === 'send_message') {
-                    li.style.background = 'rgba(163, 113, 247, 0.12)';
-                    li.innerHTML = '<span class="step-icon">💬</span> ' +
-                      '<span><strong class="main-style-144">' + toolDesc + '</strong></span>';
-                  } else {
-                    li.innerHTML = '<span class="step-icon">' + (data.state === 'ACTIVE' ? '⚙️' : '✓') + '</span> ' +
-                      '<span>' + toolDesc + '</span>';
+                  // Check if there is an existing step for this tool to update in-place
+                  let stepLi = null;
+                  if (data.state !== 'ACTIVE') {
+                    const activeSteps = stepsList.querySelectorAll('.step-item.active');
+                    for (let i = activeSteps.length - 1; i >= 0; i--) {
+                      if (activeSteps[i].dataset.tool === data.tool) {
+                        stepLi = activeSteps[i];
+                        break;
+                      }
+                    }
                   }
-                  stepsList.appendChild(li);
-                  announce(toolDesc);
+
+                  const isDone = data.state === 'DONE';
+                  const isError = data.state === 'ERROR';
+
+                  if (!stepLi) {
+                    stepLi = document.createElement('li');
+                    stepLi.dataset.tool = data.tool;
+                    stepsList.appendChild(stepLi);
+                  }
+
+                  stepLi.className = 'step-item ' + (data.state === 'ACTIVE' ? 'active' : (isError ? 'error' : 'done'));
+
+                  const stateIcon = data.state === 'ACTIVE' ? '⚙️' : (isError ? '❌' : '✓');
+                  const stateLabel = data.state === 'ACTIVE' ? 'جارٍ التنفيذ...' : (isError ? 'تعثر' : 'اكتمل');
+
+                  if (data.tool === 'invoke_subagent') {
+                    stepLi.style.background = 'rgba(57, 197, 187, 0.12)';
+                    stepLi.style.border = '1px solid var(--accent-cyan)';
+                    stepLi.innerHTML = '<span class="step-icon">👥</span> ' +
+                      '<span><strong class="main-style-12">' + escapeHtml(toolDesc) + '</strong></span>';
+                  } else if (data.tool === 'send_message') {
+                    stepLi.style.background = 'rgba(163, 113, 247, 0.12)';
+                    stepLi.innerHTML = '<span class="step-icon">💬</span> ' +
+                      '<span><strong class="main-style-144">' + escapeHtml(toolDesc) + '</strong></span>';
+                  } else {
+                    stepLi.innerHTML = '<span class="step-icon">' + stateIcon + '</span> ' +
+                      '<span>' + escapeHtml(toolDesc) + ' <small style="opacity:0.8;">(' + stateLabel + ')</small></span>';
+                  }
+
+                  // Render Real Tool Output & Execution Results
+                  if (data.output && String(data.output).trim()) {
+                    let outDetails = stepLi.querySelector('.step-output-details');
+                    if (!outDetails) {
+                      outDetails = document.createElement('details');
+                      outDetails.className = 'step-output-details';
+                      outDetails.open = true;
+                      const summary = document.createElement('summary');
+                      summary.className = 'step-output-summary';
+                      summary.textContent = '📄 مخرجات الأداة ونتيجة التنفيذ';
+                      const pre = document.createElement('pre');
+                      pre.className = 'step-output-content';
+                      pre.setAttribute('tabindex', '0');
+                      pre.setAttribute('role', 'region');
+                      pre.setAttribute('aria-label', 'مخرجات ونتائج الأداة');
+                      outDetails.append(summary, pre);
+                      stepLi.appendChild(outDetails);
+                    }
+                    const pre = outDetails.querySelector('pre');
+                    if (pre) {
+                      const outStr = String(data.output).trim();
+                      pre.textContent = outStr.length > 2500 ? (outStr.slice(0, 2500) + '\n... [تم اختصار باقي المخرجات]') : outStr;
+                    }
+                  }
+
+                  if (data.state === 'ACTIVE') {
+                    announce('جارٍ تنفيذ: ' + toolDesc);
+                  } else if (isDone) {
+                    announce('تم تنفيذ: ' + toolDesc + ' بنجاح');
+                  } else if (isError) {
+                    announce('تعثر تنفيذ: ' + toolDesc);
+                  }
                   scrollChatIfNearBottom();
                 }
-                // B) Thought / Reasoning event
+                // B) Thought / Reasoning event (Live Thinking Stream)
                 else if (data.type === 'thought' && data.text) {
+                  const wasEmpty = !accumulatedThinking;
                   accumulatedThinking += data.text;
-                  if (thinkingAccordion) thinkingAccordion.style.display = 'block';
+                  if (thinkingAccordion) {
+                    thinkingAccordion.style.display = 'block';
+                    thinkingBody.removeAttribute('hidden');
+                    if (thinkingFooter) thinkingFooter.removeAttribute('hidden');
+                    thinkingHeader.setAttribute('aria-expanded', 'true');
+                    thinkingHeader.setAttribute('aria-label', 'تفكير واستدلال الوكيل (جارٍ التفكير المباشر...)');
+                    if (thinkingIcon) thinkingIcon.textContent = '▲';
+                  }
                   if (thinkingBody) thinkingBody.innerHTML = renderMarkdown(accumulatedThinking);
-                  if (thinkingBadge) thinkingBadge.textContent = accumulatedThinking.length + ' حرف تفكير';
+                  if (thinkingBadge) thinkingBadge.textContent = accumulatedThinking.length + ' حرف تفكير حي';
+                  if (wasEmpty) announce('بدأ الوكيل في التفكير والتحليل المنطقي المباشر');
                 }
                 // C) Content chunk event
                 else if (data.type === 'chunk' && data.text) {
+                  if (accumulatedThinking && thinkingBadge && !thinkingBadge.dataset.finished) {
+                    thinkingBadge.dataset.finished = 'true';
+                    thinkingBadge.textContent = 'اكتمل التفكير (' + accumulatedThinking.length + ' حرف)';
+                    if (thinkingHeader) thinkingHeader.setAttribute('aria-label', 'تفكير واستدلال الوكيل (مكتمل، اضغط للإخفاء أو العرض)');
+                  }
                   accumulatedText += data.text;
                   scheduleAiRender();
                 }

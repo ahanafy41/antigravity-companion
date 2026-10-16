@@ -880,6 +880,43 @@ button:focus-visible, input:focus-visible, a:focus-visible {
   outline: 2px solid var(--accent-cyan);
 }
 
+/* Tool Execution Output Styles */
+.step-output-details {
+  margin-top: 8px;
+  background: #090d13;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.step-output-summary {
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  background: rgba(56, 189, 248, 0.08);
+  user-select: none;
+}
+.step-output-summary:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+}
+.step-output-content {
+  margin: 0;
+  padding: 10px;
+  font-family: monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #c9d1d9;
+  background: #040609;
+  max-height: 280px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  direction: ltr;
+  text-align: left;
+}
+
+
 /* File Explorer Dialog */
 .files-header-path {
   background-color: #070a0f;
