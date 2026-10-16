@@ -28,6 +28,6 @@ Consumes existing request/ApiError/GET settings and CLI policy/PATCH contracts. 
 - [x] Run Python/JVM/browser suites, Black79/flake8 for changed Python, JS syntax, generic validator and diff verifier. Disclose generic-validator limitations rather than hiding failures or changing the tool.
 - [x] Build Debug/Lint with existing toolchain, regenerate cache and byte-identical mirrors, verify all runtime assets in both APK trees. No runtime asset deletion.
 - [x] Update task.md/project_state.md/CHANGELOG.md/SKILL.md and the report with actual checks and limits; distinguish user authorization from maintainer acceptance and phone testing.
-- [ ] Commit/push the current PR branch at user request; verify remote head; post a concrete maintainer comment describing scope, tests, caveats and implementation links. No merge/release/install.
+- [x] Commit/push the current PR branch at user request; verify remote head; post a concrete maintainer comment describing scope, tests, caveats and implementation links. No merge/release/install.
 
 Execution: isolated discovery/implementation/review agents may handle independent parts; settings files have one writer, root owns integration/build/docs/Git. Existing branch and unrelated modifications remain intact.
