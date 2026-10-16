@@ -2,7 +2,7 @@
 
 ## refactor: lean companion — 2026-10-16
 
-complete_locally / awaiting_publication؛ اعتمد المستخدم التنفيذ الكامل لتعليق المطور6212526418 وملفي RFC/spec في preview/refactor-test، ثم الرفع والرد. [الخطة](docs/lean-companion-plan.md) وdebug_manifest.json يحصران حذف28ملفًا مسمىً وخمسة أيتام مثبتة، وتنظيف المستدعين وتشخيصTermux وشاشة البدء. النسخ السابقة في.tmp/LEAN-COMPANION. المواصفة الجديدة تنسخ إبقاء8765 والصوت الأصلي؛ الأمان والإعدادات والبيانات باقية.
+published / awaiting_maintainer_review؛ اعتمد المستخدم التنفيذ الكامل لتعليق المطور6212526418 وملفي RFC/spec في preview/refactor-test، ثم الرفع والرد. [الخطة](docs/lean-companion-plan.md) وdebug_manifest.json يحصران حذف28ملفًا مسمىً وخمسة أيتام مثبتة، وتنظيف المستدعين وتشخيصTermux وشاشة البدء. النسخ السابقة في.tmp/LEAN-COMPANION. المواصفة الجديدة تنسخ إبقاء8765 والصوت الأصلي؛ الأمان والإعدادات والبيانات باقية.
 
 | المرحلة | الحال |
 |---|---|
@@ -11,7 +11,7 @@ complete_locally / awaiting_publication؛ اعتمد المستخدم التنف
 | شاشة البدء والمستدعون وفحوص المتصفح | complete؛ الأزرار الخمسة وفحوص المتصفح المستقلة |
 | أدوات القبول والوثائق واعتمادWebSocket | complete؛ XML وBlack79 وflake8 |
 | الفحص المجمع والحزمة والحجم | complete؛202 Python و35 JVM وبناء Debug؛ Lint صفر أخطاء/14 إنذارًا؛ APK4,256,680 بايت |
-| Commit/push والتعليق | pending؛ مأذونة صراحة |
+| Commit/push والتعليق | complete؛3abcb0e منشور ومتحقق؛ [رد المطور](https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6215146811) |
 
 [حصيلة العمل وحدود الفحص](docs/lean-companion-report.md): إنذارات الفاحص النصي السابقة وmentions المستثنى باقية؛ حد التغيير100% لا يجتاز بعض ملفات الاعتزال المعماري. لا إصدار أو تثبيت أو دمج. نسخةspec1.4.0 ليست تغييرًا لإصدار التطبيق؛ لا ادعاء<100ms أو قبول هاتف بلا قياس.
 

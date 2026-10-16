@@ -1,6 +1,6 @@
 # refactor: lean companion implementation report
 
-2026-10-16. Local implementation and verification complete; publication pending.
+2026-10-16. Implementation, local verification and publication complete; awaiting maintainer review.
 
 ## Authority and scope
 
@@ -73,4 +73,4 @@ Independent reviews found no remaining actionable production defect after the du
 
 Real-phone launch/start/stop, TalkBack/Jieshuo navigation, Termux integration and live agy account/model behavior remain field acceptance. No phone was installed or controlled in this task. No APK release, upstream merge or startup performance claim was made. Upstream agy's internal model-request resumption contract remains separate from the verified SSE GET reconnection behavior.
 
-Publication receipt will be recorded after commit/push and the detailed maintainer reply.
+Implementation commit [3abcb0e](https://github.com/kamalyaser31/antigravity-companion/commit/3abcb0eb46f92f851f1aeeb8b2aaf42396c2f6c0) was pushed to codex/refactor-phase-1. git ls-remote and PR headRefOid both matched its full hash before posting. The PR title/body now describe the lean scope. The [detailed maintainer reply](https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6215146811) reports changes, verification, preserved guards and remaining field acceptance. This final documentation receipt introduces no production change.
