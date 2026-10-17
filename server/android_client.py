@@ -48,6 +48,9 @@ class AndroidClient:
         return bool(self.configuration.get("android_token"))
 
     def configure(self, configuration):
+        if "android_port" not in configuration:
+            configuration = dict(configuration)
+            configuration["android_port"] = 8765
         validate_configuration(configuration)
         token = configuration["android_token"]
         port = configuration["android_port"]
@@ -268,6 +271,6 @@ def validate_configuration(configuration):
         or not 32 <= len(token) <= 4096
         or not token.isascii()
         or any(ord(char) < 33 for char in token)
-        or configuration.get("android_port") != 8765
+        or configuration.get("android_port", 8765) != 8765
     ):
         raise ValueError("Private Android token and port 8765 required")

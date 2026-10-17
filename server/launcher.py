@@ -91,7 +91,7 @@ def publish_bootstrap(root, payload, health):
     if (
         not isinstance(token, str)
         or not re.fullmatch(r"[A-Za-z0-9_-]{32,128}", token)
-        or configuration.get("android_port") != 8765
+        or configuration.get("android_port", 8765) != 8765
     ):
         raise ValueError("Invalid private Android bootstrap")
     target = root / "android.json"
@@ -141,12 +141,16 @@ def start(root, port, bootstrap):
             publish_bootstrap(root, bootstrap, health)
         print("Local Companion API is already ready")
         return
-    verify_selection(root)
-    release = selected_release(root)
+    if (root / "current.json").exists():
+        verify_selection(root)
+        release = selected_release(root)
+        server_script = release / "server.py"
+    else:
+        server_script = root / "server.py"
     arguments = [
         sys.executable,
         "-B",
-        str(release / "server.py"),
+        str(server_script),
         "--data-dir",
         str(root),
         "--port",
