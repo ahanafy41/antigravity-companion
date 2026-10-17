@@ -116,10 +116,11 @@ async def isolation(request, handler):
         request.app["android"].reload_configuration()
         token = request.app["android"].configuration.get("android_token", "")
         supplied = request.headers.get("Authorization", "")
-        if not token or not secrets.compare_digest(
-            supplied, "Bearer " + token
-        ):
-            return error("unauthorized", "Android token required", 401)
+        if token or supplied:
+            if not token or not secrets.compare_digest(
+                supplied, "Bearer " + token
+            ):
+                return error("unauthorized", "Android token required", 401)
         return await handler(request)
 
     elif protected and request.path != "/api/v1/pair":
