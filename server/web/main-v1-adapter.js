@@ -217,9 +217,10 @@
   }
   function unsupported(message) { throw new companion.ApiError(message, 409, 'native_cli_required'); }
   function connect() {
-    if (bundled) return Promise.reject(new Error('افتح المحادثة للاتصال بخادم Termux.'));
     if (!connection) connection = api.restoreSession().then(session => {
       const status = document.getElementById('chat-connection-status-text'); if (status) status.textContent = 'متصل';
+      companion.state.connected = true;
+      companion.state.paired = true;
       return session;
     }).catch(error => { connection = null; report(error); throw error; });
     return connection;

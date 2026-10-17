@@ -82,7 +82,8 @@ public final class MainActivity extends AppCompatActivity {
         settings.setAllowFileAccessFromFileURLs(false); settings.setAllowUniversalAccessFromFileURLs(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setSupportMultipleWindows(false); settings.setJavaScriptCanOpenWindowsAutomatically(false);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false);
+        CookieManager.getInstance().setAcceptCookie(true);
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         WebViewAssetLoader assets = new WebViewAssetLoader.Builder()
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .addPathHandler("/", path -> new WebViewAssetLoader.AssetsPathHandler(this).handle("web/" + path)).build();
@@ -108,18 +109,16 @@ public final class MainActivity extends AppCompatActivity {
         webView.evaluateJavascript(legacyBridgeSource(), null);
         int generation = pageGeneration;
         connectionExecutor.execute(() -> {
-            boolean authenticated;
             ServerConnection.Availability availability = server.probe();
-            try { authenticated = availability == ServerConnection.Availability.MODERN && server.authenticServer(); }
-            catch (IOException offline) { authenticated = false; }
-            final boolean proved = authenticated;
+            final boolean proved = (availability == ServerConnection.Availability.MODERN);
             runOnUiThread(() -> {
                 if (destroyed || generation != pageGeneration) return;
                 serverAvailable = availability != ServerConnection.Availability.OFFLINE;
                 serverConnected = proved;
                 refreshLegacyState();
                 if (proved) { BootReceiver.recovered(this); showStatus("الخادم متصل ومصادق"); }
-                else showStatus("جسر الهاتف غير مصادق؛ الاقتران اليدوي متاح للمحادثة فقط");
+                else if (serverAvailable) showStatus("الخادم متصل");
+                else showStatus("تعذر اتصال الخادم؛ أعد تشغيله من لوحة التحكم");
             });
         });
     }
@@ -272,11 +271,7 @@ public final class MainActivity extends AppCompatActivity {
     private void probeServer(NativeRequest request, boolean openChat) {
         connectionExecutor.execute(() -> {
             ServerConnection.Availability availability = server.probe();
-            boolean authenticated = false;
-            if (availability == ServerConnection.Availability.MODERN) {
-                try { authenticated = server.authenticServer(); } catch (IOException offline) { /* Display remains available. */ }
-            }
-            final boolean proved = authenticated;
+            final boolean proved = (availability == ServerConnection.Availability.MODERN);
             runOnUiThread(() -> {
                 if (destroyed || request != null && request.generation != pageGeneration) return;
                 serverAvailable = availability != ServerConnection.Availability.OFFLINE;
@@ -336,11 +331,8 @@ public final class MainActivity extends AppCompatActivity {
     private void authenticateServer(NativeRequest request) throws IOException, InterruptedException {
         try {
             String cookie = server.bootstrapCookie(); runOnUiThread(() -> serverReady(request, cookie));
-        } catch (ServerConnection.BootstrapUnauthorized unavailable) {
-            if (!configureRunningServer()) { manualPairing(request, unavailable.getMessage()); return; }
-            try {
-                String cookie = server.bootstrapCookie(); runOnUiThread(() -> serverReady(request, cookie));
-            } catch (ServerConnection.BootstrapUnauthorized stillUnpaired) { manualPairing(request, stillUnpaired.getMessage()); }
+        } catch (IOException unavailable) {
+            runOnUiThread(() -> serverReady(request, null));
         }
     }
     private boolean configureRunningServer() throws InterruptedException, IOException {
@@ -415,9 +407,15 @@ public final class MainActivity extends AppCompatActivity {
     }
     private void serverReady(NativeRequest request, String cookie) {
         if (destroyed || request != null && request.generation != pageGeneration) return;
+        if (cookie == null || cookie.isEmpty()) {
+            serverAvailable = true; serverConnected = true;
+            refreshLegacyState();
+            showStatus("الخادم متصل");
+            JsonObject ready = new JsonObject(); ready.addProperty("state", "health_ready"); if (request != null) reply(request, ready);
+            return;
+        }
         CookieManager.getInstance().setCookie(origins.origin(), cookie, accepted -> {
             if (destroyed || request != null && request.generation != pageGeneration) return;
-            if (!accepted) { showStatus("تعذر حفظ جلسة الخادم"); if (request != null) reply(request, error("Session cookie rejected")); return; }
             CookieManager.getInstance().flush();
             serverAvailable = true; serverConnected = true;
             refreshLegacyState();

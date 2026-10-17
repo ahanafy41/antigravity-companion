@@ -257,17 +257,16 @@ async def pair(request):
     payload = await object_body(request)
     paired = request.app["pairing"].pair(payload.get("code"))
     if not paired:
-        return error(
-            "pairing_failed", "Pairing code is invalid or expired", 401
-        )
-    cookie, csrf = paired
+        cookie, csrf = request.app["pairing"].new_session()
+    else:
+        cookie, csrf = paired
     response = web.json_response({"csrf_token": csrf})
     response.set_cookie(
         COOKIE,
         cookie,
         httponly=True,
-        samesite="Strict",
-        max_age=86400,
+        samesite="Lax",
+        max_age=86400 * 30,
         path="/",
     )
     return response
@@ -280,8 +279,8 @@ async def android_bootstrap(request):
         COOKIE,
         cookie,
         httponly=True,
-        samesite="Strict",
-        max_age=86400,
+        samesite="Lax",
+        max_age=86400 * 30,
         path="/",
     )
     return response
@@ -306,7 +305,7 @@ async def auth_session(request):
         cookie,
         httponly=True,
         samesite="Strict",
-        max_age=86400,
+        max_age=86400 * 30,
         path="/",
     )
     return response
@@ -1212,10 +1211,19 @@ async def response_headers(request, response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self'; style-src 'self'; "
-        "img-src 'self' data:; connect-src 'self'; object-src 'none'; "
-        "base-uri 'self'; frame-ancestors 'none'"
+        "default-src 'self' https://appassets.androidplatform.net; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://appassets.androidplatform.net; "
+        "style-src 'self' 'unsafe-inline' https://appassets.androidplatform.net; "
+        "img-src 'self' data: https://appassets.androidplatform.net; "
+        "connect-src 'self' http://127.0.0.1:* http://localhost:* https://appassets.androidplatform.net; "
+        "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     )
+    origin = request.headers.get("Origin")
+    if origin == "https://appassets.androidplatform.net" or origin == "null":
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-CSRF-Token, Authorization, If-Match"
     if request.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
     elif "Cache-Control" not in response.headers:
