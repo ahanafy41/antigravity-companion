@@ -1,6 +1,7 @@
 (function (global) {
   'use strict';
-  const companion = global.Companion;
+  const companion = global.Companion = global.Companion || {};
+  companion.state = companion.state || { connected: true, paired: true };
   const api = companion.api;
   const encode = encodeURIComponent;
   const uuid = () => global.crypto.randomUUID();
@@ -219,6 +220,7 @@
   function connect() {
     if (!connection) connection = api.restoreSession().then(session => {
       const status = document.getElementById('chat-connection-status-text'); if (status) status.textContent = 'متصل';
+      if (!companion.state) companion.state = {};
       companion.state.connected = true;
       companion.state.paired = true;
       return session;
@@ -684,7 +686,20 @@
       case 'mcp/auth/pair': unsupported('أتمّ ربط MCP في طرفية agy؛ لا تُحفظ رموز الدخول في الواجهة.'); break;
       case 'auth/status': {
         const status = await request('/auth/status');
-        return {auth: {...status, logged_in: null, is_valid: null}, wizard: {state: status.pending ? 'NATIVE' : 'IDLE', is_running: false, message: status.reason}};
+        return {
+          auth: {
+            ...status,
+            logged_in: status.logged_in !== undefined ? status.logged_in : (status.authenticated === true),
+            is_valid: status.is_valid !== undefined ? status.is_valid : (status.authenticated === true),
+            email: status.email || null,
+            expiry: status.expiry || null,
+          },
+          wizard: {
+            state: status.pending ? 'NATIVE' : 'IDLE',
+            is_running: false,
+            message: status.reason
+          }
+        };
       }
       case 'auth/start': return handoff('/auth/login');
       case 'auth/logout': return handoff('/auth/logout', {confirmed: true});

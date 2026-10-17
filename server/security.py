@@ -100,7 +100,7 @@ async def isolation(request, handler):
                 "invalid_origin", "Cross-origin API access is forbidden", 403
             )
 
-    if request.path == "/api/v1/auth/session" and request.method in (
+    if request.path in ("/api/v1/auth/session", "/api/v1/auth/status") and request.method in (
         "GET",
         "HEAD",
     ):

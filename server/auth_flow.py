@@ -1,9 +1,71 @@
-"""User-owned native agy login handoff without credential inspection."""
-
+import base64
+import datetime
+import json
+import os
+from pathlib import Path
 import re
+import time
 import uuid
 
 NAME = re.compile(r"[\w.-]{1,128}")
+AUTH_TOKEN_FILE = Path.home() / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
+
+
+def get_oauth_token_info():
+    if not AUTH_TOKEN_FILE.exists():
+        return {
+            "logged_in": False,
+            "email": None,
+            "expiry": None,
+            "is_valid": False,
+            "token_present": False,
+        }
+    try:
+        data = json.loads(AUTH_TOKEN_FILE.read_text(encoding="utf-8"))
+        tok = data.get("token", {}) if isinstance(data, dict) else {}
+        access_tok = tok.get("access_token", "")
+        refresh_tok = tok.get("refresh_token", "")
+        expiry_str = tok.get("expiry", "")
+        id_token = data.get("id_token", "")
+
+        email = None
+        if id_token and "." in id_token:
+            parts = id_token.split(".")
+            if len(parts) >= 2:
+                payload_b64 = parts[1]
+                payload_b64 += "=" * (-len(payload_b64) % 4)
+                claims = json.loads(
+                    base64.b64decode(payload_b64).decode("utf-8", errors="ignore")
+                )
+                email = claims.get("email")
+
+        is_valid = False
+        if expiry_str:
+            try:
+                iso_clean = expiry_str.replace("Z", "+00:00")
+                exp_ts = datetime.datetime.fromisoformat(iso_clean).timestamp()
+                is_valid = bool(access_tok and (exp_ts > time.time() or refresh_tok))
+            except Exception:
+                is_valid = bool(access_tok)
+        else:
+            is_valid = bool(access_tok)
+
+        return {
+            "logged_in": bool(email or access_tok),
+            "email": email,
+            "expiry": expiry_str,
+            "is_valid": is_valid,
+            "token_present": True,
+            "has_refresh": bool(refresh_tok),
+        }
+    except Exception:
+        return {
+            "logged_in": False,
+            "email": None,
+            "expiry": None,
+            "is_valid": False,
+            "token_present": False,
+        }
 
 
 class AuthFlow:
@@ -14,12 +76,21 @@ class AuthFlow:
         self.pending = None
 
     def status(self):
+        info = get_oauth_token_info()
         return {
             "available": self.available,
-            "authenticated": None,
+            "authenticated": info["is_valid"] if info["logged_in"] else None,
+            "logged_in": info["logged_in"],
+            "is_valid": info["is_valid"],
+            "email": info["email"],
+            "expiry": info["expiry"],
             "pending": self.pending is not None,
             "mode": "native_cli",
-            "reason": "agy owns sign-in; no machine-readable account status",
+            "reason": (
+                f"متصل بحساب {info['email']}"
+                if info["logged_in"] and info["is_valid"]
+                else "agy owns sign-in; no machine-readable account status"
+            ),
         }
 
     def start(self, purpose, name=None, cwd=None):
