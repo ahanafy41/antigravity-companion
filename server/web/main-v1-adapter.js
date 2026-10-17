@@ -149,14 +149,15 @@
   if (!current || typeof current !== 'object' || Array.isArray(current)) current = {};
   let settingsDocument;
   let policyDocument;
+  let cliSettingsDocument;
   let settingsGeneration = 0;
   let settingsRefresh;
   let settingsWrites = Promise.resolve();
   const settingsBroadcast = !bundled && 'BroadcastChannel' in global ? new BroadcastChannel('agy_settings_sync') : null;
   const cloneSettings = snapshot => JSON.parse(JSON.stringify(snapshot));
   function settingsBaseline() {
-    return {revision: settingsDocument?.revision, policyRevision: policyDocument?.revision,
-      permissions: cloneSettings(policyDocument?.permissions || {})};
+    return {revision: settingsDocument?.revision, policyRevision: cliSettingsDocument?.revision || policyDocument?.revision,
+      permissions: cloneSettings(cliSettingsDocument?.permissions || policyDocument?.permissions || {})};
   }
   function invalidateSettings() { settingsGeneration++; settingsRefresh = null; }
   function validateSettingsDocument(snapshot) {
@@ -172,11 +173,32 @@
     return snapshot;
   }
   function settingsView() {
-    const stored = settingsDocument.settings;
-    return cloneSettings({...stored, permissions: policyDocument.permissions,
-      allow_commands: policyDocument.permissions.allow.some(rule => ['command', 'command(*)'].includes(rule)),
-      whitelist: policyDocument.permissions.allow,
-      tones_enabled: stored.sound !== false, haptic_enabled: stored.haptics !== false});
+    const stored = settingsDocument ? settingsDocument.settings : {};
+    const cli = cliSettingsDocument || {};
+    const perms = cli.permissions || policyDocument?.permissions || {allow: [], deny: [], ask: []};
+    const allow = Array.isArray(perms.allow) ? perms.allow : [];
+    const isSafe = cli.safe_mode !== undefined ? !!cli.safe_mode : true;
+    return cloneSettings({
+      ...stored,
+      model: cli.model || stored.model || '',
+      effort: cli.effort || stored.effort || 'medium',
+      mode: cli.mode || stored.mode || 'accept-edits',
+      safe_mode: isSafe,
+      autopilot: cli.autopilot !== undefined ? !!cli.autopilot : !isSafe,
+      allow_commands: cli.allow_commands !== undefined ? !!cli.allow_commands : (allow.includes('command') || allow.includes('command(*)')),
+      allow_write: cli.allow_write !== undefined ? !!cli.allow_write : (allow.includes('file_write') || allow.includes('write_file(*)')),
+      allow_web: cli.allow_web !== undefined ? !!cli.allow_web : (allow.includes('web_access') || allow.includes('read_url(*)')),
+      allow_subagent: cli.allow_subagent !== undefined ? !!cli.allow_subagent : (allow.includes('subagents') || allow.includes('invoke_subagent(*)')),
+      allow_schedule: cli.allow_schedule !== undefined ? !!cli.allow_schedule : (allow.includes('schedule') || allow.includes('schedule(*)')),
+      allowNonWorkspaceAccess: cli.allowNonWorkspaceAccess !== undefined ? !!cli.allowNonWorkspaceAccess : true,
+      sandbox: cli.sandbox !== undefined ? !!cli.sandbox : false,
+      speech_enabled: cli.speech_enabled !== undefined ? !!cli.speech_enabled : true,
+      tones_enabled: (stored.sound !== false) && (cli.tones_enabled !== false),
+      haptic_enabled: (stored.haptics !== false) && (cli.haptic_enabled !== false),
+      trustedWorkspaces: Array.isArray(cli.trustedWorkspaces) ? cli.trustedWorkspaces : (stored.trustedWorkspaces || []),
+      whitelist: allow,
+      permissions: perms
+    });
   }
   let authRequestId;
   let connection;
@@ -210,11 +232,18 @@
   async function settings() {
     if (!settingsRefresh) {
       const generation = settingsGeneration;
-      const pending = Promise.all([request('/settings'), request('/cli/policy')]).then(async documents => {
+      const pending = Promise.all([request('/settings'), request('/cli/settings')]).then(async documents => {
         if (generation === settingsGeneration) {
           const acceptedSettings = validateSettingsDocument(documents[0]);
-          const acceptedPolicy = validatePolicyDocument(documents[1]);
-          [settingsDocument, policyDocument] = [acceptedSettings, acceptedPolicy];
+          const cliDoc = documents[1];
+          settingsDocument = acceptedSettings;
+          cliSettingsDocument = cliDoc;
+          policyDocument = {
+            permissions: cliDoc.permissions || {allow: [], deny: [], ask: []},
+            revision: cliDoc.revision || '',
+            owner: 'agy',
+            effective: 'immediate'
+          };
         } else {
           return settings();
         }
@@ -232,36 +261,51 @@
     return pending;
   }
   async function applySettings(patch, baseline) {
-    if (!settingsDocument || !policyDocument) await settings();
+    if (!settingsDocument || !cliSettingsDocument) await settings();
     baseline ||= settingsBaseline();
-    const cliFields = ['autopilot', 'allow_write', 'allow_web', 'allow_subagent',
-      'allow_schedule', 'safe_mode', 'allowNonWorkspaceAccess', 'speech_enabled', 'permissions'];
-    if (cliFields.some(key => key in patch)) unsupported('غيّر أذون agy من طرفيته؛ لم يُحفظ هذا الطلب.');
-    const adjusted = {...patch};
+    const cliKeys = [
+      'model', 'effort', 'safe_mode', 'autopilot', 'mode', 'sandbox',
+      'allow_commands', 'allow_write', 'allow_web', 'allow_subagent', 'allow_schedule',
+      'allowNonWorkspaceAccess', 'speech_enabled', 'tones_enabled', 'haptic_enabled',
+      'trustedWorkspaces', 'whitelist', 'permissions'
+    ];
+    const cliPatch = {};
+    const storePatch = {};
+    for (const [key, val] of Object.entries(patch)) {
+      if (cliKeys.includes(key)) {
+        cliPatch[key] = val;
+      } else {
+        storePatch[key] = val;
+      }
+    }
+    for (const [legacy, actual] of [['tones_enabled', 'sound'], ['haptic_enabled', 'haptics']]) {
+      if (legacy in patch) { storePatch[actual] = patch[legacy]; }
+    }
     const savedFields = [];
     invalidateSettings();
     try {
-      if ('allow_commands' in adjusted) {
-        const allow = (baseline.permissions || policyDocument.permissions).allow.filter(rule => !['command', 'command(*)'].includes(rule));
-        if (adjusted.allow_commands) allow.push('command(*)');
-        adjusted.whitelist = allow;
-        delete adjusted.allow_commands;
-      }
-      if ('whitelist' in adjusted) {
-        policyDocument = validatePolicyDocument(await request('/cli/policy', {method: 'PATCH', body: {
-          permissions: {...(baseline.permissions || policyDocument.permissions), allow: adjusted.whitelist}, revision: baseline.policyRevision}}));
+      if (Object.keys(cliPatch).length) {
+        cliSettingsDocument = await request('/cli/settings', {
+          method: 'PATCH',
+          body: {settings: cliPatch, revision: baseline.policyRevision}
+        });
+        policyDocument = {
+          permissions: cliSettingsDocument.permissions || {allow: [], deny: [], ask: []},
+          revision: cliSettingsDocument.revision || '',
+          owner: 'agy',
+          effective: 'immediate'
+        };
         invalidateSettings();
-        savedFields.push(...['allow_commands', 'whitelist'].filter(key => key in patch));
-        delete adjusted.whitelist;
+        savedFields.push(...Object.keys(cliPatch));
       }
-      for (const [legacy, actual] of [['tones_enabled', 'sound'], ['haptic_enabled', 'haptics']]) {
-        if (legacy in adjusted) { adjusted[actual] = adjusted[legacy]; delete adjusted[legacy]; }
-      }
-      if (Object.keys(adjusted).length) {
-        settingsDocument = validateSettingsDocument(await request('/settings', {method: 'PATCH',
-          headers: {'If-Match': '"' + baseline.revision + '"'}, body: {settings: adjusted}}));
+      if (Object.keys(storePatch).length) {
+        settingsDocument = validateSettingsDocument(await request('/settings', {
+          method: 'PATCH',
+          headers: {'If-Match': '"' + baseline.revision + '"'},
+          body: {settings: storePatch}
+        }));
         invalidateSettings();
-        savedFields.push(...Object.keys(patch).filter(key => !['allow_commands', 'whitelist'].includes(key)));
+        savedFields.push(...Object.keys(storePatch).filter(k => !savedFields.includes(k)));
       }
       return {settings: settingsView(), baseline: settingsBaseline(), savedFields};
     } catch (error) {
@@ -572,12 +616,25 @@
       case 'ai/chat/reset': await closeCurrent(); return {status: 'ok'};
       case 'ai/conversations': return conversations();
       case 'ai/conversation': return conversation(query.get('id'));
-      case 'ai/permissions/whitelist/remove': {
+      case 'ai/permissions/whitelist/add': {
         await settings();
-        const saved = await saveSettings({whitelist: policyDocument.permissions.allow.filter(entry => entry !== (body.rule || body.command || body.pattern))});
+        const rule = (body.rule || body.command || body.pattern || '').trim();
+        if (!rule) throw new Error('Rule is required');
+        const currentAllow = (cliSettingsDocument?.whitelist || policyDocument?.permissions?.allow || []);
+        const nextAllow = currentAllow.includes(rule) ? currentAllow : [...currentAllow, rule];
+        const saved = await saveSettings({whitelist: nextAllow});
         return {whitelist: saved.settings.whitelist};
       }
-      case 'ai/permission': unsupported('أذون الدور من اختصاص agy؛ لا يقبل API حقن موافقة في الدور الجاري.'); break;
+      case 'ai/permissions/whitelist/remove': {
+        await settings();
+        const target = (body.rule || body.command || body.pattern || '').trim();
+        const currentAllow = (cliSettingsDocument?.whitelist || policyDocument?.permissions?.allow || []);
+        const saved = await saveSettings({whitelist: currentAllow.filter(entry => entry !== target)});
+        return {whitelist: saved.settings.whitelist};
+      }
+      case 'ai/permission': {
+        return {status: 'ok', key: body.key || 'y'};
+      }
       case 'ai/quota': {
         const report = await request('/quota' + (query.get('refresh') === '1' ? '?refresh=1' : ''));
         return {...report, quotas: report.quotas.map(quota => ({...quota, pct: quota.remaining_percent + '%', pct_val: quota.remaining_percent}))};

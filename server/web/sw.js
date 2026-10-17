@@ -1,5 +1,5 @@
 'use strict';
-const CACHE_NAME = 'antigravity-static-v1.3.8-gfm-artifacts';
+const CACHE_NAME = 'antigravity-static-v1.4.1-settings-permissions';
 const STATIC_PATHS = new Set([
   '/',
   '/start',

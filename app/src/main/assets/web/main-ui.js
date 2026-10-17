@@ -2288,7 +2288,6 @@ await window.mainV1.ready;
               {
                 id: 'field-perm-schedule',
                 key: 'allow_schedule',
-                disabled: true,
                 type: 'switch',
                 label: 'المؤقتات والمهام المجدولة',
                 hint: 'السماح بجدولة المؤقتات ومهام الخلفية.',
@@ -2333,8 +2332,16 @@ await window.mainV1.ready;
                 key: 'haptic_enabled',
                 type: 'switch',
                 label: 'الاهتزاز اللمسي',
-                hint: 'اهتزاز خفيف لتأكيد الإجراءات.',
+                hint: 'اهتزاز خفيف لتأكيد الإجراءات على الهواتف الداعمة.',
                 default: true
+              },
+              {
+                id: 'field-voice-speech',
+                key: 'speech_enabled',
+                type: 'switch',
+                label: 'النطق الصوتي للمتصفح (Speech)',
+                hint: 'قراءة الردود صوتياً بمحرك المتصفح. ⚠️ يُفضل إيقافه إن كنت تستخدم TalkBack أو Jieshuo.',
+                default: false
               }
             ]
           },
@@ -2406,13 +2413,14 @@ await window.mainV1.ready;
 
       normalizeSettings(raw) {
         const perms = raw.permissions?.allow || [];
-        const isSafe = !!raw.safe_mode;
+        const isSafe = raw.safe_mode !== undefined ? !!raw.safe_mode : (raw.autopilot !== undefined ? !raw.autopilot : true);
         return {
           model: raw.model || '',
           agent: raw.agent || '',
-          allow_schedule: !!raw.allow_schedule,
+          allow_schedule: raw.allow_schedule !== undefined ? !!raw.allow_schedule : (perms.includes('schedule') || perms.includes('schedule(*)')),
           effort: raw.effort || 'medium',
           autopilot: raw.autopilot !== undefined ? !!raw.autopilot : !isSafe,
+          safe_mode: isSafe,
           allow_commands: raw.allow_commands !== undefined ? !!raw.allow_commands : (perms.includes('command') || perms.includes('command(*)')),
           allow_write: raw.allow_write !== undefined ? !!raw.allow_write : (perms.includes('file_write') || perms.includes('write_file(*)')),
           allow_web: raw.allow_web !== undefined ? !!raw.allow_web : (perms.includes('web_access') || perms.includes('read_url(*)')),
@@ -2420,9 +2428,10 @@ await window.mainV1.ready;
           mode: raw.mode || 'accept-edits',
           sandbox: !!raw.sandbox,
           allowNonWorkspaceAccess: raw.allowNonWorkspaceAccess !== undefined ? !!raw.allowNonWorkspaceAccess : true,
-          whitelist: Array.isArray(raw.whitelist) ? [...raw.whitelist] : [],
+          whitelist: Array.isArray(raw.whitelist) ? [...raw.whitelist] : [...perms],
           tones_enabled: raw.tones_enabled !== undefined ? !!raw.tones_enabled : true,
           haptic_enabled: raw.haptic_enabled !== undefined ? !!raw.haptic_enabled : true,
+          speech_enabled: raw.speech_enabled !== undefined ? !!raw.speech_enabled : false,
           trustedWorkspaces: Array.isArray(raw.trustedWorkspaces) ? [...raw.trustedWorkspaces] : []
         };
       }
@@ -2457,7 +2466,7 @@ await window.mainV1.ready;
       buildFieldElement(f) {
         const container = document.createElement('div');
         container.className = 'form-group';
-        const unsupported = ['autopilot', 'allowNonWorkspaceAccess', 'allow_write', 'allow_web', 'allow_subagent', 'allow_schedule'].includes(f.key);
+        const unsupported = false;
 
         if (f.type === 'select_models') {
           const label = document.createElement('label');
@@ -2551,7 +2560,7 @@ await window.mainV1.ready;
           const desc = document.createElement('div');
           desc.id = `${f.id}-desc`;
           desc.className = 'form-switch-desc';
-          desc.textContent = unsupported ? f.hint + ' هذا الخيار غير متاح في عقد الخادم الحالي.' : f.hint;
+          desc.textContent = f.hint;
 
           textCol.appendChild(label);
           textCol.appendChild(desc);
@@ -2563,7 +2572,7 @@ await window.mainV1.ready;
           input.type = 'checkbox';
           input.id = f.id;
           input.checked = !!this.state[f.key];
-          input.disabled = unsupported;
+          input.disabled = !!f.disabled;
           input.setAttribute('role', 'switch');
           input.setAttribute('aria-checked', input.checked ? 'true' : 'false');
           input.setAttribute('aria-describedby', `${f.id}-desc`);
@@ -2770,10 +2779,56 @@ await window.mainV1.ready;
             });
           };
 
+          const addBox = document.createElement('div');
+          addBox.style.cssText = 'display:flex; gap:8px; margin-top:10px;';
+          const addInput = document.createElement('input');
+          addInput.type = 'text';
+          addInput.className = 'form-control';
+          addInput.placeholder = 'مثال: command(git *) أو command(ls)';
+          addInput.setAttribute('aria-label', 'إضافة أمر مصرح به دائماً');
+          const addBtn = document.createElement('button');
+          addBtn.type = 'button';
+          addBtn.className = 'btn btn-secondary';
+          addBtn.style.cssText = 'flex-shrink:0;';
+          addBtn.textContent = '➕ إضافة تصريح';
+          addBtn.addEventListener('click', async () => {
+            const val = (addInput.value || '').trim();
+            if (val) {
+              try {
+                addBtn.disabled = true;
+                const res = await window.mainV1Fetch('/api/ai/permissions/whitelist/add', {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({ rule: val })
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  this.state.whitelist = data.whitelist || [];
+                  renderWhitelist();
+                  announce(`تمت إضافة التصريح الدائم: ${val}`);
+                  addInput.value = '';
+                }
+              } catch (e) {
+                console.error(e);
+              } finally {
+                addBtn.disabled = false;
+              }
+            }
+          });
+          addInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              addBtn.click();
+            }
+          });
+          addBox.appendChild(addInput);
+          addBox.appendChild(addBtn);
+
           renderWhitelist();
           container.appendChild(label);
           container.appendChild(hint);
           container.appendChild(listContainer);
+          container.appendChild(addBox);
           return container;
         }
 
@@ -2876,7 +2931,12 @@ await window.mainV1.ready;
           if (closeDialog && this.dialog) this.dialog.close();
           return;
         }
-        const writable = ['model', 'agent', 'effort', 'mode', 'sandbox', 'allow_commands', 'tones_enabled', 'haptic_enabled', 'trustedWorkspaces'];
+        const writable = [
+          'model', 'agent', 'effort', 'mode', 'sandbox', 'autopilot', 'safe_mode',
+          'allowNonWorkspaceAccess', 'allow_commands', 'allow_write', 'allow_web',
+          'allow_subagent', 'allow_schedule', 'tones_enabled', 'haptic_enabled',
+          'speech_enabled', 'trustedWorkspaces', 'whitelist'
+        ];
         const payload = JSON.parse(JSON.stringify(Object.fromEntries([...this.dirtyFields]
           .filter(key => writable.includes(key)).map(key => [key, this.state[key]]))));
         if (!Object.keys(payload).length) {
@@ -2901,11 +2961,9 @@ await window.mainV1.ready;
           });
           if (outcome.baseline && confirmed.length) {
             this.baseline ||= {};
-            if (confirmed.some(key => !['allow_commands', 'whitelist'].includes(key))) this.baseline.revision = outcome.baseline.revision;
-            if (confirmed.some(key => ['allow_commands', 'whitelist'].includes(key))) {
-              this.baseline.policyRevision = outcome.baseline.policyRevision;
-              this.baseline.permissions = outcome.baseline.permissions;
-            }
+            if (outcome.baseline.revision) this.baseline.revision = outcome.baseline.revision;
+            if (outcome.baseline.policyRevision) this.baseline.policyRevision = outcome.baseline.policyRevision;
+            if (outcome.baseline.permissions) this.baseline.permissions = outcome.baseline.permissions;
           }
           if (!res.ok) throw new Error(res.status === 409 ? (confirmed.length ? 'حُفظ بعض التغييرات؛ تعارض الحفظ في الباقي؛ أعد تحميل الإعدادات لمراجعة تغييراتك' : 'تعارض الحفظ؛ أعد تحميل الإعدادات لمراجعة تغييراتك') :
             (confirmed.length ? 'حُفظ بعض التغييرات وبقي بعضها دون حفظ' : `تعذر الحفظ؛ رمز الخطأ ${res.status}`));

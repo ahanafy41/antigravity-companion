@@ -416,6 +416,47 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
                     )
                 self.assertEqual(self.app["store"].read("settings"), initial)
 
+    async def test_cli_settings_endpoints_read_and_write(self):
+        headers = await self.authenticated()
+        async with self.client.get(
+            self.url + "/api/v1/cli/settings", headers=headers
+        ) as response:
+            self.assertEqual(response.status, 200)
+            data = await response.json()
+            self.assertIn("model", data)
+            self.assertIn("effort", data)
+            self.assertIn("safe_mode", data)
+            self.assertIn("revision", data)
+
+        revision = data["revision"]
+        patch = {
+            "model": "gemini-3.8-flash-low",
+            "autopilot": True,
+            "allow_commands": True,
+            "allow_write": True,
+            "allow_web": True,
+            "trustedWorkspaces": ["/data/data/com.termux/files/home"],
+            "tones_enabled": True,
+            "haptic_enabled": False,
+            "speech_enabled": True,
+        }
+        async with self.client.patch(
+            self.url + "/api/v1/cli/settings",
+            json={"settings": patch, "revision": revision},
+            headers=headers,
+        ) as response:
+            self.assertEqual(response.status, 200)
+            updated = await response.json()
+            self.assertEqual(updated["model"], "gemini-3.8-flash-low")
+            self.assertEqual(updated["effort"], "low")
+            self.assertTrue(updated["autopilot"])
+            self.assertFalse(updated["safe_mode"])
+            self.assertTrue(updated["allow_write"])
+            self.assertTrue(updated["allow_web"])
+            self.assertIn("write_file(*)", updated["whitelist"])
+            self.assertIn("read_url(*)", updated["whitelist"])
+            self.assertEqual(updated["trustedWorkspaces"], ["/data/data/com.termux/files/home"])
+
     async def test_v1_routing_errors_keep_legacy_upgrade_separate(self):
         headers = await self.authenticated()
         for method, route, status in (

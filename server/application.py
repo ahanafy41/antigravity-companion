@@ -151,6 +151,9 @@ def register_routes(application):
         web.put("/api/v1/settings", save_settings),
         web.get("/api/v1/cli/policy", get_cli_policy),
         web.patch("/api/v1/cli/policy", save_cli_policy),
+        web.get("/api/v1/cli/settings", get_cli_settings),
+        web.patch("/api/v1/cli/settings", save_cli_settings),
+        web.put("/api/v1/cli/settings", save_cli_settings),
         web.get("/api/v1/sessions", list_sessions),
         web.post("/api/v1/sessions", create_session),
         web.get("/api/v1/sessions/{session_id}", session_detail),
@@ -585,6 +588,36 @@ async def save_cli_policy(request):
         request.app["cli_settings"].write_policy(
             payload.get("permissions"), payload.get("revision")
         )
+    )
+
+
+async def get_cli_settings(request):
+    doc = request.app["cli_settings"].read_settings()
+    revision = doc.get("revision", "")
+    return web.json_response(
+        doc,
+        headers={"ETag": '"' + str(revision) + '"'},
+    )
+
+
+async def save_cli_settings(request):
+    payload = await object_body(request)
+    patch = payload.get("settings", payload)
+    if not isinstance(patch, dict):
+        raise ValueError("settings must be an object")
+    header = request.headers.get("If-Match")
+    revision = payload.get("revision")
+    if revision is None and header:
+        revision = header.strip('"')
+    patch = {
+        key: value
+        for key, value in patch.items()
+        if value != "[redacted]" and key != "revision"
+    }
+    doc = request.app["cli_settings"].write_settings(patch, revision)
+    return web.json_response(
+        doc,
+        headers={"ETag": '"' + str(doc.get("revision", "")) + '"'},
     )
 
 
