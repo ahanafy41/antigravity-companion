@@ -681,5 +681,18 @@
   global.addEventListener('companion-native-progress', event => {
     global.onUpdateProgress?.(event.detail.percent);
   });
-  if (!bundled && 'serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(report);
+  if (typeof caches !== 'undefined' && 'keys' in caches) {
+    caches.keys().then(keys => {
+      keys.forEach(key => {
+        if (key.startsWith('antigravity-static-') && key !== 'antigravity-static-v1.3.7-gfm-perf') {
+          caches.delete(key);
+        }
+      });
+    }).catch(report);
+  }
+  if (!bundled && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js?v=1.3.7').then(reg => {
+      reg.update().catch(report);
+    }).catch(report);
+  }
 })(window);

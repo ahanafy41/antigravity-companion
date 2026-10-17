@@ -1135,6 +1135,8 @@ async def response_headers(request, response):
     )
     if request.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store"
+    elif "Cache-Control" not in response.headers:
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
 
 
 async def list_legacy(request):
