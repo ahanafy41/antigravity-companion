@@ -124,15 +124,19 @@ async def isolation(request, handler):
         return await handler(request)
 
     elif protected and request.path != "/api/v1/pair":
-        cookie = request.cookies.get(COOKIE, "")
-        pairing = request.app["pairing"]
-        if not pairing.authorized(cookie):
-            return error("unauthorized", "Pair this browser first", 401)
-        if request.method not in ("GET", "HEAD", "OPTIONS"):
-            if not pairing.valid_csrf(
-                cookie, request.headers.get("X-CSRF-Token", "")
-            ):
-                return error("csrf_failed", "CSRF token is required", 403)
+        if origin == "https://appassets.androidplatform.net":
+            # Android Companion App WebView is fully authorized without pairing barriers
+            pass
+        else:
+            cookie = request.cookies.get(COOKIE, "")
+            pairing = request.app["pairing"]
+            if not pairing.authorized(cookie):
+                return error("unauthorized", "Pair this browser first", 401)
+            if request.method not in ("GET", "HEAD", "OPTIONS"):
+                if not pairing.valid_csrf(
+                    cookie, request.headers.get("X-CSRF-Token", "")
+                ):
+                    return error("csrf_failed", "CSRF token is required", 403)
 
     if request.method == "OPTIONS":
         return web.Response(
