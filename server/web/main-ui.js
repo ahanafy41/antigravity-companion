@@ -735,6 +735,10 @@ await window.mainV1.ready;
     const artifactViewerTitle = document.getElementById('artifact-viewer-title');
     const artifactViewerSummary = document.getElementById('artifact-viewer-summary');
     const artifactViewerContent = document.getElementById('artifact-viewer-content');
+    const artifactViewerRaw = document.getElementById('artifact-viewer-raw');
+    const tabArtFormatted = document.getElementById('tab-art-formatted');
+    const tabArtRaw = document.getElementById('tab-art-raw');
+    const btnDownloadArtifact = document.getElementById('btn-download-artifact');
     const btnCopyArtifactContent = document.getElementById('btn-copy-artifact-content');
     const btnViewerProceed = document.getElementById('btn-viewer-proceed');
     const btnCloseViewer = document.getElementById('btn-close-viewer');
@@ -870,32 +874,123 @@ await window.mainV1.ready;
       return intent || ('تنفيذ أداة: ' + toolName);
     }
 
-    // Robust Accessible Markdown Parser
+    // Robust Accessible GFM Markdown Parser with marked & DOMPurify support
     function renderMarkdown(md) {
       if (!md) return '';
 
-      // 1. Extract and preserve code blocks
+      const cleanMd = String(md).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+      // 1. High-Performance GFM Parsing via marked.js and DOMPurify if available
+      if (typeof window !== 'undefined' && window.marked && window.DOMPurify) {
+        try {
+          const alertMap = {
+            'NOTE': { label: 'ملاحظة', icon: 'ℹ️', cls: 'markdown-alert-note' },
+            'TIP': { label: 'تلميح مفيد', icon: '💡', cls: 'markdown-alert-tip' },
+            'IMPORTANT': { label: 'هام جداً', icon: '📌', cls: 'markdown-alert-important' },
+            'WARNING': { label: 'تحذير', icon: '⚠️', cls: 'markdown-alert-warning' },
+            'CAUTION': { label: 'تنبيه أمان', icon: '🛑', cls: 'markdown-alert-caution' }
+          };
+
+          let processed = cleanMd.replace(
+            /(?:^|\n)>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:\s*\n)?((?:>[^\n]*(?:\n|$))*)/gi,
+            function(match, type, body) {
+              const upperType = type.toUpperCase();
+              const alertInfo = alertMap[upperType] || { label: upperType, icon: 'ℹ️', cls: 'markdown-alert-note' };
+              const cleanBody = (body || '')
+                .split('\n')
+                .map(l => l.replace(/^>\s?/, ''))
+                .join('\n')
+                .trim();
+              return `\n\n<div class="markdown-alert ${alertInfo.cls}" role="region" aria-label="${alertInfo.label}">` +
+                     `<div class="markdown-alert-title"><span aria-hidden="true">${alertInfo.icon}</span> <span>${alertInfo.label}</span></div>` +
+                     `<div class="markdown-alert-content">${cleanBody}</div></div>\n\n`;
+            }
+          );
+
+          const renderer = new window.marked.Renderer();
+          renderer.code = function(code, lang) {
+            const rawCode = (typeof code === 'object' && code.text) ? code.text : String(code || '');
+            const langName = ((typeof code === 'object' && code.lang) ? code.lang : lang) || 'code';
+            const escaped = escapeHtml(rawCode);
+            return '<div class="code-card" role="region" aria-label="كود برمجي ' + escapeHtml(langName) + '">' +
+              '<div class="code-card-header">' +
+                '<span>' + escapeHtml(langName) + '</span>' +
+                '<button type="button" class="btn-icon-sm btn-copy-code" data-code="' + encodeURIComponent(rawCode) + '" aria-label="نسخ الكود">📋 نسخ الكود</button>' +
+              '</div>' +
+              '<pre tabindex="0"><code>' + escaped + '</code></pre>' +
+            '</div>';
+          };
+
+          renderer.table = function(header, body) {
+            const headerHtml = (typeof header === 'object' && header.header) ? header.header : header;
+            const bodyHtml = (typeof header === 'object' && header.body) ? header.body : body;
+            return '<div class="table-responsive-wrapper" role="region" aria-label="جدول بيانات">' +
+              '<table role="table">' +
+                '<thead>' + headerHtml + '</thead>' +
+                '<tbody>' + bodyHtml + '</tbody>' +
+              '</table>' +
+            '</div>';
+          };
+
+          renderer.heading = function(text, level) {
+            const rawText = (typeof text === 'object' && text.text) ? text.text : text;
+            const headingLevel = (typeof text === 'object' && text.depth) ? text.depth : level;
+            const hLevel = Math.min(6, Math.max(3, Number(headingLevel) + 2));
+            return '<h' + hLevel + ' class="ai-heading-' + hLevel + '" dir="auto">' + rawText + '</h' + hLevel + '>';
+          };
+
+          renderer.paragraph = function(text) {
+            const rawText = (typeof text === 'object' && text.text) ? text.text : text;
+            return '<p dir="auto">' + rawText + '</p>';
+          };
+
+          renderer.listitem = function(text, task, checked) {
+            const rawText = (typeof text === 'object' && text.text) ? text.text : text;
+            const isTask = (typeof text === 'object' && text.task) ? text.task : task;
+            const isChecked = (typeof text === 'object' && text.checked) ? text.checked : checked;
+            if (isTask) {
+              return '<li class="task-list-item" dir="auto">' +
+                '<input type="checkbox" disabled ' + (isChecked ? 'checked' : '') + ' aria-label="' + (isChecked ? 'مكتمل' : 'غير مكتمل') + '"> ' +
+                '<span>' + rawText + '</span>' +
+              '</li>';
+            }
+            return '<li dir="auto">' + rawText + '</li>';
+          };
+
+          const html = window.marked.parse(processed, {
+            renderer: renderer,
+            gfm: true,
+            breaks: true
+          });
+
+          return window.DOMPurify.sanitize(html, {
+            ADD_TAGS: ['bdi', 'audio'],
+            ADD_ATTR: ['target', 'rel', 'controls', 'autoplay', 'preload', 'data-code', 'dir', 'role', 'aria-label', 'aria-controls', 'tabindex', 'checked', 'disabled']
+          });
+        } catch (e) {
+          console.warn('Marked parse failed, using fallback:', e);
+        }
+      }
+
+      // 2. Enhanced Accessible Fallback Parser
       const codeBlocks = [];
-      let text = md.replace(/```([a-zA-Z0-9_\-\+]*)\n([\s\S]*?)```/g, function(match, lang, code) {
+      let text = cleanMd.replace(/`{3,4}([a-zA-Z0-9_\-\+\s]*)\n([\s\S]*?)`{3,4}/g, function(match, lang, code) {
         const placeholder = '___CODE_BLOCK_' + codeBlocks.length + '___';
         const cleanCode = code.trim();
-        const escapedCode = cleanCode
-          .replace(/&/g, '&amp;')
-          .replace(/</g, '&lt;')
-          .replace(/>/g, '&gt;');
+        const cleanLang = (lang || '').trim() || 'code';
         codeBlocks.push(
-          '<div class="code-card" role="region" aria-label="كود برمجي ' + (lang || '') + '">' +
+          '<div class="code-card" role="region" aria-label="كود برمجي ' + escapeHtml(cleanLang) + '">' +
             '<div class="code-card-header">' +
-              '<span>' + (lang || 'code') + '</span>' +
+              '<span>' + escapeHtml(cleanLang) + '</span>' +
               '<button type="button" class="btn-icon-sm btn-copy-code" data-code="' + encodeURIComponent(cleanCode) + '" aria-label="نسخ الكود">📋 نسخ الكود</button>' +
             '</div>' +
-            '<pre tabindex="0"><code>' + escapedCode + '</code></pre>' +
+            '<pre tabindex="0"><code>' + escapeHtml(cleanCode) + '</code></pre>' +
           '</div>'
         );
         return '\n\n' + placeholder + '\n\n';
       });
 
-      // 2. Escape HTML entities in text
+      // Escape HTML entities in text
       text = text
         .replace(/&/g, '&amp;')
         .replace(/"/g, '&quot;')
@@ -903,23 +998,13 @@ await window.mainV1.ready;
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 
-      // 3. Inline formatting
+      // Inline formatting
       text = text.replace(/`([^`]+)`/g, '<bdi class="code-inline">$1</bdi>');
       text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
       text = text.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-
-      // Markdown links: [text](url)
       text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="main-style-140">$1</a>');
-
-      // Plain URLs
       text = text.replace(/(^|[\s\(\[\{])(https?:\/\/[^\s<>\)\]\}]+)/g, '$1<a href="$2" target="_blank" rel="noopener noreferrer" class="main-style-140">$2</a>');
 
-      // Restore safe audio tags: <audio controls ... src="..."></audio>
-      text = text.replace(/&lt;audio\s+controls(?:\s+autoplay)?\s+src="([^"]+)"[^&]*&gt;[\s\S]*?&lt;\/audio&gt;/gi, function(match, src) {
-        return '<audio controls autoplay src="' + src + '" preload="metadata" class="main-style-141"></audio>';
-      });
-
-      // 4. Split into clean blocks
       const rawBlocks = text.split(/\n{2,}/);
       const outputHtml = [];
 
@@ -927,7 +1012,6 @@ await window.mainV1.ready;
         let block = rawBlocks[i].trim();
         if (!block) continue;
 
-        // Check for code block placeholder
         const cbMatch = block.match(/^___CODE_BLOCK_(\d+)___$/);
         if (cbMatch) {
           const idx = parseInt(cbMatch[1], 10);
@@ -936,6 +1020,31 @@ await window.mainV1.ready;
         }
 
         const lines = block.split('\n');
+
+        // Check for table in block
+        if (lines.length >= 2 && lines[0].trim().startsWith('|') && lines[0].trim().endsWith('|')) {
+          const headerCols = lines[0].split('|').slice(1, -1).map(c => c.trim());
+          const rows = [];
+          for (let k = 1; k < lines.length; k++) {
+            const rowLine = lines[k].trim();
+            if (/^\|[-:\s|]+\|$/.test(rowLine)) continue;
+            if (rowLine.startsWith('|') && rowLine.endsWith('|')) {
+              rows.push(rowLine.split('|').slice(1, -1).map(c => c.trim()));
+            }
+          }
+          let tableHtml = '<div class="table-responsive-wrapper" role="region" aria-label="جدول بيانات"><table role="table"><thead><tr>';
+          headerCols.forEach(col => { tableHtml += '<th scope="col">' + col + '</th>'; });
+          tableHtml += '</tr></thead><tbody>';
+          rows.forEach(r => {
+            tableHtml += '<tr>';
+            r.forEach(c => { tableHtml += '<td>' + c + '</td>'; });
+            tableHtml += '</tr>';
+          });
+          tableHtml += '</tbody></table></div>';
+          outputHtml.push(tableHtml);
+          continue;
+        }
+
         let currentParagraph = [];
         let listItems = [];
 
@@ -958,17 +1067,15 @@ await window.mainV1.ready;
           const trimmedLine = rawLine.trim();
           if (!trimmedLine) continue;
 
-          // Detect Headings (mapped to h4, h5, h6 for accessible logical hierarchy under card h3)
           const hMatch = trimmedLine.match(/^(#{1,6})\s+(.+)$/);
           if (hMatch) {
             flushParagraph();
             flushList();
-            const hLevel = Math.min(6, Math.max(4, hMatch[1].length + 3)); // # and ## -> h4, ### -> h5, ####+ -> h6
+            const hLevel = Math.min(6, Math.max(4, hMatch[1].length + 3));
             outputHtml.push('<h' + hLevel + ' class="ai-heading-' + hLevel + '" dir="auto">' + hMatch[2].trim() + '</h' + hLevel + '>');
             continue;
           }
 
-          // Detect Lists
           const listMatch = trimmedLine.match(/^[\-\*•]\s+(.+)$/) || trimmedLine.match(/^\d+[\.\)]\s+(.+)$/);
           if (listMatch) {
             flushParagraph();
@@ -976,7 +1083,6 @@ await window.mainV1.ready;
             continue;
           }
 
-          // Normal text
           flushList();
           currentParagraph.push(trimmedLine);
         }
@@ -1295,13 +1401,13 @@ await window.mainV1.ready;
         renderRafId = requestAnimationFrame(() => {
           renderRafId = null;
           const elapsed = performance.now() - lastRenderTime;
-          if (elapsed < 40) {
+          if (elapsed < 120) {
             renderRafId = setTimeout(() => {
               renderRafId = null;
               if (aiContentDiv) aiContentDiv.innerHTML = renderMarkdown(accumulatedText);
               lastRenderTime = performance.now();
               scrollChatIfNearBottom();
-            }, 40 - elapsed);
+            }, 120 - elapsed);
             return;
           }
           if (aiContentDiv) aiContentDiv.innerHTML = renderMarkdown(accumulatedText);
@@ -1451,10 +1557,11 @@ await window.mainV1.ready;
                     if (!outDetails) {
                       outDetails = document.createElement('details');
                       outDetails.className = 'step-output-details';
-                      outDetails.open = true;
+                      outDetails.open = false;
                       const summary = document.createElement('summary');
                       summary.className = 'step-output-summary';
-                      summary.textContent = '📄 مخرجات الأداة ونتيجة التنفيذ الكاملة';
+                      summary.textContent = '📄 مخرجات الأداة ونتيجة التنفيذ الكاملة (اضغط للعرض)';
+                      summary.setAttribute('aria-label', 'مخرجات الأداة ونتيجة التنفيذ الكاملة (مطوية، اضغط للعرض أو الإخفاء)');
                       const pre = document.createElement('pre');
                       pre.className = 'step-output-content';
                       pre.setAttribute('tabindex', '0');
@@ -1882,7 +1989,7 @@ await window.mainV1.ready;
             inputNewProjName.focus();
             return;
           }
-          const cleanName = rawName.replace(/[\\/:*?"<>|]/g, '_');
+          const cleanName = rawName.replace(new RegExp('[\\\\/:*?"<>|]', 'g'), '_');
           announce('جارٍ إنشاء المشروع ' + cleanName + '...');
           try {
             const res = await window.mainV1Fetch('/api/fs/mkdir', {
@@ -3157,7 +3264,22 @@ await window.mainV1.ready;
       currentViewerArtifact = { name: artName, path: artPath, summary: artSummary, requestFeedback: requestFeedback };
       if (artifactViewerTitle) artifactViewerTitle.textContent = `📄 ${artName}`;
       if (artifactViewerSummary) artifactViewerSummary.textContent = artSummary || '';
-      if (artifactViewerContent) artifactViewerContent.innerHTML = '<p>⏳ جاري تحميل محتوى المستند...</p>';
+      if (tabArtFormatted) {
+        tabArtFormatted.classList.add('active');
+        tabArtFormatted.setAttribute('aria-selected', 'true');
+      }
+      if (tabArtRaw) {
+        tabArtRaw.classList.remove('active');
+        tabArtRaw.setAttribute('aria-selected', 'false');
+      }
+      if (artifactViewerContent) {
+        artifactViewerContent.style.display = 'block';
+        artifactViewerContent.innerHTML = '<p>⏳ جاري تحميل محتوى المستند...</p>';
+      }
+      if (artifactViewerRaw) {
+        artifactViewerRaw.style.display = 'none';
+        artifactViewerRaw.textContent = '';
+      }
 
       if (btnViewerProceed) {
         btnViewerProceed.style.display = requestFeedback ? 'inline-block' : 'none';
@@ -3176,6 +3298,9 @@ await window.mainV1.ready;
         currentViewerArtifact.content = rawContent;
         if (artifactViewerContent) {
           artifactViewerContent.innerHTML = renderMarkdown(rawContent);
+        }
+        if (artifactViewerRaw) {
+          artifactViewerRaw.textContent = rawContent;
         }
       } catch (err) {
         if (artifactViewerContent) {
@@ -3360,6 +3485,46 @@ await window.mainV1.ready;
           aiInput.focus();
           announce('تم تعيين الموافقة والمتابعة في حقل الإدخال');
           if (btnAiSend) btnAiSend.focus();
+        }
+      });
+    }
+    if (tabArtFormatted && tabArtRaw) {
+      tabArtFormatted.addEventListener('click', () => {
+        tabArtFormatted.classList.add('active');
+        tabArtFormatted.setAttribute('aria-selected', 'true');
+        tabArtRaw.classList.remove('active');
+        tabArtRaw.setAttribute('aria-selected', 'false');
+        if (artifactViewerContent) artifactViewerContent.style.display = 'block';
+        if (artifactViewerRaw) artifactViewerRaw.style.display = 'none';
+        announce('تم التبديل إلى العرض المنسق للمستند');
+      });
+      tabArtRaw.addEventListener('click', () => {
+        tabArtRaw.classList.add('active');
+        tabArtRaw.setAttribute('aria-selected', 'true');
+        tabArtFormatted.classList.remove('active');
+        tabArtFormatted.setAttribute('aria-selected', 'false');
+        if (artifactViewerContent) artifactViewerContent.style.display = 'none';
+        if (artifactViewerRaw) artifactViewerRaw.style.display = 'block';
+        announce('تم التبديل إلى الكود المصدري للمستند');
+      });
+    }
+    if (btnDownloadArtifact) {
+      btnDownloadArtifact.addEventListener('click', () => {
+        if (!currentViewerArtifact || !currentViewerArtifact.content) return;
+        try {
+          const blob = new Blob([currentViewerArtifact.content], { type: 'text/markdown;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = currentViewerArtifact.name || 'artifact.md';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          playBeep(880, 0.1);
+          announce('تم بدء تنزيل المستند');
+        } catch(e) {
+          announce('تعذر تنزيل المستند: ' + e.message);
         }
       });
     }
@@ -5490,6 +5655,7 @@ await window.mainV1.ready;
     }
 
     let isSyncingConversation = false;
+    let lastSyncedMessageCount = -1;
 
     async function syncActiveConversationMessages() {
       if (!currentActiveConversationId || isAiGenerating || isSyncingConversation || forceNewSession) return;
@@ -5501,8 +5667,8 @@ await window.mainV1.ready;
         const allMessages = data.messages || [];
 
         // Live sync artifacts in background polling
+        let hasNewArt = false;
         if (data.artifacts && Array.isArray(data.artifacts)) {
-          let hasNewArt = false;
           data.artifacts.forEach(art => {
             if (!knownArtifacts.has(art.name)) {
               knownArtifacts.set(art.name, art);
@@ -5527,6 +5693,11 @@ await window.mainV1.ready;
             });
           }
         }
+
+        if (allMessages.length === lastSyncedMessageCount && !hasNewArt) {
+          return;
+        }
+        lastSyncedMessageCount = allMessages.length;
 
         const textAgentMsgs = allMessages.filter(m => m.role === 'agent' && ((m.text && m.text.trim()) || m.thinking));
         if (textAgentMsgs.length === 0) return;
@@ -5683,7 +5854,7 @@ await window.mainV1.ready;
             }
 
             playSuccessChime();
-            const cleanAnnounce = latestAgentMsg.text.replace(/[*#_`]/g, '').trim().slice(0, 150);
+            const cleanAnnounce = latestAgentMsg.text.replace(/[*#_\`]/g, '').trim().slice(0, 150);
             announce('تنبيه: وصل رد جديد بعد اكتمال المؤقت: ' + cleanAnnounce);
           });
           const isNearBottom = (aiChatFeed.scrollHeight - aiChatFeed.scrollTop - aiChatFeed.clientHeight) < 180;
@@ -6017,28 +6188,32 @@ await window.mainV1.ready;
       reportVisibility(false);
     });
 
-    // Keep server informed while screen is open & periodically poll tasks and conversation
+    // Keep server informed while screen is open & periodically poll tasks and conversation with adaptive backoff
+    let pollCycleCounter = 0;
     setInterval(async () => {
-      if (isAppExplicitlyMinimized) return;
-      if (document.visibilityState === 'visible') {
-        reportVisibility(true);
+      if (isAppExplicitlyMinimized || document.hidden || document.visibilityState !== 'visible') return;
+      reportVisibility(true);
+      pollCycleCounter++;
+
+      const isTasksOpen = Boolean(tasksMonitorDialog && tasksMonitorDialog.open);
+      if (isTasksOpen || pollCycleCounter % 2 === 0) {
+        try {
+          const res = await window.mainV1Fetch('/api/ai/tasks');
+          if (res.ok) {
+            const data = await res.json();
+            const activeCount = typeof data.active_count === 'number' ? data.active_count : (data.tasks || []).filter(t => t.status === 'active').length;
+            if (valTasksCountDrawer) {
+              valTasksCountDrawer.textContent = activeCount;
+            }
+            if (isTasksOpen) {
+              renderTasksList(data.tasks || []);
+            }
+          }
+        } catch (e) {}
       }
-      try {
-        const res = await window.mainV1Fetch('/api/ai/tasks');
-        if (res.ok) {
-          const data = await res.json();
-          const activeCount = typeof data.active_count === 'number' ? data.active_count : (data.tasks || []).filter(t => t.status === 'active').length;
-          if (valTasksCountDrawer) {
-            valTasksCountDrawer.textContent = activeCount;
-          }
-          if (tasksMonitorDialog && tasksMonitorDialog.open) {
-            renderTasksList(data.tasks || []);
-          }
-        }
-      } catch (e) {}
 
       // Auto-sync any asynchronous agent responses (e.g. from background timer tasks)
-      if (currentActiveConversationId && !isAiGenerating) {
+      if (currentActiveConversationId && !isAiGenerating && (pollCycleCounter % 2 === 0)) {
         try {
           await syncActiveConversationMessages();
         } catch(e) {}

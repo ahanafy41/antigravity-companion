@@ -1010,6 +1010,8 @@ button:focus-visible, input:focus-visible, a:focus-visible {
   box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   border: 1px solid var(--border-main);
   position: relative;
+  content-visibility: auto;
+  contain-intrinsic-size: 80px 250px;
 }
 
 .chat-message.user-message {
@@ -1160,6 +1162,133 @@ button:focus-visible, input:focus-visible, a:focus-visible {
   unicode-bidi: isolate;
   direction: ltr;
 }
+
+/* Accessible GFM Tables */
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0;
+  font-size: 0.92rem;
+  background-color: #070a0f;
+  border: 1px solid var(--border-main);
+  border-radius: 8px;
+  overflow: hidden;
+  direction: ltr;
+  text-align: left;
+}
+.markdown-body th {
+  background-color: #141a24;
+  color: var(--accent-cyan);
+  padding: 8px 12px;
+  font-weight: 700;
+  border-bottom: 2px solid var(--border-main);
+  border-right: 1px solid var(--border-main);
+}
+.markdown-body th:last-child {
+  border-right: none;
+}
+.markdown-body td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-main);
+  border-right: 1px solid var(--border-main);
+  color: var(--text-main);
+}
+.markdown-body td:last-child {
+  border-right: none;
+}
+.markdown-body tr:last-child td {
+  border-bottom: none;
+}
+.markdown-body tr:hover td {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+.table-responsive-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  margin: 12px 0;
+  border-radius: 8px;
+}
+
+/* GitHub Callouts / Alerts */
+.markdown-body .markdown-alert {
+  padding: 10px 14px;
+  margin: 12px 0;
+  border-radius: 8px;
+  border-left: 4px solid var(--accent-blue);
+  background-color: rgba(68, 147, 248, 0.1);
+  direction: auto;
+}
+.markdown-body .markdown-alert.markdown-alert-note {
+  border-left-color: var(--accent-blue);
+  background-color: rgba(68, 147, 248, 0.1);
+}
+.markdown-body .markdown-alert.markdown-alert-tip {
+  border-left-color: var(--accent-green);
+  background-color: rgba(63, 185, 80, 0.1);
+}
+.markdown-body .markdown-alert.markdown-alert-important {
+  border-left-color: var(--accent-purple);
+  background-color: rgba(163, 113, 247, 0.1);
+}
+.markdown-body .markdown-alert.markdown-alert-warning {
+  border-left-color: var(--accent-yellow);
+  background-color: rgba(210, 153, 34, 0.1);
+}
+.markdown-body .markdown-alert.markdown-alert-caution {
+  border-left-color: var(--accent-red);
+  background-color: rgba(248, 81, 73, 0.1);
+}
+.markdown-body .markdown-alert-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  font-size: 0.95rem;
+}
+.markdown-body blockquote {
+  border-left: 4px solid var(--border-main);
+  padding: 6px 14px;
+  margin: 10px 0;
+  color: var(--text-muted);
+  background-color: rgba(255, 255, 255, 0.02);
+  border-radius: 0 6px 6px 0;
+  direction: auto;
+}
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid var(--border-main);
+  margin: 16px 0;
+}
+.markdown-body .task-list-item {
+  list-style-type: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.markdown-body .task-list-item input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--accent-cyan);
+}
+
+/* Artifact Viewer Tabs */
+.artifact-view-tabs .btn-tab {
+  background: var(--bg-card);
+  border: 1px solid var(--border-main);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.artifact-view-tabs .btn-tab.active,
+.artifact-view-tabs .btn-tab[aria-selected="true"] {
+  background: var(--accent-purple);
+  color: #ffffff;
+  border-color: var(--accent-purple);
+  font-weight: 700;
+}
+
 
 
 .ai-input-section {

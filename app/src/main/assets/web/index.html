@@ -419,21 +419,29 @@
   <dialog id="artifact-viewer-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="artifact-viewer-title" style="max-width: 850px; width: 95%; max-height: 85vh;">
     <div class="dialog-content" style="display: flex; flex-direction: column; max-height: 80vh;">
       <header class="dialog-header" style="flex-shrink: 0;">
-        <div style="display: flex; flex-direction: column; gap: 4px; overflow: hidden;">
+        <div style="display: flex; flex-direction: column; gap: 4px; overflow: hidden; flex: 1;">
           <h2 id="artifact-viewer-title" style="margin: 0; font-size: 1.15rem; word-break: break-all;">عرض المستند</h2>
           <span id="artifact-viewer-summary" style="font-size: 0.85rem; color: var(--text-muted); max-height: 2.8em; overflow: hidden; text-overflow: ellipsis;"></span>
+          <div class="artifact-view-tabs" role="tablist" aria-label="طريقة عرض المستند" style="display: flex; gap: 6px; margin-top: 6px;">
+            <button type="button" role="tab" id="tab-art-formatted" aria-selected="true" class="btn btn-sm btn-tab active" aria-controls="artifact-viewer-content">📖 العرض المنسق</button>
+            <button type="button" role="tab" id="tab-art-raw" aria-selected="false" class="btn btn-sm btn-tab" aria-controls="artifact-viewer-raw">📄 الكود المصدري</button>
+          </div>
         </div>
         <button type="button" id="btn-close-viewer-top" class="btn-close-dialog" aria-label="إغلاق عرض المستند">✕</button>
       </header>
       <div class="dialog-body" style="flex: 1; overflow-y: auto; padding: 16px 4px;">
-        <div id="artifact-viewer-content" class="markdown-body" dir="rtl" style="font-size: 1rem; line-height: 1.7; padding: 4px 10px;" tabindex="0" role="region" aria-label="نص المستند الكامل">
+        <div id="artifact-viewer-content" class="markdown-body artifact-body" dir="auto" style="font-size: 1rem; line-height: 1.7; padding: 4px 10px;" tabindex="0" role="region" aria-label="نص المستند المنسق">
           <p>⏳ جاري تحميل محتوى المستند...</p>
         </div>
+        <pre id="artifact-viewer-raw" class="artifact-raw-content" dir="ltr" style="display: none; padding: 12px; background: var(--bg-card); border: 1px solid var(--border-main); border-radius: 6px; overflow-x: auto; font-family: monospace; font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap;" tabindex="0" role="region" aria-label="نص الماركداون المصدري"></pre>
       </div>
       <footer class="dialog-footer" style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
-        <div style="display: flex; gap: 8px;">
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
           <button type="button" id="btn-copy-artifact-content" class="btn btn-secondary" aria-label="نسخ نص المستند كاملاً">
             📋 نسخ النص
+          </button>
+          <button type="button" id="btn-download-artifact" class="btn btn-secondary" aria-label="تنزيل المستند كملف ماركداون">
+            ⬇️ تنزيل .md
           </button>
           <button type="button" id="btn-viewer-proceed" class="btn btn-primary" style="display: none; background: var(--accent-green); color: #000; font-weight: bold;" aria-label="موافقة ومتابعة تنفيذ الخطة">
             🚀 موافقة ومتابعة (Proceed)
@@ -833,6 +841,8 @@
 
 
 
+<script src="/vendor/marked.umd.js"></script>
+<script src="/vendor/purify.min.js"></script>
 <script src="/api.js"></script>
 <script src="/native.js"></script>
 <script src="/history.js"></script>

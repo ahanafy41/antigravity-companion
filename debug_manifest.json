@@ -1,118 +1,40 @@
 {
-  "issue_id": "FINAL-LEAN-CLEANUP",
-  "severity": "LOW",
-  "diagnostic_branch": "Approved unused code retirement",
-  "environment": {
-    "os": "Android/Termux and Windows local verification",
-    "runtime": "Existing Java/VanillaJS/Python",
-    "dependencies": [
-      "Existing aiohttp and Playwright verification tooling"
-    ]
-  },
-  "reproduction_command": "Retained active UI/API/browser and Android packaging checks",
-  "symptoms": [
-    "Orphan TCP probe and seven unused resources remain.",
-    "Two retired assets and old UI-only test dependencies remain."
+  "manifest_version": "1.0.0",
+  "task_type": "bugfix_and_performance_optimization",
+  "project_name": "antigravity-companion",
+  "target_repository": "/data/data/com.termux/files/home/.gemini/antigravity-cli/scratch/antigravity-companion-app",
+  "timestamp": "2026-10-17T12:30:00Z",
+  "diagnosed_issues": [
+    {
+      "id": "ISSUE-001",
+      "title": "Artifacts Markdown Rendering and BiDi Direction Collapse",
+      "severity": "HIGH",
+      "affected_files": [
+        "server/web/index.html",
+        "server/web/main-ui.js",
+        "server/web/main-ui.css"
+      ],
+      "root_cause": "renderMarkdown lacks GFM table, GitHub alert callout, task list, and horizontal rule support; hardcoded dir='rtl' on artifact viewer dialog causes text scrambling; marked.umd.js is present in vendor/ but unlinked.",
+      "remediation": "Link vendor/marked.umd.js and vendor/purify.min.js in index.html, enhance renderMarkdown with full GFM tables, GitHub alerts, code block styling, and add Raw/Formatted view tabs with full copy and download buttons."
+    },
+    {
+      "id": "ISSUE-002",
+      "title": "Accessibility Tree Bloat and UI Thrashing with Screen Readers",
+      "severity": "HIGH",
+      "affected_files": [
+        "server/web/main-ui.js",
+        "server/web/main-ui.css"
+      ],
+      "root_cause": "Tool output details are set to open=true by default creating thousands of open DOM text nodes that freeze TalkBack/Jieshuo; scheduleAiRender thrashes DOM every 40ms; background sync polls aggressively every 3.5s.",
+      "remediation": "Collapse tool execution details by default (open=false) with accessible toggle summary; throttle live render to 120ms; apply CSS content-visibility:auto; implement smart background polling backoff."
+    }
   ],
-  "exact_location_pinpoint": {
-    "file_path": "app/src/main/java/com/antigravity/companion/TermuxBridge.java",
-    "line_number": 113,
-    "symbol_or_ast_node": "TermuxBridge.isPortOpen",
-    "offending_snippet": "public static boolean isPortOpen(String host, int port, int timeoutMs)"
-  },
-  "hypothesis": "Remove only owner-approved dead pieces; migrate obsolete checker consumers to active API/UI without changing product behavior.",
-  "fix_plan": [
-    "Remove unused native helper/imports and fourstrings/threecolors.",
-    "Retire only app.js/panels.js canonical+mirror and their static routes.",
-    "Migrate two dependent checkers and strengthen existing OAuth password check.",
-    "Preserve voice-setting rejection guard; no nativevoice UI/listener exists to remove.",
-    "Verify independent reviews, fullPython/JVM/browser/Debug/Lint and APK bytes; publish closingcommit and detailedreply."
-  ],
-  "verification_test": "Existing202Python;35JVM;activebrowserchecks;Black79/flake8;asset harness;cleanDebug/Lint;exactscope and protectedhashes",
-  "approved_by": {
-    "owner_comment": "https://github.com/ahanafy41/antigravity-companion/pull/1#issuecomment-6220674524",
-    "human_instruction": "حسنا نفذ كل ما طلبه"
-  },
-  "baseline_commit": "684f179329478047cec8af80e300b49ae48f7ad7",
-  "deleted_files": [
-    "server/web/app.js",
-    "server/web/panels.js",
-    "app/src/main/assets/web/app.js",
-    "app/src/main/assets/web/panels.js"
-  ],
-  "modified_files": [
-    "app/src/main/java/com/antigravity/companion/TermuxBridge.java",
-    "app/src/main/res/values/strings.xml",
-    "app/src/main/res/values/colors.xml",
-    "server/application.py",
-    "server/web/sw.js",
-    "app/src/main/assets/web/sw.js",
-    "server/web/run_features_tests.cjs",
-    "server/web/run_main_ui_tests.cjs",
-    "scripts/run_settings_panel_tests.py",
-    "SKILL.md",
-    "task.md",
-    "project_state.md",
-    "CHANGELOG.md",
-    "debug_manifest.json",
-    "docs/lean-companion-report.md"
-  ],
-  "new_files": [
-    "docs/final-lean-cleanup-plan.md",
-    "docs/final-lean-cleanup-report.md"
-  ],
-  "baseline_sha256": {
-    "app/src/main/java/com/antigravity/companion/TermuxBridge.java": "51fbfe19675437f68d0e678b326a926ba960dca2ba136a11766f86220a0c15ab",
-    "app/src/main/res/values/strings.xml": "e71dcf3728174b2266c0ab9bdc77ab9f0c4b4a68298494e210bf8fcae892fd67",
-    "app/src/main/res/values/colors.xml": "90eef65d4bc881ec28381dcfac27b0e12d9faab6d109d95d3f8e486a31be690c",
-    "server/application.py": "ba8430fe3b78bad562ef8a441f49e3deb7e505065995dd9f5ade0702596dc5be",
-    "server/web/app.js": "715cbf88902354cbbcbc966e78f63cea771449ffd194b1d8e9a64797ccc10b13",
-    "server/web/panels.js": "49afa8ce8c432bc1e400874c06ec715f36c99a4955fa549c9c988833d23fd178",
-    "app/src/main/assets/web/app.js": "715cbf88902354cbbcbc966e78f63cea771449ffd194b1d8e9a64797ccc10b13",
-    "app/src/main/assets/web/panels.js": "49afa8ce8c432bc1e400874c06ec715f36c99a4955fa549c9c988833d23fd178",
-    "server/web/sw.js": "58abf51aacd449b21e34e34023655bdb5b7fccc50e071fd6fb03c46ecc5dc2ce",
-    "app/src/main/assets/web/sw.js": "58abf51aacd449b21e34e34023655bdb5b7fccc50e071fd6fb03c46ecc5dc2ce",
-    "server/web/run_features_tests.cjs": "c542373beda2a5daabccbf7a8448b9c56d45b9cf2d57fb38e6f7ff12adcb25d1",
-    "server/web/run_main_ui_tests.cjs": "f0342666d11a1af0bbeead1eaf5011654e102c0260424edabe28ca5a3403fb5d",
-    "scripts/run_settings_panel_tests.py": "952145b8a78677aff2c74683002345834f01b06ad69dadd2f821c59adb0397c2",
-    "SKILL.md": "c1a7b596d387a2741fdba71f1a6269ddd8bfc3b91fda501b1902e7532d2d9fee",
-    "task.md": "29829303ba23f0b09b6f94877d3d7147fd6e7c2d8b29276370cc06290bf30fff",
-    "project_state.md": "c7d90dfbbf02c668f6682125fc04b45c22c264d2e52dbd2abbaee128915d7030",
-    "CHANGELOG.md": "58110e3498284e2144fbc024aea80e4524a44876915fc1213a83d0cc6b9e28e2",
-    "debug_manifest.json": "8a8728b71c243585d6dac7bffcdecea1fb6207ab32bb27d413b7444a9a12ecc6",
-    "docs/lean-companion-report.md": "46de34c08f49422cd550e49a7f4c7dc1d45172807cc78be0b58fdf8ad6f08738"
-  },
-  "original_line_counts": {
-    "app/src/main/java/com/antigravity/companion/TermuxBridge.java": 135,
-    "app/src/main/res/values/strings.xml": 7,
-    "app/src/main/res/values/colors.xml": 9,
-    "server/application.py": 1110,
-    "server/web/app.js": 523,
-    "server/web/panels.js": 590,
-    "app/src/main/assets/web/app.js": 523,
-    "app/src/main/assets/web/panels.js": 590,
-    "server/web/sw.js": 21,
-    "app/src/main/assets/web/sw.js": 21,
-    "server/web/run_features_tests.cjs": 162,
-    "server/web/run_main_ui_tests.cjs": 443,
-    "scripts/run_settings_panel_tests.py": 212,
-    "SKILL.md": 156,
-    "task.md": 394,
-    "project_state.md": 206,
-    "CHANGELOG.md": 52,
-    "debug_manifest.json": 347,
-    "docs/lean-companion-report.md": 76
-  },
-  "backup_receipts": ".tmp/FINAL-LEAN-CLEANUP/backup-receipts.json",
-  "protected_sha256": {
-    "server/server.py": "320b96e15e7350007b06480c8962ab0308d505c8cb237f485669979e659169cd",
-    "server/launcher.py": "d35626310d917888496f1a5adbd841b42ead285e7b95fd842ebe27f363d34964",
-    "server/web/main-ui.js": "acda40de4ec7c9e48b25d9e846fa37b6a367a38c354e6ad5182c4490446a6d58",
-    "server/web/main-v1-adapter.js": "aeef886d9319ed1f38a198e475d2fb0762234d7b6527a4a5e851a0da6fc8ed8f",
-    "app/src/main/assets/server/server.py": "359cf64da9eebf45f8fd56733a0580cb75db431ccc6d22a133f7516e293664bc",
-    "app/src/main/assets/web/main-ui.js": "acda40de4ec7c9e48b25d9e846fa37b6a367a38c354e6ad5182c4490446a6d58",
-    "app/build.gradle": "36fc12b2f6d7fb7ca7b089e5a8edab48c043d39a187c657c3de434193da22fab",
-    "server/version.json": "9bac51bc8e9aee410a2739ac19338003f0c04e78f467f827cd4ec2e2b349f7c4"
-  },
-  "scope_note": "Latestscope narrows deletion to app.js/panels.js only; state.js/ui.js/styles.css stay. Seven resources mean4strings+3colors alreadyidentified in approved report. No upstream import, no server entry/launcher/version/signing/feature changes. Historical Nodevoice test describedincorrectly asbrowservoice; correctreport explicitly while retiring old nativeUI tests."
+  "execution_plan": [
+    "1. Backup target files via backup_manager.py",
+    "2. Link vendor libraries and improve artifact modal markup in server/web/index.html",
+    "3. Upgrade markdown rendering and optimize DOM/accessibility loops in server/web/main-ui.js",
+    "4. Add table, alert, and performance styles in server/web/main-ui.css",
+    "5. Sync updated web assets to app/src/main/assets/web/ and ~/.antigravity-server/web/",
+    "6. Run feature tests and validate with validate_code.py"
+  ]
 }
