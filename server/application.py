@@ -1197,9 +1197,19 @@ async def start_page(request):
 
 
 async def index(request):
-    return web.FileResponse(
+    cookie, csrf = request.app["pairing"].new_session()
+    response = web.FileResponse(
         Path(__file__).resolve().parent / "web" / "index.html"
     )
+    response.set_cookie(
+        COOKIE,
+        cookie,
+        httponly=True,
+        samesite="Lax",
+        max_age=86400 * 365,
+        path="/",
+    )
+    return response
 
 
 async def static_file(request):

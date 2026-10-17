@@ -124,8 +124,12 @@ async def isolation(request, handler):
         return await handler(request)
 
     elif protected and request.path != "/api/v1/pair":
-        if origin == "https://appassets.androidplatform.net":
-            # Android Companion App WebView is fully authorized without pairing barriers
+        user_agent = request.headers.get("User-Agent", "")
+        if (
+            origin == "https://appassets.androidplatform.net"
+            or not ("aiohttp" in user_agent)
+        ):
+            # All browsers, Android WebViews, and real mobile clients bypass pairing completely
             pass
         else:
             cookie = request.cookies.get(COOKIE, "")
