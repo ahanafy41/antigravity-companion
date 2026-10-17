@@ -3096,6 +3096,24 @@ await window.mainV1.ready;
           });
         }
 
+        // Render Artifacts associated with this conversation
+        knownArtifacts.clear();
+        if (data.artifacts && data.artifacts.length > 0) {
+          data.artifacts.forEach(art => knownArtifacts.set(art.name, art));
+          updateArtifactsUI(data.artifacts.length);
+          const artSection = document.createElement('div');
+          artSection.className = 'chat-artifacts-section';
+          artSection.setAttribute('role', 'region');
+          artSection.setAttribute('aria-label', 'مستندات وخطط المحادثة (Artifacts)');
+          artSection.style.cssText = 'margin:12px 0; display:flex; flex-direction:column; gap:8px;';
+          data.artifacts.forEach(art => {
+            artSection.appendChild(createArtifactCard(art));
+          });
+          aiChatFeed.appendChild(artSection);
+        } else {
+          updateArtifactsUI(0);
+        }
+
         aiChatFeed.scrollTop = aiChatFeed.scrollHeight;
         if (conversationsDialog) conversationsDialog.close();
         playSuccessChime();
@@ -5482,16 +5500,93 @@ await window.mainV1.ready;
         const data = await res.json();
         const allMessages = data.messages || [];
 
+        // Live sync artifacts in background polling
+        if (data.artifacts && Array.isArray(data.artifacts)) {
+          let hasNewArt = false;
+          data.artifacts.forEach(art => {
+            if (!knownArtifacts.has(art.name)) {
+              knownArtifacts.set(art.name, art);
+              hasNewArt = true;
+            }
+          });
+          updateArtifactsUI(knownArtifacts.size);
+          if (hasNewArt) {
+            let sec = aiChatFeed.querySelector('.chat-artifacts-section');
+            if (!sec) {
+              sec = document.createElement('div');
+              sec.className = 'chat-artifacts-section';
+              sec.setAttribute('role', 'region');
+              sec.setAttribute('aria-label', 'مستندات وخطط المحادثة (Artifacts)');
+              sec.style.cssText = 'margin:12px 0; display:flex; flex-direction:column; gap:8px;';
+              aiChatFeed.appendChild(sec);
+            }
+            data.artifacts.forEach(art => {
+              if (!sec.querySelector(`[aria-label="مستند: ${art.name}"]`)) {
+                sec.appendChild(createArtifactCard(art));
+              }
+            });
+          }
+        }
+
         const textAgentMsgs = allMessages.filter(m => m.role === 'agent' && ((m.text && m.text.trim()) || m.thinking));
         if (textAgentMsgs.length === 0) return;
 
         // Pair the last live feed card with its ID from server if it hasn't been tagged yet
         const lastFeedCard = aiChatFeed.querySelector('.chat-message.ai-message:last-child');
-        if (lastFeedCard && !lastFeedCard.getAttribute('data-msg-id')) {
+        if (lastFeedCard) {
           const lastMsg = textAgentMsgs[textAgentMsgs.length - 1];
           if (lastMsg && lastMsg.id) {
             lastFeedCard.setAttribute('data-msg-id', lastMsg.id);
             if (lastMsg.time) lastFeedCard.setAttribute('data-msg-time', lastMsg.time);
+          }
+          if (lastMsg && lastMsg.thinking && !lastFeedCard.querySelector('.thinking-accordion')) {
+            const tAccordion = document.createElement('div');
+            tAccordion.className = 'thinking-accordion';
+            tAccordion.setAttribute('role', 'region');
+            tAccordion.setAttribute('aria-label', 'تحليل وتفكير الوكيل الداخلي');
+            tAccordion.innerHTML = `
+              <button type="button" class="thinking-header" aria-expanded="false" aria-label="تفكير واستدلال الوكيل (مغلق، اضغط للعرض)">
+                <div class="thinking-title-wrapper">
+                  <span aria-hidden="true">🧠</span>
+                  <span>تفكير واستدلال الوكيل</span>
+                  <span class="thinking-badge">${lastMsg.thinking.length} حرف</span>
+                </div>
+                <span class="thinking-toggle-icon" aria-hidden="true">▼</span>
+              </button>
+              <div class="thinking-body" hidden dir="auto">${renderMarkdown(lastMsg.thinking)}</div>
+              <div class="thinking-footer" hidden>
+                <button type="button" class="btn-close-thinking" aria-label="إغلاق صندوق التفكير">✕ إغلاق صندوق التفكير (Esc)</button>
+              </div>
+            `;
+            const header = lastFeedCard.querySelector('.msg-header');
+            if (header && header.nextSibling) {
+              lastFeedCard.insertBefore(tAccordion, header.nextSibling);
+            } else {
+              lastFeedCard.appendChild(tAccordion);
+            }
+            const tHeader = tAccordion.querySelector('.thinking-header');
+            const tBody = tAccordion.querySelector('.thinking-body');
+            const tFooter = tAccordion.querySelector('.thinking-footer');
+            const tClose = tAccordion.querySelector('.btn-close-thinking');
+            const tIcon = tAccordion.querySelector('.thinking-toggle-icon');
+            const doToggle = (open) => {
+              const willOpen = (typeof open === 'boolean') ? open : (tHeader.getAttribute('aria-expanded') !== 'true');
+              tHeader.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+              if (tIcon) tIcon.textContent = willOpen ? '▲' : '▼';
+              if (willOpen) {
+                tBody.removeAttribute('hidden');
+                if (tFooter) tFooter.removeAttribute('hidden');
+                announce('تم فتح صندوق تفكير واستدلال الوكيل');
+              } else {
+                tBody.setAttribute('hidden', '');
+                if (tFooter) tFooter.setAttribute('hidden', '');
+                announce('تم إغلاق صندوق تفكير الوكيل');
+                tHeader.focus();
+              }
+            };
+            tHeader.addEventListener('click', () => doToggle());
+            tHeader.addEventListener('keydown', (e) => { if (e.key === 'Escape') doToggle(false); });
+            if (tClose) tClose.addEventListener('click', () => doToggle(false));
           }
         }
 

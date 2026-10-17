@@ -399,8 +399,70 @@ class Sessions:
         except CLIUnavailable:
             await terminate_process(process)
 
+    async def poll_transcript(self, session, run):
+        sent_thinking = set()
+        last_line = 0
+        brain_dir = Path.home() / ".gemini" / "antigravity-cli" / "brain"
+        while run["state"] == "running":
+            conv_id = session.get("conversation_id")
+            if conv_id:
+                t_file = brain_dir / conv_id / ".system_generated" / "logs" / "transcript.jsonl"
+                if t_file.exists():
+                    try:
+                        lines = t_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+                        if len(lines) > last_line:
+                            for idx in range(last_line, len(lines)):
+                                raw = lines[idx].strip()
+                                if not raw:
+                                    continue
+                                try:
+                                    entry = json.loads(raw)
+                                    etype = entry.get("type")
+                                    if etype == "PLANNER_RESPONSE":
+                                        th = entry.get("thinking", "")
+                                        if th and th not in sent_thinking:
+                                            sent_thinking.add(th)
+                                            self.emit(run, "thought", {"text": th})
+                                        for tc in (entry.get("tool_calls") or []):
+                                            t_name = tc.get("name") or ""
+                                            if t_name in ("write_to_file", "write"):
+                                                t_args = tc.get("args") or {}
+                                                if isinstance(t_args, str):
+                                                    try:
+                                                        t_args = json.loads(t_args)
+                                                    except Exception:
+                                                        pass
+                                                t_file_path = t_args.get("TargetFile") or t_args.get("target_file") or ""
+                                                if "brain" in str(t_file_path):
+                                                    art_name = Path(t_file_path).name
+                                                    meta = t_args.get("ArtifactMetadata") or {}
+                                                    if isinstance(meta, str):
+                                                        try:
+                                                            meta = json.loads(meta)
+                                                        except Exception:
+                                                            pass
+                                                    art_summary = (
+                                                        meta.get("Summary")
+                                                        or meta.get("summary")
+                                                        or t_args.get("Description", "")
+                                                    )
+                                                    self.emit(run, "artifact", {
+                                                        "name": art_name,
+                                                        "path": str(t_file_path),
+                                                        "summary": art_summary,
+                                                        "requestFeedback": bool(meta.get("RequestFeedback") or meta.get("requestFeedback", False)),
+                                                        "userFacing": bool(meta.get("UserFacing", True) if "UserFacing" in meta else meta.get("userFacing", True)),
+                                                    })
+                                except Exception:
+                                    pass
+                            last_line = len(lines)
+                    except Exception:
+                        pass
+            await asyncio.sleep(0.5)
+
     async def execute(self, session, run):
         process = None
+        poll_task = None
         try:
             process = await self.process(session)
             prompt = {
@@ -413,6 +475,7 @@ class Sessions:
                 (json.dumps(prompt, ensure_ascii=False) + "\n").encode("utf-8")
             )
             await process.stdin.drain()
+            poll_task = asyncio.create_task(self.poll_transcript(session, run))
             while run["state"] == "running":
                 line = await asyncio.wait_for(process.stdout.readline(), 3600)
                 if not line:
@@ -423,6 +486,8 @@ class Sessions:
                     session, run, json.loads(line.decode("utf-8-sig"))
                 )
         except asyncio.CancelledError:
+            if poll_task:
+                poll_task.cancel()
             if process:
                 await terminate_process(process)
             if run["state"] == "running":
@@ -439,9 +504,14 @@ class Sessions:
             ValueError,
             asyncio.TimeoutError,
         ) as failure:
+            if poll_task:
+                poll_task.cancel()
             if process:
                 await terminate_process(process)
             self.finish(session, run, "failed", safe_failure(failure))
+        finally:
+            if poll_task and not poll_task.done():
+                poll_task.cancel()
 
     def consume(self, session, run, event):
         if not isinstance(event, dict):
