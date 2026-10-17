@@ -735,9 +735,6 @@ await window.mainV1.ready;
     const artifactViewerTitle = document.getElementById('artifact-viewer-title');
     const artifactViewerSummary = document.getElementById('artifact-viewer-summary');
     const artifactViewerContent = document.getElementById('artifact-viewer-content');
-    const artifactViewerRaw = document.getElementById('artifact-viewer-raw');
-    const tabArtFormatted = document.getElementById('tab-art-formatted');
-    const tabArtRaw = document.getElementById('tab-art-raw');
     const btnDownloadArtifact = document.getElementById('btn-download-artifact');
     const btnCopyArtifactContent = document.getElementById('btn-copy-artifact-content');
     const btnViewerProceed = document.getElementById('btn-viewer-proceed');
@@ -3259,38 +3256,35 @@ await window.mainV1.ready;
       }
     }
 
-    async function openArtifactViewer(artName, artPath, artSummary, requestFeedback) {
+    async function openArtifactViewer(artName, artPath, artSummary, requestFeedback, artConversationId) {
       if (!artifactViewerDialog) return;
-      currentViewerArtifact = { name: artName, path: artPath, summary: artSummary, requestFeedback: requestFeedback };
+      currentViewerArtifact = {
+        name: artName,
+        path: artPath,
+        summary: artSummary,
+        requestFeedback: requestFeedback,
+        conversation_id: artConversationId
+      };
       if (artifactViewerTitle) artifactViewerTitle.textContent = `📄 ${artName}`;
       if (artifactViewerSummary) artifactViewerSummary.textContent = artSummary || '';
-      if (tabArtFormatted) {
-        tabArtFormatted.classList.add('active');
-        tabArtFormatted.setAttribute('aria-selected', 'true');
-      }
-      if (tabArtRaw) {
-        tabArtRaw.classList.remove('active');
-        tabArtRaw.setAttribute('aria-selected', 'false');
-      }
       if (artifactViewerContent) {
-        artifactViewerContent.style.display = 'block';
         artifactViewerContent.innerHTML = '<p>⏳ جاري تحميل محتوى المستند...</p>';
-      }
-      if (artifactViewerRaw) {
-        artifactViewerRaw.style.display = 'none';
-        artifactViewerRaw.textContent = '';
       }
 
       if (btnViewerProceed) {
-        btnViewerProceed.style.display = requestFeedback ? 'inline-block' : 'none';
+        btnViewerProceed.style.display = requestFeedback ? 'inline-flex' : 'none';
       }
 
       artifactViewerDialog.showModal();
       announce(`تم فتح مستند: ${artName}`);
 
       try {
-        const cid = currentActiveConversationId || '';
-        const url = `/api/ai/artifacts/content?conversation_id=${encodeURIComponent(cid)}&name=${encodeURIComponent(artName)}`;
+        const cid = artConversationId || currentActiveConversationId || '';
+        const params = new URLSearchParams();
+        if (artName) params.set('name', artName);
+        if (cid) params.set('conversation_id', cid);
+        if (artPath) params.set('path', artPath);
+        const url = `/api/ai/artifacts/content?` + params.toString();
         const res = await (window.mainV1Fetch ? window.mainV1Fetch(url) : fetch(url));
         if (!res.ok) throw new Error(`رمز الخطأ ${res.status}`);
         const data = await res.json();
@@ -3298,9 +3292,9 @@ await window.mainV1.ready;
         currentViewerArtifact.content = rawContent;
         if (artifactViewerContent) {
           artifactViewerContent.innerHTML = renderMarkdown(rawContent);
-        }
-        if (artifactViewerRaw) {
-          artifactViewerRaw.textContent = rawContent;
+          setTimeout(() => {
+            artifactViewerContent.focus();
+          }, 50);
         }
       } catch (err) {
         if (artifactViewerContent) {
@@ -3348,7 +3342,7 @@ await window.mainV1.ready;
       const btnView = card.querySelector('.btn-view-art');
       if (btnView) {
         btnView.addEventListener('click', () => {
-          openArtifactViewer(art.name, art.path, art.summary, art.requestFeedback);
+          openArtifactViewer(art.name, art.path, art.summary, art.requestFeedback, art.conversation_id);
         });
       }
 
@@ -3356,8 +3350,12 @@ await window.mainV1.ready;
       if (btnCopy) {
         btnCopy.addEventListener('click', async () => {
           try {
-            const cid = currentActiveConversationId || '';
-            const res = await (window.mainV1Fetch ? window.mainV1Fetch(`/api/ai/artifacts/content?conversation_id=${encodeURIComponent(cid)}&name=${encodeURIComponent(art.name)}`) : fetch(`/api/ai/artifacts/content?conversation_id=${encodeURIComponent(cid)}&name=${encodeURIComponent(art.name)}`));
+            const cid = art.conversation_id || currentActiveConversationId || '';
+            const params = new URLSearchParams();
+            if (art.name) params.set('name', art.name);
+            if (cid) params.set('conversation_id', cid);
+            if (art.path) params.set('path', art.path);
+            const res = await (window.mainV1Fetch ? window.mainV1Fetch(`/api/ai/artifacts/content?` + params.toString()) : fetch(`/api/ai/artifacts/content?` + params.toString()));
             if (!res.ok) throw new Error('فشل جلب النص');
             const data = await res.json();
             if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -3374,12 +3372,9 @@ await window.mainV1.ready;
       const btnProceed = card.querySelector('.btn-proceed-art');
       if (btnProceed) {
         btnProceed.addEventListener('click', () => {
-          if (aiInput) {
-            aiInput.value = 'موافق، تابع التنفيذ وفقاً للخطة الموضوعة.';
-            aiInput.focus();
-            announce('تم تعيين الموافقة والمتابعة في حقل الإدخال');
-            if (btnAiSend) btnAiSend.focus();
-          }
+          playBeep(880, 0.1);
+          announce('تمت الموافقة، جارٍ بدء تنفيذ الخطة وفقاً للتوثيق...');
+          sendAiPrompt('موافق، تابع التنفيذ وفقاً للخطة الموضوعة.');
         });
       }
 
@@ -3425,7 +3420,7 @@ await window.mainV1.ready;
           if (vBtn) {
             vBtn.addEventListener('click', () => {
               if (artifactsDialog) artifactsDialog.close();
-              openArtifactViewer(art.name, art.path, art.summary, art.requestFeedback);
+              openArtifactViewer(art.name, art.path, art.summary, art.requestFeedback, art.conversation_id);
             });
           }
           artifactsListContainer.appendChild(item);
@@ -3480,32 +3475,9 @@ await window.mainV1.ready;
     if (btnViewerProceed) {
       btnViewerProceed.addEventListener('click', () => {
         if (artifactViewerDialog) artifactViewerDialog.close();
-        if (aiInput) {
-          aiInput.value = 'موافق، تابع التنفيذ وفقاً للخطة الموضوعة.';
-          aiInput.focus();
-          announce('تم تعيين الموافقة والمتابعة في حقل الإدخال');
-          if (btnAiSend) btnAiSend.focus();
-        }
-      });
-    }
-    if (tabArtFormatted && tabArtRaw) {
-      tabArtFormatted.addEventListener('click', () => {
-        tabArtFormatted.classList.add('active');
-        tabArtFormatted.setAttribute('aria-selected', 'true');
-        tabArtRaw.classList.remove('active');
-        tabArtRaw.setAttribute('aria-selected', 'false');
-        if (artifactViewerContent) artifactViewerContent.style.display = 'block';
-        if (artifactViewerRaw) artifactViewerRaw.style.display = 'none';
-        announce('تم التبديل إلى العرض المنسق للمستند');
-      });
-      tabArtRaw.addEventListener('click', () => {
-        tabArtRaw.classList.add('active');
-        tabArtRaw.setAttribute('aria-selected', 'true');
-        tabArtFormatted.classList.remove('active');
-        tabArtFormatted.setAttribute('aria-selected', 'false');
-        if (artifactViewerContent) artifactViewerContent.style.display = 'none';
-        if (artifactViewerRaw) artifactViewerRaw.style.display = 'block';
-        announce('تم التبديل إلى الكود المصدري للمستند');
+        playBeep(880, 0.1);
+        announce('تمت الموافقة، جارٍ بدء تنفيذ الخطة وفقاً للتوثيق...');
+        sendAiPrompt('موافق، تابع التنفيذ وفقاً للخطة الموضوعة.');
       });
     }
     if (btnDownloadArtifact) {

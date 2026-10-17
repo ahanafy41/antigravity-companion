@@ -828,6 +828,7 @@ async def list_artifacts(request):
                         st = doc_path.stat()
                         artifacts.append({
                             "name": base_name,
+                            "conversation_id": clean_cid,
                             "summary": mdata.get("summary", "") or mdata.get("Summary", ""),
                             "requestFeedback": bool(
                                 mdata.get("requestFeedback", False)
@@ -852,15 +853,64 @@ async def list_artifacts(request):
 
 
 async def read_artifact(request):
-    cid = request.query.get("conversation_id", "")
-    name = request.query.get("name", "")
-    if not cid or not name:
-        return error("invalid_request", "Missing conversation_id or name", 400)
-    clean_cid = Path(cid).name
+    cid = request.query.get("conversation_id", "").strip()
+    name = request.query.get("name", "").strip()
+    req_path = request.query.get("path", "").strip()
+
+    # 1. If direct path is provided, validate it resides within BRAIN_DIR
+    if req_path:
+        try:
+            resolved_p = Path(req_path).resolve()
+            if BRAIN_DIR.resolve() in resolved_p.parents and resolved_p.is_file():
+                content = resolved_p.read_text(encoding="utf-8", errors="ignore")
+                return web.json_response({
+                    "status": "ok",
+                    "conversation_id": resolved_p.parent.name,
+                    "name": resolved_p.name,
+                    "path": str(resolved_p),
+                    "content": content,
+                })
+        except Exception:
+            pass
+
+    if not name and req_path:
+        name = Path(req_path).name
+
+    if not name:
+        return error("invalid_request", "Missing artifact name or path", 400)
+
     clean_name = Path(name).name
+
+    # 2. If cid is missing, check active sessions
+    if not cid:
+        sessions = request.app.get("sessions")
+        if sessions:
+            for sess in sessions.sessions.values():
+                c = sess.get("conversation_id")
+                if c and (BRAIN_DIR / Path(c).name / clean_name).is_file():
+                    cid = c
+                    break
+
+    # 3. If still missing cid, find which conversation in BRAIN_DIR has this artifact
+    if not cid and BRAIN_DIR.is_dir():
+        try:
+            for d in sorted(BRAIN_DIR.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+                if d.is_dir() and not d.name.startswith("."):
+                    candidate = d / clean_name
+                    if candidate.is_file():
+                        cid = d.name
+                        break
+        except Exception:
+            pass
+
+    if not cid:
+        return error("not_found", f"Artifact {clean_name} not found in any conversation", 404)
+
+    clean_cid = Path(cid).name
     doc_path = BRAIN_DIR / clean_cid / clean_name
     if not doc_path.is_file():
         return error("not_found", f"Artifact {clean_name} not found", 404)
+
     content = doc_path.read_text(encoding="utf-8", errors="ignore")
     return web.json_response({
         "status": "ok",

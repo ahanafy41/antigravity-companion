@@ -1271,23 +1271,7 @@ button:focus-visible, input:focus-visible, a:focus-visible {
   accent-color: var(--accent-cyan);
 }
 
-/* Artifact Viewer Tabs */
-.artifact-view-tabs .btn-tab {
-  background: var(--bg-card);
-  border: 1px solid var(--border-main);
-  color: var(--text-muted);
-  border-radius: 6px;
-  padding: 4px 12px;
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-.artifact-view-tabs .btn-tab.active,
-.artifact-view-tabs .btn-tab[aria-selected="true"] {
-  background: var(--accent-purple);
-  color: #ffffff;
-  border-color: var(--accent-purple);
-  font-weight: 700;
-}
+
 
 
 

@@ -582,8 +582,17 @@
         const report = await request('/quota' + (query.get('refresh') === '1' ? '?refresh=1' : ''));
         return {...report, quotas: report.quotas.map(quota => ({...quota, pct: quota.remaining_percent + '%', pct_val: quota.remaining_percent}))};
       }
-      case 'ai/artifacts': return request('/artifacts' + (query.get('conversation_id') ? '?conversation_id=' + encode(query.get('conversation_id')) : ''));
-      case 'ai/artifacts/content': return request('/artifacts/content?conversation_id=' + encode(query.get('conversation_id')) + '&name=' + encode(query.get('name')));
+      case 'ai/artifacts': {
+        const q = query.get('conversation_id');
+        return request('/artifacts' + (q ? '?conversation_id=' + encode(q) : ''));
+      }
+      case 'ai/artifacts/content': {
+        const params = [];
+        if (query.get('name')) params.push('name=' + encode(query.get('name')));
+        if (query.get('conversation_id')) params.push('conversation_id=' + encode(query.get('conversation_id')));
+        if (query.get('path')) params.push('path=' + encode(query.get('path')));
+        return request('/artifacts/content?' + params.join('&'));
+      }
       case 'ai/tasks': return tasks();
       case 'ai/tasks/manage':
         if (body.action === 'delete') unsupported('سجل الأدوار محفوظ؛ لا يتيح API حذفه.');
@@ -684,14 +693,14 @@
   if (typeof caches !== 'undefined' && 'keys' in caches) {
     caches.keys().then(keys => {
       keys.forEach(key => {
-        if (key.startsWith('antigravity-static-') && key !== 'antigravity-static-v1.3.7-gfm-perf') {
+        if (key.startsWith('antigravity-static-') && key !== 'antigravity-static-v1.3.8-gfm-artifacts') {
           caches.delete(key);
         }
       });
     }).catch(report);
   }
   if (!bundled && 'serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js?v=1.3.7').then(reg => {
+    navigator.serviceWorker.register('/sw.js?v=1.3.8').then(reg => {
       reg.update().catch(report);
     }).catch(report);
   }
