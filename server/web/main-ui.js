@@ -7,6 +7,16 @@ await window.mainV1.ready;
     // Dynamic commands list populated live from Antigravity API
     window.WELL_KNOWN_SLASH_COMMANDS = [];
 
+    // Pre-seeded Fast-Boot Model Catalog
+    window._cachedModels = window._cachedModels || [
+      { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash (High)' },
+      { id: 'gemini-3.8-flash-medium', name: 'Gemini 3.8 Flash (Medium)' },
+      { id: 'gemini-3.8-flash-low', name: 'Gemini 3.8 Flash (Low)' },
+      { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6 (Thinking)' },
+      { id: 'claude-opus-4-6-thinking', name: 'Claude Opus 4.6 (Thinking)' },
+      { id: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B (Medium)' }
+    ];
+
     async function syncDynamicSlashCommandsGlobally() {
       try {
         const res = await window.mainV1Fetch('/api/ai/commands');
@@ -1091,8 +1101,17 @@ await window.mainV1.ready;
       return outputHtml.join('');
     }
 
-    // Global copy handlers
+    // Global copy handlers & file link interceptor
     document.addEventListener('click', (e) => {
+      const fileLink = e.target.closest('a[href^="file://"], a[href*="/brain/"]');
+      if (fileLink) {
+        e.preventDefault();
+        const rawHref = fileLink.getAttribute('href') || '';
+        const cleanPath = rawHref.replace(/^file:\/\//, '').replace(/^["']|["']$/g, '');
+        const cleanName = cleanPath.split('/').pop().replace(/^["']|["']$/g, '');
+        openArtifactViewer(cleanName, cleanPath, '', false, currentActiveConversationId || '');
+        return;
+      }
       const copyCodeBtn = e.target.closest('.btn-copy-code');
       if (copyCodeBtn) {
         const code = decodeURIComponent(copyCodeBtn.getAttribute('data-code') || '');
@@ -2385,7 +2404,12 @@ await window.mainV1.ready;
           if (!settingsRes?.ok) throw new Error('تعذر جلب الإعدادات');
           const raw = await settingsRes.json();
           if (generation !== this.remoteGeneration) return false;
-          if (catalogs[0].status === 'fulfilled') this.models = catalogs[0].value;
+          if (catalogs[0].status === 'fulfilled') {
+            this.models = catalogs[0].value;
+            if (Array.isArray(catalogs[0].value) && catalogs[0].value.length > 0) {
+              window._cachedModels = catalogs[0].value;
+            }
+          }
           if (catalogs[1].status === 'fulfilled') this.agents = catalogs[1].value;
           const normalized = this.normalizeSettings(raw);
           if (discardDraft) this.dirtyFields.clear();
@@ -3316,6 +3340,9 @@ await window.mainV1.ready;
 
     async function openArtifactViewer(artName, artPath, artSummary, requestFeedback, artConversationId) {
       if (!artifactViewerDialog) return;
+      artName = (artName || '').trim().replace(/^["']|["']$/g, '');
+      artPath = (artPath || '').trim().replace(/^["']|["']$/g, '');
+      artConversationId = (artConversationId || '').trim().replace(/^["']|["']$/g, '');
       currentViewerArtifact = {
         name: artName,
         path: artPath,
@@ -3771,6 +3798,9 @@ await window.mainV1.ready;
           if (btnHeaderAuth) btnHeaderAuth.setAttribute('aria-label', 'إدارة حساب agy في الطرفية الأصلية');
         } else if (auth.logged_in && auth.is_valid) {
           const emailDisplay = auth.email ? auth.email.split('@')[0] : 'متصل';
+          try {
+            if (auth.email) localStorage.setItem('antigravity_user_email', auth.email);
+          } catch(e){}
           if (headerAuthBadge) headerAuthBadge.textContent = '👤 ' + emailDisplay;
           if (drawerAuthBadge) {
             drawerAuthBadge.textContent = 'متصل (' + (auth.email || '') + ')';
@@ -3789,6 +3819,9 @@ await window.mainV1.ready;
             btnHeaderAuth.setAttribute('aria-label', 'جلسة الحساب منتهية الصلاحية، اضغط لتجديد تسجيل الدخول');
           }
         } else {
+          try {
+            localStorage.removeItem('antigravity_user_email');
+          } catch(e){}
           if (headerAuthBadge) headerAuthBadge.textContent = 'تسجيل الدخول';
           if (drawerAuthBadge) {
             drawerAuthBadge.textContent = 'غير مسجل';
@@ -5232,10 +5265,16 @@ await window.mainV1.ready;
       if (btnHModel) {
         btnHModel.setAttribute('aria-label', `النموذج النشط حالياً: ${displayName}. اضغط لتغيير النموذج`);
       }
-
-
+      try {
+        localStorage.setItem('antigravity_active_model', displayName);
+        localStorage.setItem('antigravity_active_model_id', modelName);
+      } catch(e){}
     }
     window.syncActiveModelDisplay = syncActiveModelDisplay;
+    try {
+      const initialModel = localStorage.getItem('antigravity_active_model_id') || localStorage.getItem('antigravity_active_model') || 'gemini-3.8-flash-medium';
+      syncActiveModelDisplay(initialModel);
+    } catch(e){}
 
     function syncReasoningEffortDisplay(effort) {
       if (!effort) return;
@@ -5337,24 +5376,32 @@ await window.mainV1.ready;
       }
       modelPickerDialog.showModal();
       announce('تم فتح قائمة اختيار نماذج الذكاء الاصطناعي');
-      if (modelPickerList) {
-        modelPickerList.innerHTML = '<div class="main-style-234">⏳ جارٍ جلب النماذج المتاحة من سيرفرات جوجل...</div>';
+
+      // Instant Cache-First Render
+      const currentActive = window._currentActiveModel || localStorage.getItem('antigravity_active_model_id') || 'gemini-3.8-flash-medium';
+      if (Array.isArray(window._cachedModels) && window._cachedModels.length > 0) {
+        renderModelPickerItems(window._cachedModels, currentActive);
+      } else if (modelPickerList) {
+        modelPickerList.innerHTML = '<div class="main-style-234">⏳ جارٍ جلب النماذج المتاحة...</div>';
       }
+
       try {
         const [modelsRes, settingsRes] = await Promise.all([
           window.mainV1Fetch('/api/ai/models'),
           window.mainV1Fetch('/api/ai/settings')
         ]);
-        const models = modelsRes.ok ? await modelsRes.json() : [];
-        window._cachedModels = models;
+        const models = modelsRes.ok ? await modelsRes.json() : (window._cachedModels || []);
+        if (Array.isArray(models) && models.length > 0) window._cachedModels = models;
         const currentSettings = settingsRes.ok ? await settingsRes.json() : {};
-        const activeModel = currentSettings.model || 'gemini-3.8-flash-medium';
-        renderModelPickerItems(models, activeModel);
+        const activeModel = currentSettings.model || currentActive;
+        renderModelPickerItems(window._cachedModels, activeModel);
       } catch (err) {
-        if (modelPickerList) {
-          modelPickerList.innerHTML = '<div class="main-style-235">تعذر جلب النماذج الحية. تأكد من اتصال السيرفر.</div>';
+        if (!window._cachedModels || window._cachedModels.length === 0) {
+          if (modelPickerList) {
+            modelPickerList.innerHTML = '<div class="main-style-235">تعذر جلب النماذج الحية. تأكد من اتصال السيرفر.</div>';
+          }
+          announce('تعذر تحميل النماذج من السيرفر');
         }
-        announce('تعذر تحميل النماذج من السيرفر');
       }
     }
     window.openModelPicker = openModelPicker;

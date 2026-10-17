@@ -11,6 +11,9 @@ NAME = re.compile(r"[\w.-]{1,128}")
 AUTH_TOKEN_FILE = Path.home() / ".gemini" / "antigravity-cli" / "antigravity-oauth-token"
 
 
+_OAUTH_CACHE = {"mtime": 0, "info": None}
+
+
 def get_oauth_token_info():
     if not AUTH_TOKEN_FILE.exists():
         return {
@@ -21,6 +24,10 @@ def get_oauth_token_info():
             "token_present": False,
         }
     try:
+        mtime = AUTH_TOKEN_FILE.stat().st_mtime
+        if _OAUTH_CACHE["info"] is not None and _OAUTH_CACHE["mtime"] == mtime:
+            return dict(_OAUTH_CACHE["info"])
+
         data = json.loads(AUTH_TOKEN_FILE.read_text(encoding="utf-8"))
         tok = data.get("token", {}) if isinstance(data, dict) else {}
         access_tok = tok.get("access_token", "")
@@ -50,7 +57,7 @@ def get_oauth_token_info():
         else:
             is_valid = bool(access_tok)
 
-        return {
+        info = {
             "logged_in": bool(email or access_tok),
             "email": email,
             "expiry": expiry_str,
@@ -58,6 +65,9 @@ def get_oauth_token_info():
             "token_present": True,
             "has_refresh": bool(refresh_tok),
         }
+        _OAUTH_CACHE["mtime"] = mtime
+        _OAUTH_CACHE["info"] = info
+        return dict(info)
     except Exception:
         return {
             "logged_in": False,

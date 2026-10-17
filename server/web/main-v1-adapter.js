@@ -485,7 +485,14 @@
     if (event.event === 'state' && payload.conversation_id) return {type: 'init', conversation_id: payload.conversation_id};
     if (event.event === 'delta') return {type: 'chunk', text: payload.text_delta};
     if (event.event === 'thought') return {type: 'thought', text: payload.text || payload.thought || ''};
-    if (event.event === 'artifact') return {type: 'artifact', name: payload.name, path: payload.path, summary: payload.summary, requestFeedback: payload.requestFeedback, userFacing: payload.userFacing};
+    if (event.event === 'artifact') return {
+      type: 'artifact',
+      name: (payload.name || '').replace(/^["']|["']$/g, ''),
+      path: (payload.path || '').replace(/^["']|["']$/g, ''),
+      summary: payload.summary,
+      requestFeedback: payload.requestFeedback,
+      userFacing: payload.userFacing
+    };
     if (event.event === 'tool') {
       const toolInfo = payload.tool_info || payload;
       const toolName = payload.tool_name || payload.name || payload.tool || toolInfo.tool_name || toolInfo.name || toolInfo.tool || 'command';
@@ -648,9 +655,12 @@
       }
       case 'ai/artifacts/content': {
         const params = [];
-        if (query.get('name')) params.push('name=' + encode(query.get('name')));
-        if (query.get('conversation_id')) params.push('conversation_id=' + encode(query.get('conversation_id')));
-        if (query.get('path')) params.push('path=' + encode(query.get('path')));
+        const n = (query.get('name') || '').replace(/^["']|["']$/g, '');
+        const c = (query.get('conversation_id') || '').replace(/^["']|["']$/g, '');
+        const p = (query.get('path') || '').replace(/^["']|["']$/g, '');
+        if (n) params.push('name=' + encode(n));
+        if (c) params.push('conversation_id=' + encode(c));
+        if (p) params.push('path=' + encode(p));
         return request('/artifacts/content?' + params.join('&'));
       }
       case 'ai/tasks': return tasks();

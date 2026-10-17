@@ -432,9 +432,9 @@ class Sessions:
                                                         t_args = json.loads(t_args)
                                                     except Exception:
                                                         pass
-                                                t_file_path = t_args.get("TargetFile") or t_args.get("target_file") or ""
+                                                t_file_path = str(t_args.get("TargetFile") or t_args.get("target_file") or "").strip().strip('"').strip("'")
                                                 if "brain" in str(t_file_path):
-                                                    art_name = Path(t_file_path).name
+                                                    art_name = Path(t_file_path).name.strip().strip('"').strip("'")
                                                     meta = t_args.get("ArtifactMetadata") or {}
                                                     if isinstance(meta, str):
                                                         try:
@@ -554,9 +554,9 @@ class Sessions:
             self.emit(run, "tool", redact(step))
             tool_name = step.get("tool_name") or step.get("tool") or ""
             args = step.get("parameters") or step.get("args") or {}
-            target = args.get("TargetFile") or args.get("target_file") or ""
+            target = str(args.get("TargetFile") or args.get("target_file") or "").strip().strip('"').strip("'")
             if "brain" in str(target) and tool_name in ("write_to_file", "write"):
-                art_name = Path(target).name
+                art_name = Path(target).name.strip().strip('"').strip("'")
                 meta = args.get("ArtifactMetadata") or {}
                 self.emit(run, "artifact", {
                     "name": art_name,

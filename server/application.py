@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import re
 import secrets
+import time
 from pathlib import Path
 from aiohttp import web
 from android_client import AndroidClient
@@ -100,6 +101,9 @@ def create_app(data_dir, port=7681):
     )
     application["visibility"] = {}
     application["legacy"] = LegacyConversations(Path.home())
+    application["catalog_cache"] = {
+        ("models", None): (list(DEFAULT_MODELS_CATALOG), time.time())
+    }
     application.on_startup.append(start_local_tasks)
     application.on_cleanup.append(close_app)
     application.on_response_prepare.append(response_headers)
@@ -885,9 +889,9 @@ async def list_artifacts(request):
 
 
 async def read_artifact(request):
-    cid = request.query.get("conversation_id", "").strip()
-    name = request.query.get("name", "").strip()
-    req_path = request.query.get("path", "").strip()
+    cid = request.query.get("conversation_id", "").strip().strip('"').strip("'")
+    name = request.query.get("name", "").strip().strip('"').strip("'")
+    req_path = request.query.get("path", "").strip().strip('"').strip("'")
 
     # 1. If direct path is provided, validate it resides within BRAIN_DIR
     if req_path:
@@ -906,12 +910,12 @@ async def read_artifact(request):
             pass
 
     if not name and req_path:
-        name = Path(req_path).name
+        name = Path(req_path).name.strip().strip('"').strip("'")
 
     if not name:
         return error("invalid_request", "Missing artifact name or path", 400)
 
-    clean_name = Path(name).name
+    clean_name = Path(name).name.strip().strip('"').strip("'")
 
     # 2. If cid is missing, check active sessions
     if not cid:
@@ -992,6 +996,16 @@ async def create_directory(request):
     return web.json_response({"path": str(path)}, status=201)
 
 
+DEFAULT_MODELS_CATALOG = [
+    {"id": "gemini-3.8-flash-high", "name": "Gemini 3.8 Flash (High)"},
+    {"id": "gemini-3.8-flash-medium", "name": "Gemini 3.8 Flash (Medium)"},
+    {"id": "gemini-3.8-flash-low", "name": "Gemini 3.8 Flash (Low)"},
+    {"id": "claude-sonnet-4-6", "name": "Claude Sonnet 4.6 (Thinking)"},
+    {"id": "claude-opus-4-6-thinking", "name": "Claude Opus 4.6 (Thinking)"},
+    {"id": "gpt-oss-120b-medium", "name": "GPT-OSS 120B (Medium)"},
+]
+
+
 async def list_cli(request):
     kind = request.path.rsplit("/", 1)[-1]
     cwd = request.query.get("cwd")
@@ -1005,11 +1019,38 @@ async def list_cli(request):
                 )
             }
         )
-    entries = (
-        await request.app["cli"].listing(kind, cwd)
-        if cwd
-        else (await request.app["cli"].listing(kind))
-    )
+
+    cache = request.app.get("catalog_cache")
+    if cache is None:
+        cache = request.app["catalog_cache"] = {}
+    cache_key = (kind, str(cwd) if cwd else None)
+    now = time.time()
+    force_refresh = request.query.get("refresh") == "1"
+
+    if not force_refresh and cache_key in cache:
+        cached_data, cached_at = cache[cache_key]
+        if (now - cached_at) < 300:
+            return web.json_response(
+                {"servers" if kind == "mcp" else kind: redact(cached_data)}
+            )
+
+    try:
+        entries = (
+            await request.app["cli"].listing(kind, cwd)
+            if cwd
+            else (await request.app["cli"].listing(kind))
+        )
+    except Exception as exc:
+        if cache_key in cache:
+            entries = cache[cache_key][0]
+        elif kind == "models":
+            entries = list(DEFAULT_MODELS_CATALOG)
+        else:
+            raise exc
+
+    if entries:
+        cache[cache_key] = (entries, now)
+
     return web.json_response(
         {"servers" if kind == "mcp" else kind: redact(entries)}
     )

@@ -32,12 +32,30 @@
     <div class="header-actions" role="toolbar" aria-label="الإجراءات">
       <button type="button" id="btn-header-dashboard" class="btn" aria-label="لوحة التحكم وشاشة البدء" title="لوحة التحكم">الرئيسية</button>
       <button type="button" id="btn-header-auth" class="btn" aria-label="الحساب"><span id="header-auth-badge">الحساب</span></button>
-      <button type="button" id="btn-header-model" class="btn btn-header-model" aria-label="تغيير النموذج"><span id="header-active-model-name">لم يُختر نموذج</span></button>
+      <button type="button" id="btn-header-model" class="btn btn-header-model" aria-label="تغيير النموذج"><span id="header-active-model-name">Gemini 3.8 Flash</span></button>
       <button type="button" id="btn-header-artifacts" class="btn" style="display:none; align-items:center; gap:6px; border: 1px solid var(--accent-purple); color: var(--accent-purple);" aria-label="عرض مستندات وخطط المحادثة (الآرتيفاكت)" title="المستندات والخطط"><span aria-hidden="true">📄</span> المستندات <span id="header-artifacts-badge" style="background:var(--accent-purple); color:#fff; border-radius:10px; padding:1px 6px; font-size:0.75rem; font-weight:bold;">0</span></button>
       <button type="button" id="btn-new-ai-chat" class="btn btn-primary" aria-label="محادثة جديدة">جديد</button>
       <button type="button" id="btn-toggle-tones" class="btn main-style-2" aria-label="الأصوات">أصوات</button>
     </div>
   </header>
+  <script>
+    (function(){
+      try {
+        var m = localStorage.getItem('antigravity_active_model') || 'Gemini 3.8 Flash';
+        var hM = document.getElementById('header-active-model-name');
+        var dM = document.getElementById('drawer-active-model-name');
+        if (hM) hM.textContent = m;
+        if (dM) dM.textContent = m;
+        var u = localStorage.getItem('antigravity_user_email');
+        if (u) {
+          var hA = document.getElementById('header-auth-badge');
+          var dA = document.getElementById('drawer-auth-badge');
+          if (hA) hA.textContent = '👤 ' + u.split('@')[0];
+          if (dA) { dA.textContent = 'متصل (' + u + ')'; dA.style.color = '#10b981'; }
+        }
+      } catch(e){}
+    })();
+  </script>
 
 
   <div id="drawer-backdrop" class="drawer-backdrop" aria-hidden="true"></div>
@@ -53,11 +71,11 @@
     <div class="drawer-body" role="menu" aria-label="الخيارات">
       <button type="button" id="btn-drawer-change-model" class="drawer-btn" aria-label="النموذج والتفكير">
         <span>النموذج والتفكير</span>
-        <strong id="drawer-active-model-name" class="badge-count main-style-3">لم يُختر نموذج</strong>
+        <strong id="drawer-active-model-name" class="badge-count main-style-3">Gemini 3.8 Flash</strong>
       </button>
       <button type="button" id="btn-open-auth-wizard" class="drawer-btn" aria-label="حساب Google">
         <span>حساب Google</span>
-        <strong id="drawer-auth-badge" class="badge-count main-style-3">فحص...</strong>
+        <strong id="drawer-auth-badge" class="badge-count main-style-3">متصل</strong>
       </button>
       <button type="button" id="btn-open-settings" class="drawer-btn" aria-label="الإعدادات والأمان">
         <span>الإعدادات والأمان</span>
