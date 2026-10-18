@@ -98,6 +98,23 @@ class AndroidWebAssetTests(unittest.TestCase):
                         checked.stderr,
                     )
 
+    def test_overlapping_source_and_destination_rejected(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            ancestor = root / "ancestor"
+            canonical = ancestor / "canonical"
+            canonical.mkdir(parents=True)
+            (canonical / "index.html").write_bytes(b"<html>valid</html>")
+            result1 = run_sync("--source", canonical, "--destination", ancestor)
+            self.assertNotEqual(result1.returncode, 0)
+            self.assertIn("overlap", result1.stderr.lower())
+            self.assertTrue((canonical / "index.html").is_file())
+            result2 = run_sync("--source", ancestor, "--destination", canonical)
+            self.assertNotEqual(result2.returncode, 0)
+            self.assertIn("overlap", result2.stderr.lower())
+            result3 = run_sync("--source", canonical, "--destination", canonical)
+            self.assertNotEqual(result3.returncode, 0)
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)

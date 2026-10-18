@@ -341,7 +341,7 @@
     if (!sessionCreation) sessionCreation = (async () => {
       const stored = await settings();
       const options = context();
-      for (const key of ['model', 'agent', 'effort', 'mode', 'sandbox', 'project']) {
+      for (const key of ['model', 'agent', 'effort', 'mode', 'sandbox', 'project', 'autopilot', 'safe_mode']) {
         if (stored[key] !== undefined && stored[key] !== '') options[key] = stored[key];
       }
       if (payload.conversation_id) options.conversation_id = payload.conversation_id;

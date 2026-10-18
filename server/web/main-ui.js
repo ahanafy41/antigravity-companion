@@ -5290,6 +5290,13 @@ await window.mainV1.ready;
     try {
       const initialModel = localStorage.getItem('antigravity_active_model_id') || localStorage.getItem('antigravity_active_model') || 'gemini-3.8-flash-medium';
       syncActiveModelDisplay(initialModel);
+      const u = localStorage.getItem('antigravity_user_email');
+      if (u) {
+        const hA = document.getElementById('header-auth-badge');
+        const dA = document.getElementById('drawer-auth-badge');
+        if (hA) hA.textContent = '👤 ' + u.split('@')[0];
+        if (dA) { dA.textContent = 'متصل (' + u + ')'; dA.style.color = '#10b981'; }
+      }
     } catch(e){}
 
     function syncReasoningEffortDisplay(effort) {

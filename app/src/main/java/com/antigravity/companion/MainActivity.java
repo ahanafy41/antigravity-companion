@@ -110,15 +110,38 @@ public final class MainActivity extends AppCompatActivity {
         int generation = pageGeneration;
         connectionExecutor.execute(() -> {
             ServerConnection.Availability availability = server.probe();
-            final boolean proved = (availability == ServerConnection.Availability.MODERN);
+            boolean authenticated = false;
+            String authError = null;
+            if (availability == ServerConnection.Availability.MODERN) {
+                try {
+                    authenticated = server.authenticServer();
+                    if (authenticated) {
+                        server.bootstrapCookie();
+                    } else {
+                        authError = "الخادم لم يثبت الرمز السري الخاص";
+                    }
+                } catch (IOException error) {
+                    authenticated = false;
+                    authError = error.getMessage();
+                }
+            }
+            final boolean proved = authenticated;
+            final String failureReason = authError;
             runOnUiThread(() -> {
                 if (destroyed || generation != pageGeneration) return;
                 serverAvailable = availability != ServerConnection.Availability.OFFLINE;
                 serverConnected = proved;
                 refreshLegacyState();
-                if (proved) { BootReceiver.recovered(this); showStatus("الخادم متصل ومصادق"); }
-                else if (serverAvailable) showStatus("الخادم متصل");
-                else showStatus("تعذر اتصال الخادم؛ أعد تشغيله من لوحة التحكم");
+                if (proved) {
+                    BootReceiver.recovered(this);
+                    showStatus("الخادم متصل ومصادق");
+                } else if (failureReason != null) {
+                    showStatus("تعذر مصادقة الخادم: " + failureReason);
+                } else if (serverAvailable) {
+                    showStatus("الخادم متصل");
+                } else {
+                    showStatus("تعذر اتصال الخادم؛ أعد تشغيله من لوحة التحكم");
+                }
             });
         });
     }

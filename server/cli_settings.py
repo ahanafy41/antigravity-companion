@@ -177,7 +177,9 @@ class CLISettings:
         staged = None
         try:
             document, current_revision = self._document()
-            if revision is not None and str(revision).strip() and str(revision).strip() != current_revision:
+            if revision is None or not str(revision).strip():
+                raise StorageConflict("CLI settings revision is required")
+            if str(revision).strip() != current_revision:
                 raise StorageConflict("CLI settings revision conflict")
 
             for key in ("speech_enabled", "tones_enabled", "haptic_enabled", "sandbox", "allowNonWorkspaceAccess"):

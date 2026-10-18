@@ -38,24 +38,6 @@
       <button type="button" id="btn-toggle-tones" class="btn main-style-2" aria-label="الأصوات">أصوات</button>
     </div>
   </header>
-  <script>
-    (function(){
-      try {
-        var m = localStorage.getItem('antigravity_active_model') || 'Gemini 3.8 Flash';
-        var hM = document.getElementById('header-active-model-name');
-        var dM = document.getElementById('drawer-active-model-name');
-        if (hM) hM.textContent = m;
-        if (dM) dM.textContent = m;
-        var u = localStorage.getItem('antigravity_user_email');
-        if (u) {
-          var hA = document.getElementById('header-auth-badge');
-          var dA = document.getElementById('drawer-auth-badge');
-          if (hA) hA.textContent = '👤 ' + u.split('@')[0];
-          if (dA) { dA.textContent = 'متصل (' + u + ')'; dA.style.color = '#10b981'; }
-        }
-      } catch(e){}
-    })();
-  </script>
 
 
   <div id="drawer-backdrop" class="drawer-backdrop" aria-hidden="true"></div>

@@ -698,13 +698,28 @@ async def create_session(request):
     payload = await object_body(request)
     options = {
         key: payload[key]
-        for key in ("model", "agent", "effort", "mode", "sandbox", "project")
+        for key in (
+            "model",
+            "agent",
+            "effort",
+            "mode",
+            "sandbox",
+            "project",
+            "autopilot",
+            "safe_mode",
+        )
         if key in payload
     }
+    cli_doc, _ = request.app["cli_settings"]._document()
+    if "autopilot" not in options and "autopilot" in cli_doc:
+        options["autopilot"] = bool(cli_doc["autopilot"])
+    if "safe_mode" not in options and "safe_mode" in cli_doc:
+        options["safe_mode"] = bool(cli_doc["safe_mode"])
+
     for key, value in options.items():
-        if key == "sandbox":
+        if key in ("sandbox", "autopilot", "safe_mode"):
             if not isinstance(value, bool):
-                raise ValueError("sandbox must be boolean")
+                raise ValueError(f"{key} must be boolean")
         elif not isinstance(value, str):
             raise ValueError("CLI options must be strings")
     if payload.get("conversation_id"):
@@ -855,35 +870,41 @@ async def list_artifacts(request):
         if target_dir.is_dir() and BRAIN_DIR.resolve() in target_dir.parents:
             for fname in target_dir.iterdir():
                 if fname.name.endswith(".metadata.json"):
+                    fname_res = fname.resolve()
+                    if BRAIN_DIR.resolve() not in fname_res.parents or not fname_res.is_file():
+                        continue
                     base_name = fname.name[:-14]
-                    doc_path = target_dir / base_name
-                    if doc_path.is_file():
-                        mdata = {}
-                        try:
-                            mdata = json.loads(
-                                fname.read_text(encoding="utf-8", errors="ignore")
-                            )
-                        except Exception:
-                            pass
-                        st = doc_path.stat()
-                        artifacts.append({
-                            "name": base_name,
-                            "conversation_id": clean_cid,
-                            "summary": mdata.get("summary", "") or mdata.get("Summary", ""),
-                            "requestFeedback": bool(
-                                mdata.get("requestFeedback", False)
-                                or mdata.get("RequestFeedback", False)
-                            ),
-                            "userFacing": bool(
-                                mdata.get("userFacing", True)
-                                if "userFacing" in mdata
-                                else mdata.get("UserFacing", True)
-                            ),
-                            "updatedAt": mdata.get("updatedAt", ""),
-                            "mtime": st.st_mtime,
-                            "size": st.st_size,
-                            "path": str(doc_path),
-                        })
+                    if base_name in (".", "..") or "/" in base_name or "\\" in base_name:
+                        continue
+                    doc_path = (target_dir / base_name).resolve()
+                    if BRAIN_DIR.resolve() not in doc_path.parents or not doc_path.is_file():
+                        continue
+                    mdata = {}
+                    try:
+                        mdata = json.loads(
+                            fname_res.read_text(encoding="utf-8", errors="ignore")
+                        )
+                    except Exception:
+                        pass
+                    st = doc_path.stat()
+                    artifacts.append({
+                        "name": base_name,
+                        "conversation_id": clean_cid,
+                        "summary": mdata.get("summary", "") or mdata.get("Summary", ""),
+                        "requestFeedback": bool(
+                            mdata.get("requestFeedback", False)
+                            or mdata.get("RequestFeedback", False)
+                        ),
+                        "userFacing": bool(
+                            mdata.get("userFacing", True)
+                            if "userFacing" in mdata
+                            else mdata.get("UserFacing", True)
+                        ),
+                        "updatedAt": mdata.get("updatedAt", ""),
+                        "mtime": st.st_mtime,
+                        "size": st.st_size,
+                        "path": str(doc_path),
+                    })
             artifacts.sort(key=lambda x: x.get("mtime", 0), reverse=True)
     return web.json_response({
         "status": "ok",
@@ -1027,7 +1048,19 @@ def invalidate_catalog_cache(app, kind=None):
     cache = app.get("catalog_cache")
     if not cache:
         return
-    if kind:
+    if kind == "skills":
+        for k in list(cache.keys()):
+            if k[0] in ("skills", "commands"):
+                cache.pop(k, None)
+    elif kind == "plugins":
+        for k in list(cache.keys()):
+            if k[0] in ("plugins", "skills", "commands", "rules"):
+                cache.pop(k, None)
+    elif kind == "mcp":
+        for k in list(cache.keys()):
+            if k[0] in ("mcp", "commands"):
+                cache.pop(k, None)
+    elif kind:
         for k in list(cache.keys()):
             if k[0] == kind:
                 cache.pop(k, None)

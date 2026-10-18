@@ -30,8 +30,26 @@ def runtime_files(source):
     return files
 
 
-def sync_files(files, destination):
+def validate_sync_paths(source, destination):
+    src_res = Path(source).resolve()
+    dst_res = Path(destination).resolve()
+    if src_res == dst_res:
+        raise ValueError("Source and destination must be distinct paths")
+    if src_res in dst_res.parents or dst_res in src_res.parents:
+        raise ValueError("Source and destination must not overlap or contain each other")
+
+
+def sync_files(files, destination, source_root=None):
+    if source_root is not None:
+        validate_sync_paths(source_root, destination)
+    else:
+        dst_res = Path(destination).resolve()
+        for src in files.values():
+            s_par = src.resolve().parent
+            if s_par == dst_res or s_par in dst_res.parents or dst_res in s_par.parents:
+                raise ValueError("Source and destination must not overlap or contain each other")
     expected_relatives = set(files.keys())
+    source_canonical = {src.resolve() for src in files.values()}
     for relative, source in files.items():
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -39,6 +57,8 @@ def sync_files(files, destination):
     if destination.is_dir():
         for existing in list(destination.rglob("*")):
             if existing.is_file():
+                if existing.resolve() in source_canonical:
+                    continue
                 rel = existing.relative_to(destination)
                 if rel not in expected_relatives:
                     existing.unlink()
@@ -101,13 +121,14 @@ def main():
     )
     options = parser.parse_args()
     try:
+        validate_sync_paths(options.source, options.destination)
         files = runtime_files(options.source)
         if options.apk:
             verify_apk(files, options.apk)
         if options.check:
             verify_directory(files, options.destination)
         elif not options.apk:
-            sync_files(files, options.destination)
+            sync_files(files, options.destination, source_root=options.source)
             verify_directory(files, options.destination)
         print("Android runtime web assets verified: " + str(len(files)))
         return 0
