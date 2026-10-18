@@ -40,23 +40,30 @@ def validate_sync_paths(source, destination):
 
 
 def sync_files(files, destination, source_root=None):
+    dst_res = Path(destination).resolve()
     if source_root is not None:
         validate_sync_paths(source_root, destination)
     else:
-        dst_res = Path(destination).resolve()
         for src in files.values():
-            s_par = src.resolve().parent
-            if s_par == dst_res or s_par in dst_res.parents or dst_res in s_par.parents:
-                raise ValueError("Source and destination must not overlap or contain each other")
+            s_res = src.resolve()
+            for s_par in [s_res, *s_res.parents]:
+                if s_par == dst_res or dst_res in s_par.parents or s_par in dst_res.parents:
+                    raise ValueError("Source and destination must not overlap or contain each other")
     expected_relatives = set(files.keys())
     source_canonical = {src.resolve() for src in files.values()}
     for relative, source in files.items():
         target = destination / relative
+        if target.is_symlink() or target.exists():
+            target_resolved = target.resolve()
+            if target_resolved in source_canonical or (target_resolved != target and dst_res not in target_resolved.parents):
+                raise ValueError("Target path resolves outside destination or into source")
+            if target.is_symlink():
+                target.unlink()
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
     if destination.is_dir():
         for existing in list(destination.rglob("*")):
-            if existing.is_file():
+            if existing.is_file() or existing.is_symlink():
                 if existing.resolve() in source_canonical:
                     continue
                 rel = existing.relative_to(destination)

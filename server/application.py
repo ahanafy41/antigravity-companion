@@ -705,16 +705,37 @@ async def create_session(request):
             "mode",
             "sandbox",
             "project",
-            "autopilot",
-            "safe_mode",
         )
         if key in payload
     }
-    cli_doc, _ = request.app["cli_settings"]._document()
-    if "autopilot" not in options and "autopilot" in cli_doc:
-        options["autopilot"] = bool(cli_doc["autopilot"])
-    if "safe_mode" not in options and "safe_mode" in cli_doc:
-        options["safe_mode"] = bool(cli_doc["safe_mode"])
+    has_ap = "autopilot" in payload
+    has_sm = "safe_mode" in payload
+    if has_ap and has_sm:
+        val_ap = payload["autopilot"]
+        val_sm = payload["safe_mode"]
+        if not isinstance(val_ap, bool) or not isinstance(val_sm, bool):
+            raise ValueError("autopilot and safe_mode must be boolean")
+        if val_ap == val_sm:
+            raise ValueError("Contradictory autopilot and safe_mode settings")
+        options["autopilot"] = val_ap
+        options["safe_mode"] = val_sm
+    elif has_ap:
+        val_ap = payload["autopilot"]
+        if not isinstance(val_ap, bool):
+            raise ValueError("autopilot must be boolean")
+        options["autopilot"] = val_ap
+        options["safe_mode"] = not val_ap
+    elif has_sm:
+        val_sm = payload["safe_mode"]
+        if not isinstance(val_sm, bool):
+            raise ValueError("safe_mode must be boolean")
+        options["safe_mode"] = val_sm
+        options["autopilot"] = not val_sm
+    else:
+        st = request.app["cli_settings"].read_settings()
+        is_safe = bool(st.get("safe_mode", True))
+        options["safe_mode"] = is_safe
+        options["autopilot"] = not is_safe
 
     for key, value in options.items():
         if key in ("sandbox", "autopilot", "safe_mode"):

@@ -8,10 +8,16 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from playwright.sync_api import sync_playwright
+try:
+    from playwright.sync_api import sync_playwright
+except ImportError:
+    sync_playwright = None
 
 
 def run_tests():
+    if sync_playwright is None:
+        print("playwright is not installed; skipping browser panel tests")
+        return
     web_root = Path(__file__).resolve().parents[1] / "server" / "web"
     requests = []
     saved_settings = {

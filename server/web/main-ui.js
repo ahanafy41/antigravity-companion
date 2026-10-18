@@ -911,9 +911,19 @@ await window.mainV1.ready;
                 .map(l => l.replace(/^>\s?/, ''))
                 .join('\n')
                 .trim();
+              let formattedBody = cleanBody;
+              if (window.marked) {
+                try {
+                  if (typeof window.marked.parseInline === 'function') {
+                    formattedBody = window.marked.parseInline(cleanBody);
+                  } else if (typeof window.marked.parse === 'function') {
+                    formattedBody = window.marked.parse(cleanBody);
+                  }
+                } catch(e){}
+              }
               return `\n\n<div class="markdown-alert ${alertInfo.cls}" role="region" aria-label="${alertInfo.label}">` +
                      `<div class="markdown-alert-title"><span aria-hidden="true">${alertInfo.icon}</span> <span>${alertInfo.label}</span></div>` +
-                     `<div class="markdown-alert-content">${cleanBody}</div></div>\n\n`;
+                     `<div class="markdown-alert-content">${formattedBody}</div></div>\n\n`;
             }
           );
 
@@ -2783,6 +2793,8 @@ await window.mainV1.ready;
               delBtn.textContent = '❌ حذف';
               delBtn.addEventListener("click", async () => {
                 try {
+                  if (this._debounceTimer) clearTimeout(this._debounceTimer);
+                  if (this.saveRequest) await this.saveRequest;
                   delBtn.disabled = true;
                   const res = await window.mainV1Fetch('/api/ai/permissions/whitelist/remove', {
                     method: 'POST',
@@ -2796,6 +2808,9 @@ await window.mainV1.ready;
                     if (data.settings && data.settings.revision) this.state.revision = data.settings.revision;
                     renderWhitelist();
                     announce(`تم حذف التصريح الدائم للأمر ${ruleStr}`);
+                    if (this.dirtyFields.size) {
+                      this.debouncedSave();
+                    }
                   }
                 } catch (e) {
                   console.error(e);
@@ -2824,6 +2839,8 @@ await window.mainV1.ready;
             const val = (addInput.value || '').trim();
             if (val) {
               try {
+                if (this._debounceTimer) clearTimeout(this._debounceTimer);
+                if (this.saveRequest) await this.saveRequest;
                 addBtn.disabled = true;
                 const res = await window.mainV1Fetch('/api/ai/permissions/whitelist/add', {
                   method: 'POST',
@@ -2838,6 +2855,9 @@ await window.mainV1.ready;
                   renderWhitelist();
                   announce(`تمت إضافة التصريح الدائم: ${val}`);
                   addInput.value = '';
+                  if (this.dirtyFields.size) {
+                    this.debouncedSave();
+                  }
                 }
               } catch (e) {
                 console.error(e);

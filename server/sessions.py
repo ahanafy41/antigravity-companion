@@ -380,7 +380,7 @@ class Sessions:
             "--output-format",
             "stream-json",
         ]
-        if session.get("autopilot") or session.get("safe_mode") is False:
+        if session.get("autopilot") is True and session.get("safe_mode") is not True:
             arguments.append("--dangerously-skip-permissions")
         for option in ("model", "agent", "effort", "mode", "project"):
             if session.get(option):

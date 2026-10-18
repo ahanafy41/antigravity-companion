@@ -627,19 +627,27 @@
       case 'ai/conversations': return conversations();
       case 'ai/conversation': return conversation(query.get('id'));
       case 'ai/permissions/whitelist/add': {
-        await settings();
         const rule = (body.rule || body.command || body.pattern || '').trim();
         if (!rule) throw new Error('Rule is required');
-        const currentAllow = (cliSettingsDocument?.whitelist || policyDocument?.permissions?.allow || []);
-        const nextAllow = currentAllow.includes(rule) ? currentAllow : [...currentAllow, rule];
-        const saved = await saveSettings({whitelist: nextAllow});
+        const pending = settingsWrites.then(async () => {
+          await settings();
+          const currentAllow = (cliSettingsDocument?.whitelist || policyDocument?.permissions?.allow || []);
+          const nextAllow = currentAllow.includes(rule) ? currentAllow : [...currentAllow, rule];
+          return applySettings({whitelist: nextAllow}, settingsBaseline());
+        });
+        settingsWrites = pending.catch(() => {});
+        const saved = await pending;
         return {whitelist: saved.settings.whitelist, settings: saved.settings, baseline: saved.baseline};
       }
       case 'ai/permissions/whitelist/remove': {
-        await settings();
         const target = (body.rule || body.command || body.pattern || '').trim();
-        const currentAllow = (cliSettingsDocument?.whitelist || policyDocument?.permissions?.allow || []);
-        const saved = await saveSettings({whitelist: currentAllow.filter(entry => entry !== target)});
+        const pending = settingsWrites.then(async () => {
+          await settings();
+          const currentAllow = (cliSettingsDocument?.whitelist || policyDocument?.permissions?.allow || []);
+          return applySettings({whitelist: currentAllow.filter(entry => entry !== target)}, settingsBaseline());
+        });
+        settingsWrites = pending.catch(() => {});
+        const saved = await pending;
         return {whitelist: saved.settings.whitelist, settings: saved.settings, baseline: saved.baseline};
       }
       case 'ai/permission': {

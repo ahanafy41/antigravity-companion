@@ -298,7 +298,7 @@ public final class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 if (destroyed || request != null && request.generation != pageGeneration) return;
                 serverAvailable = availability != ServerConnection.Availability.OFFLINE;
-                serverConnected = proved;
+                if (!serverAvailable) serverConnected = false;
                 refreshLegacyState();
                 if (openChat && !serverAvailable) {
                     reply(request, error("Server unavailable; start it from the dashboard")); return;
@@ -353,9 +353,23 @@ public final class MainActivity extends AppCompatActivity {
     }
     private void authenticateServer(NativeRequest request) throws IOException, InterruptedException {
         try {
-            String cookie = server.bootstrapCookie(); runOnUiThread(() -> serverReady(request, cookie));
+            if (!server.authenticServer()) {
+                throw new IOException("Server authentication failed");
+            }
+            String cookie = server.bootstrapCookie();
+            if (cookie == null || cookie.isEmpty()) {
+                throw new IOException("Bootstrap cookie was empty");
+            }
+            runOnUiThread(() -> serverReady(request, cookie));
         } catch (IOException unavailable) {
-            runOnUiThread(() -> serverReady(request, null));
+            runOnUiThread(() -> {
+                if (destroyed) return;
+                serverAvailable = true;
+                serverConnected = false;
+                refreshLegacyState();
+                showStatus("تعذر مصادقة الخادم: " + connectionFailureReason(unavailable.getMessage()));
+                if (request != null) reply(request, error(unavailable.getMessage()));
+            });
         }
     }
     private boolean configureRunningServer() throws InterruptedException, IOException {
@@ -431,19 +445,26 @@ public final class MainActivity extends AppCompatActivity {
     private void serverReady(NativeRequest request, String cookie) {
         if (destroyed || request != null && request.generation != pageGeneration) return;
         if (cookie == null || cookie.isEmpty()) {
-            serverAvailable = true; serverConnected = true;
+            serverAvailable = true; serverConnected = false;
             refreshLegacyState();
-            showStatus("الخادم متصل");
-            JsonObject ready = new JsonObject(); ready.addProperty("state", "health_ready"); if (request != null) reply(request, ready);
+            showStatus("الخادم غير مصادق");
+            if (request != null) reply(request, error("Missing bootstrap cookie"));
             return;
         }
         CookieManager.getInstance().setCookie(origins.origin(), cookie, accepted -> {
             if (destroyed || request != null && request.generation != pageGeneration) return;
             CookieManager.getInstance().flush();
-            serverAvailable = true; serverConnected = true;
-            refreshLegacyState();
-            showStatus("الخادم متصل");
-            JsonObject ready = new JsonObject(); ready.addProperty("state", "health_ready"); if (request != null) reply(request, ready);
+            if (Boolean.TRUE.equals(accepted)) {
+                serverAvailable = true; serverConnected = true;
+                refreshLegacyState();
+                showStatus("الخادم متصل ومصادق");
+                JsonObject ready = new JsonObject(); ready.addProperty("state", "health_ready"); if (request != null) reply(request, ready);
+            } else {
+                serverAvailable = true; serverConnected = false;
+                refreshLegacyState();
+                showStatus("تعذر قبول كوكي المصادقة");
+                if (request != null) reply(request, error("Cookie rejected"));
+            }
         });
     }
     private void reply(NativeRequest request, JsonObject outcome) {

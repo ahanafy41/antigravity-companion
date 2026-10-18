@@ -115,6 +115,21 @@ class AndroidWebAssetTests(unittest.TestCase):
             result3 = run_sync("--source", canonical, "--destination", canonical)
             self.assertNotEqual(result3.returncode, 0)
 
+    def test_symlink_target_overwriting_source_rejected(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "source"
+            destination = root / "destination"
+            source.mkdir()
+            destination.mkdir()
+            (source / "a.js").write_bytes(b"A")
+            (source / "b.js").write_bytes(b"B")
+            (destination / "a.js").symlink_to(source / "b.js")
+            result = run_sync("--source", source, "--destination", destination)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual((source / "b.js").read_bytes(), b"B")
+
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
