@@ -19,6 +19,16 @@ from storage import StorageConflict  # noqa: E402
 
 
 class NativeAuthTests(unittest.TestCase):
+    def setUp(self):
+        self.oauth_patch = patch(
+            "auth_flow.AUTH_TOKEN_FILE",
+            Path("/nonexistent/antigravity-oauth-token"),
+        )
+        self.oauth_patch.start()
+
+    def tearDown(self):
+        self.oauth_patch.stop()
+
     def test_handoff_does_not_claim_authenticated(self):
         flow = AuthFlow(True)
         result = flow.start("account")

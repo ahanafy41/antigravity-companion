@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 import sys
@@ -31,7 +32,8 @@ class FakeCLI:
             " print(json.dumps({'event':'result','result':{'status':'SUCCESS',"
             "'conversation_id':'owned','response':message}}),flush=True)\n"
         )
-        return await asyncio.create_subprocess_exec(
+        options = {"start_new_session": True} if os.name == "posix" else {}
+        proc = await asyncio.create_subprocess_exec(
             sys.executable,
             "-u",
             "-c",
@@ -40,7 +42,11 @@ class FakeCLI:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
+            **options
         )
+        if os.name == "posix":
+            proc._companion_pgid = proc.pid
+        return proc
 
 
 class ScheduleTests(unittest.IsolatedAsyncioTestCase):

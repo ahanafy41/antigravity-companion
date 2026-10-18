@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -37,7 +38,8 @@ class FakeCLI:
                 "'conversation_id':'owned-conversation',"
                 "'response':'private result'}}),flush=True)\n"
             )
-        return await asyncio.create_subprocess_exec(
+        options = {"start_new_session": True} if os.name == "posix" else {}
+        proc = await asyncio.create_subprocess_exec(
             sys.executable,
             "-u",
             "-c",
@@ -46,7 +48,11 @@ class FakeCLI:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
+            **options
         )
+        if os.name == "posix":
+            proc._companion_pgid = proc.pid
+        return proc
 
 
 class TaskTests(unittest.IsolatedAsyncioTestCase):

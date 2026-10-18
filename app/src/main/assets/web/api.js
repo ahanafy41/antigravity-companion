@@ -23,7 +23,7 @@
   }
   let csrfToken = '';
   function apiBase() {
-    return (global.location.origin === 'https://appassets.androidplatform.net')
+    return (typeof global.location !== 'undefined' && global.location && global.location.origin === 'https://appassets.androidplatform.net')
       ? 'http://127.0.0.1:7681/api/v1'
       : '/api/v1';
   }

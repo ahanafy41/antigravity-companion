@@ -332,7 +332,7 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
             options = (
                 {"start_new_session": True} if sys.platform != "win32" else {}
             )
-            return await asyncio.create_subprocess_exec(
+            proc = await asyncio.create_subprocess_exec(
                 sys.executable,
                 "-u",
                 "-c",
@@ -342,6 +342,9 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
                 stderr=asyncio.subprocess.PIPE,
                 **options,
             )
+            if sys.platform != "win32":
+                proc._companion_pgid = proc.pid
+            return proc
 
         self.app["cli"].spawn = AsyncMock(side_effect=spawn_fixture)
         self.app["store"].update(
@@ -864,7 +867,7 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
             options = (
                 {"start_new_session": True} if sys.platform != "win32" else {}
             )
-            return await asyncio.create_subprocess_exec(
+            proc = await asyncio.create_subprocess_exec(
                 sys.executable,
                 "-u",
                 "-c",
@@ -874,6 +877,9 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
                 stderr=asyncio.subprocess.PIPE,
                 **options,
             )
+            if sys.platform != "win32":
+                proc._companion_pgid = proc.pid
+            return proc
 
         self.cli.spawn = AsyncMock(side_effect=spawn_fixture)
         self.sessions = Sessions(self.store, self.cli)
@@ -1356,14 +1362,21 @@ class CLIAdministrationTests(unittest.IsolatedAsyncioTestCase):
         )
 
         async def spawn_fixture(arguments, cwd):
-            return await asyncio.create_subprocess_exec(
+            options = (
+                {"start_new_session": True} if sys.platform != "win32" else {}
+            )
+            proc = await asyncio.create_subprocess_exec(
                 sys.executable,
                 str(self.fixture),
                 *arguments,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                **options,
             )
+            if sys.platform != "win32":
+                proc._companion_pgid = proc.pid
+            return proc
 
         self.boundary = patch.object(self.cli, "spawn", spawn_fixture)
         self.boundary.start()

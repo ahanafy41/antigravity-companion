@@ -846,9 +846,13 @@ async def list_artifacts(request):
             pass
     artifacts = []
     if cid and BRAIN_DIR.is_dir():
+        if cid in (".", "..") or "/" in cid or "\\" in cid:
+            return error("invalid_request", "Invalid conversation ID", 400)
         clean_cid = Path(cid).name
-        target_dir = BRAIN_DIR / clean_cid
-        if target_dir.is_dir():
+        if clean_cid in (".", ".."):
+            return error("invalid_request", "Invalid conversation ID", 400)
+        target_dir = (BRAIN_DIR / clean_cid).resolve()
+        if target_dir.is_dir() and BRAIN_DIR.resolve() in target_dir.parents:
             for fname in target_dir.iterdir():
                 if fname.name.endswith(".metadata.json"):
                     base_name = fname.name[:-14]
@@ -915,7 +919,12 @@ async def read_artifact(request):
     if not name:
         return error("invalid_request", "Missing artifact name or path", 400)
 
+    if name in (".", "..") or "/" in name or "\\" in name:
+        return error("invalid_request", "Invalid artifact name", 400)
+
     clean_name = Path(name).name.strip().strip('"').strip("'")
+    if clean_name in (".", "..") or not clean_name:
+        return error("invalid_request", "Invalid artifact name", 400)
 
     # 2. If cid is missing, check active sessions
     if not cid:
@@ -923,17 +932,19 @@ async def read_artifact(request):
         if sessions:
             for sess in sessions.sessions.values():
                 c = sess.get("conversation_id")
-                if c and (BRAIN_DIR / Path(c).name / clean_name).is_file():
-                    cid = c
-                    break
+                if c and c not in (".", "..") and "/" not in c and "\\" not in c:
+                    cand = (BRAIN_DIR / Path(c).name / clean_name).resolve()
+                    if BRAIN_DIR.resolve() in cand.parents and cand.is_file():
+                        cid = c
+                        break
 
     # 3. If still missing cid, find which conversation in BRAIN_DIR has this artifact
     if not cid and BRAIN_DIR.is_dir():
         try:
             for d in sorted(BRAIN_DIR.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
                 if d.is_dir() and not d.name.startswith("."):
-                    candidate = d / clean_name
-                    if candidate.is_file():
+                    candidate = (d / clean_name).resolve()
+                    if BRAIN_DIR.resolve() in candidate.parents and candidate.is_file():
                         cid = d.name
                         break
         except Exception:
@@ -942,9 +953,15 @@ async def read_artifact(request):
     if not cid:
         return error("not_found", f"Artifact {clean_name} not found in any conversation", 404)
 
+    if cid in (".", "..") or "/" in cid or "\\" in cid:
+        return error("invalid_request", "Invalid conversation ID", 400)
+
     clean_cid = Path(cid).name
-    doc_path = BRAIN_DIR / clean_cid / clean_name
-    if not doc_path.is_file():
+    if clean_cid in (".", "..") or not clean_cid:
+        return error("invalid_request", "Invalid conversation ID", 400)
+
+    doc_path = (BRAIN_DIR / clean_cid / clean_name).resolve()
+    if not (BRAIN_DIR.resolve() in doc_path.parents and doc_path.is_file()):
         return error("not_found", f"Artifact {clean_name} not found", 404)
 
     content = doc_path.read_text(encoding="utf-8", errors="ignore")
@@ -1006,6 +1023,18 @@ DEFAULT_MODELS_CATALOG = [
 ]
 
 
+def invalidate_catalog_cache(app, kind=None):
+    cache = app.get("catalog_cache")
+    if not cache:
+        return
+    if kind:
+        for k in list(cache.keys()):
+            if k[0] == kind:
+                cache.pop(k, None)
+    else:
+        cache.clear()
+
+
 async def list_cli(request):
     kind = request.path.rsplit("/", 1)[-1]
     cwd = request.query.get("cwd")
@@ -1060,6 +1089,7 @@ async def add_mcp(request):
     payload = await object_body(request)
     cwd = trusted_cli_cwd(request, payload)
     await request.app["cli"].mutate_mcp("add", payload, cwd=cwd)
+    invalidate_catalog_cache(request.app, "mcp")
     return web.json_response(
         {"servers": request.app["mcp_settings"].listing(cwd)}
     )
@@ -1073,6 +1103,7 @@ async def change_mcp(request):
         request.match_info["action"],
         payload.get("revision"),
     )
+    invalidate_catalog_cache(request.app, "mcp")
     return web.json_response({"servers": servers})
 
 
@@ -1084,6 +1115,7 @@ async def delete_mcp(request):
         "delete",
         payload.get("revision"),
     )
+    invalidate_catalog_cache(request.app, "mcp")
     return web.json_response({"servers": servers})
 
 
@@ -1193,6 +1225,7 @@ async def change_catalog(request):
         if cwd
         else await request.app["cli"].mutate_catalog(*arguments)
     )
+    invalidate_catalog_cache(request.app, kind)
     return web.json_response({kind: redact(entries)})
 
 

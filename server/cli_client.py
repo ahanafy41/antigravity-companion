@@ -23,12 +23,6 @@ async def terminate_process(process):
             await terminate_windows_tree(process)
         return
     group_id = getattr(process, "_companion_pgid", None)
-    if group_id is None and hasattr(process, "pid") and process.pid:
-        try:
-            group_id = os.getpgid(process.pid)
-        except (OSError, ProcessLookupError):
-            group_id = process.pid
-        process._companion_pgid = group_id
     if group_id is None:
         raise CLIUnavailable("Owned process group identity is unavailable")
     if not getattr(process, "_companion_group_closed", False):

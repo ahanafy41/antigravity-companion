@@ -379,8 +379,9 @@ class Sessions:
             "stream-json",
             "--output-format",
             "stream-json",
-            "--dangerously-skip-permissions",
         ]
+        if session.get("autopilot") or session.get("safe_mode") is False:
+            arguments.append("--dangerously-skip-permissions")
         for option in ("model", "agent", "effort", "mode", "project"):
             if session.get(option):
                 arguments.extend(["--" + option, session[option]])

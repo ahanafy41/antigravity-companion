@@ -31,10 +31,20 @@ def runtime_files(source):
 
 
 def sync_files(files, destination):
+    expected_relatives = set(files.keys())
     for relative, source in files.items():
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, target)
+    if destination.is_dir():
+        for existing in list(destination.rglob("*")):
+            if existing.is_file():
+                rel = existing.relative_to(destination)
+                if rel not in expected_relatives:
+                    existing.unlink()
+        for d in sorted([p for p in destination.rglob("*") if p.is_dir()], key=lambda p: len(p.parts), reverse=True):
+            if not any(d.iterdir()):
+                d.rmdir()
 
 
 def verify_directory(files, destination):
@@ -45,12 +55,12 @@ def verify_directory(files, destination):
                 "Offline web asset is missing or stale: " + str(relative)
             )
     for target in destination.rglob("*"):
-        if target.is_file() and not is_runtime(
-            target.relative_to(destination)
-        ):
-            raise ValueError(
-                "Excluded asset in offline web tree: " + str(target)
-            )
+        if target.is_file():
+            rel = target.relative_to(destination)
+            if not is_runtime(rel) or rel not in files:
+                raise ValueError(
+                    "Unexpected or obsolete asset in offline web tree: " + str(target)
+                )
 
 
 def verify_apk(files, apk):
@@ -68,8 +78,9 @@ def verify_apk(files, apk):
                     )
             for name in names:
                 if name.startswith(prefix) and not name.endswith("/"):
-                    if not is_runtime(Path(name.removeprefix(prefix))):
-                        raise ValueError("Excluded asset in APK: " + name)
+                    rel = Path(name.removeprefix(prefix))
+                    if not is_runtime(rel) or rel not in files:
+                        raise ValueError("Unexpected or obsolete asset in APK: " + name)
 
 
 def main():

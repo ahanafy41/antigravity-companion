@@ -633,14 +633,14 @@
         const currentAllow = (cliSettingsDocument?.whitelist || policyDocument?.permissions?.allow || []);
         const nextAllow = currentAllow.includes(rule) ? currentAllow : [...currentAllow, rule];
         const saved = await saveSettings({whitelist: nextAllow});
-        return {whitelist: saved.settings.whitelist};
+        return {whitelist: saved.settings.whitelist, settings: saved.settings, baseline: saved.baseline};
       }
       case 'ai/permissions/whitelist/remove': {
         await settings();
         const target = (body.rule || body.command || body.pattern || '').trim();
         const currentAllow = (cliSettingsDocument?.whitelist || policyDocument?.permissions?.allow || []);
         const saved = await saveSettings({whitelist: currentAllow.filter(entry => entry !== target)});
-        return {whitelist: saved.settings.whitelist};
+        return {whitelist: saved.settings.whitelist, settings: saved.settings, baseline: saved.baseline};
       }
       case 'ai/permission': {
         return {status: 'ok', key: body.key || 'y'};
@@ -776,7 +776,7 @@
   if (typeof caches !== 'undefined' && 'keys' in caches) {
     caches.keys().then(keys => {
       keys.forEach(key => {
-        if (key.startsWith('antigravity-static-') && key !== 'antigravity-static-v1.3.8-gfm-artifacts') {
+        if (key.startsWith('antigravity-static-legacy-')) {
           caches.delete(key);
         }
       });

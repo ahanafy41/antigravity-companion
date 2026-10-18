@@ -1,5 +1,5 @@
 'use strict';
-const CACHE_NAME = 'antigravity-static-v1.4.1-settings-permissions';
+const CACHE_NAME = 'antigravity-static-14124bd2f84d3edb44441bf4';
 const STATIC_PATHS = new Set([
   '/',
   '/start',

@@ -124,23 +124,23 @@ async def isolation(request, handler):
         return await handler(request)
 
     elif protected and request.path != "/api/v1/pair":
-        user_agent = request.headers.get("User-Agent", "")
-        if (
-            origin == "https://appassets.androidplatform.net"
-            or not ("aiohttp" in user_agent)
-        ):
-            # All browsers, Android WebViews, and real mobile clients bypass pairing completely
-            pass
-        else:
-            cookie = request.cookies.get(COOKIE, "")
-            pairing = request.app["pairing"]
-            if not pairing.authorized(cookie):
-                return error("unauthorized", "Pair this browser first", 401)
+        cookie = request.cookies.get(COOKIE, "")
+        pairing = request.app["pairing"]
+        if pairing.authorized(cookie):
             if request.method not in ("GET", "HEAD", "OPTIONS"):
                 if not pairing.valid_csrf(
                     cookie, request.headers.get("X-CSRF-Token", "")
                 ):
                     return error("csrf_failed", "CSRF token is required", 403)
+        else:
+            token = request.headers.get("X-CSRF-Token", "")
+            if token and any(
+                sess[0] == token and sess[1] > time.monotonic()
+                for sess in pairing.sessions.values()
+            ):
+                pass
+            else:
+                return error("unauthorized", "Pair this browser first", 401)
 
     if request.method == "OPTIONS":
         return web.Response(

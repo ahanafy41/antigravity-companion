@@ -122,12 +122,17 @@ class LegacyConversations:
                 except Exception:
                     skipped += 1
                     continue
+                if not isinstance(data, dict):
+                    skipped += 1
+                    continue
                 records.append(data)
 
                 trunc = data.get("truncated_fields", [])
                 if trunc and idx in full_lines:
                     try:
-                        data = json.loads(full_lines[idx])
+                        full_data = json.loads(full_lines[idx])
+                        if isinstance(full_data, dict):
+                            data = full_data
                     except Exception:
                         pass
 
@@ -186,7 +191,7 @@ class LegacyConversations:
             if msg.get("role") == "agent" and not msg.get("text"):
                 t_count = msg.get("tool_count", 0)
                 if t_count > 0:
-                    msg["text"] = f"*(نفّذ الوكيل {t_count} عملية/أداة بنجاح في هذه الخطوة)*"
+                    msg["text"] = f"*(استدعى الوكيل {t_count} عملية/أداة في هذه الخطوة)*"
                 elif msg.get("thinking"):
                     msg["text"] = "*(خطوات تفكير وتحليل فقط)*"
 

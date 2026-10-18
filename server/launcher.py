@@ -145,8 +145,13 @@ def start(root, port, bootstrap):
         verify_selection(root)
         release = selected_release(root)
         server_script = release / "server.py"
-    else:
+    elif (root / "server.py").exists() and (
+        os.environ.get("COMPANION_ALLOW_DEV_SERVER") == "1"
+        or os.environ.get("ANTIGRAVITY_DEV_MODE") == "1"
+    ):
         server_script = root / "server.py"
+    else:
+        raise ValueError("Missing verified release: current.json pointer is absent")
     arguments = [
         sys.executable,
         "-B",

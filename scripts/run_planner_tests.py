@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -58,6 +59,7 @@ class FakeCLI:
                 "'args':{},'done':True,'text':'done'}}}),flush=True)\n"
                 "time.sleep(60)\n"
             )
+        options = {"start_new_session": True} if os.name == "posix" else {}
         self.process = await asyncio.create_subprocess_exec(
             sys.executable,
             "-u",
@@ -67,7 +69,10 @@ class FakeCLI:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=cwd,
+            **options
         )
+        if os.name == "posix":
+            self.process._companion_pgid = self.process.pid
         return self.process
 
 

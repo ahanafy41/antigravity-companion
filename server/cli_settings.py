@@ -242,12 +242,14 @@ class CLISettings:
                 toggle_rule(["schedule", "schedule(*)"], bool(patch["allow_schedule"]))
 
             permissions["allow"] = list(dict.fromkeys(allow_rules))
-            document["permissions"] = policy_values(
+            managed = policy_values(
                 {
                     key: permissions.get(key, [])
                     for key in ("allow", "deny", "ask")
                 }
             )
+            permissions.update(managed)
+            document["permissions"] = permissions
 
             descriptor, staged = tempfile.mkstemp(
                 dir=self.path.parent, prefix=".companion-settings-"
@@ -256,6 +258,10 @@ class CLISettings:
                 json.dump(document, stream, indent=2, ensure_ascii=False)
                 stream.flush()
                 os.fsync(stream.fileno())
+
+            _, latest_rev = self._document()
+            if latest_rev != current_revision:
+                raise StorageConflict("CLI settings revision conflict")
 
             if self.path.exists():
                 backup = self.path.with_name(self.path.name + ".companion-bak")

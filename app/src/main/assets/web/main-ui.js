@@ -732,6 +732,8 @@ await window.mainV1.ready;
     const mcpCustomName = document.getElementById('mcp-custom-name');
     const mcpCustomType = document.getElementById('mcp-custom-type');
     const mcpCustomCommand = document.getElementById('mcp-custom-command');
+    const mcpCustomArgs = document.getElementById('mcp-custom-args');
+    const mcpCustomEnv = document.getElementById('mcp-custom-env');
     // Artifacts & Work Documents elements
     const btnHeaderArtifacts = document.getElementById('btn-header-artifacts');
     const headerArtifactsBadge = document.getElementById('header-artifacts-badge');
@@ -752,6 +754,7 @@ await window.mainV1.ready;
     const btnCloseViewerTop = document.getElementById('btn-close-viewer-top');
     const knownArtifacts = new Map();
     let currentViewerArtifact = null;
+    let artifactViewerRequestId = 0;
 
     // Conversation History & System Resources elements
     const btnOpenConversations = document.getElementById('btn-open-conversations');
@@ -928,40 +931,40 @@ await window.mainV1.ready;
             '</div>';
           };
 
-          renderer.table = function(header, body) {
-            const headerHtml = (typeof header === 'object' && header.header) ? header.header : header;
-            const bodyHtml = (typeof header === 'object' && header.body) ? header.body : body;
-            return '<div class="table-responsive-wrapper" role="region" aria-label="جدول بيانات">' +
-              '<table role="table">' +
-                '<thead>' + headerHtml + '</thead>' +
-                '<tbody>' + bodyHtml + '</tbody>' +
-              '</table>' +
-            '</div>';
+          const defaultTable = window.marked.Renderer.prototype.table;
+          renderer.table = function(token) {
+            const rendered = defaultTable.call(this, token);
+            return '<div class="table-responsive-wrapper" role="region" aria-label="جدول بيانات">' + rendered + '</div>';
           };
 
-          renderer.heading = function(text, level) {
-            const rawText = (typeof text === 'object' && text.text) ? text.text : text;
-            const headingLevel = (typeof text === 'object' && text.depth) ? text.depth : level;
-            const hLevel = Math.min(6, Math.max(3, Number(headingLevel) + 2));
-            return '<h' + hLevel + ' class="ai-heading-' + hLevel + '" dir="auto">' + rawText + '</h' + hLevel + '>';
+          renderer.heading = function(token) {
+            const depth = (typeof token === 'object' && token.depth) ? token.depth : 1;
+            const parsedText = (typeof token === 'object' && token.tokens && this.parser)
+              ? this.parser.parseInline(token.tokens)
+              : ((typeof token === 'object' && token.text) ? token.text : token);
+            const hLevel = Math.min(6, Math.max(3, Number(depth) + 2));
+            return '<h' + hLevel + ' class="ai-heading-' + hLevel + '" dir="auto">' + parsedText + '</h' + hLevel + '>';
           };
 
-          renderer.paragraph = function(text) {
-            const rawText = (typeof text === 'object' && text.text) ? text.text : text;
-            return '<p dir="auto">' + rawText + '</p>';
+          const defaultParagraph = window.marked.Renderer.prototype.paragraph;
+          renderer.paragraph = function(token) {
+            const rendered = defaultParagraph.call(this, token);
+            return rendered.replace('<p>', '<p dir="auto">');
           };
 
-          renderer.listitem = function(text, task, checked) {
-            const rawText = (typeof text === 'object' && text.text) ? text.text : text;
-            const isTask = (typeof text === 'object' && text.task) ? text.task : task;
-            const isChecked = (typeof text === 'object' && text.checked) ? text.checked : checked;
+          renderer.listitem = function(token) {
+            const parsedText = (typeof token === 'object' && token.tokens && this.parser)
+              ? this.parser.parse(token.tokens)
+              : ((typeof token === 'object' && token.text) ? token.text : token);
+            const isTask = (typeof token === 'object' && token.task);
+            const isChecked = (typeof token === 'object' && token.checked);
             if (isTask) {
               return '<li class="task-list-item" dir="auto">' +
-                '<input type="checkbox" disabled ' + (isChecked ? 'checked' : '') + ' aria-label="' + (isChecked ? 'مكتمل' : 'غير مكتمل') + '"> ' +
-                '<span>' + rawText + '</span>' +
+                '<input type="checkbox" disabled ' + (isChecked ? 'checked ' : '') + 'aria-label="' + (isChecked ? 'مكتمل' : 'غير مكتمل') + '"> ' +
+                '<span>' + parsedText + '</span>' +
               '</li>';
             }
-            return '<li dir="auto">' + rawText + '</li>';
+            return '<li dir="auto">' + parsedText + '</li>';
           };
 
           const html = window.marked.parse(processed, {
@@ -2789,6 +2792,8 @@ await window.mainV1.ready;
                   if (res.ok) {
                     const data = await res.json();
                     this.state.whitelist = data.whitelist || [];
+                    if (data.baseline) this.baseline = data.baseline;
+                    if (data.settings && data.settings.revision) this.state.revision = data.settings.revision;
                     renderWhitelist();
                     announce(`تم حذف التصريح الدائم للأمر ${ruleStr}`);
                   }
@@ -2828,6 +2833,8 @@ await window.mainV1.ready;
                 if (res.ok) {
                   const data = await res.json();
                   this.state.whitelist = data.whitelist || [];
+                  if (data.baseline) this.baseline = data.baseline;
+                  if (data.settings && data.settings.revision) this.state.revision = data.settings.revision;
                   renderWhitelist();
                   announce(`تمت إضافة التصريح الدائم: ${val}`);
                   addInput.value = '';
@@ -3363,6 +3370,7 @@ await window.mainV1.ready;
       artifactViewerDialog.showModal();
       announce(`تم فتح مستند: ${artName}`);
 
+      const currentReqId = ++artifactViewerRequestId;
       try {
         const cid = artConversationId || currentActiveConversationId || '';
         const params = new URLSearchParams();
@@ -3373,6 +3381,8 @@ await window.mainV1.ready;
         const res = await (window.mainV1Fetch ? window.mainV1Fetch(url) : fetch(url));
         if (!res.ok) throw new Error(`رمز الخطأ ${res.status}`);
         const data = await res.json();
+        if (currentReqId !== artifactViewerRequestId) return;
+        if (!currentViewerArtifact || currentViewerArtifact.name !== artName) return;
         const rawContent = data.content || '';
         currentViewerArtifact.content = rawContent;
         if (artifactViewerContent) {
@@ -3382,6 +3392,7 @@ await window.mainV1.ready;
           }, 50);
         }
       } catch (err) {
+        if (currentReqId !== artifactViewerRequestId) return;
         if (artifactViewerContent) {
           artifactViewerContent.innerHTML = `<div style="color:var(--accent-red); padding:10px;">تعذر قراءة المستند: ${escapeHtml(err.message)}</div>`;
         }
@@ -4713,11 +4724,16 @@ await window.mainV1.ready;
           args: args,
           env: envList
         }, btnSubmitCustomMcp, name);
+        if (btnSubmitCustomMcp) {
+          btnSubmitCustomMcp.disabled = false;
+          btnSubmitCustomMcp.textContent = '➕ تثبيت البروتوكول المخصص';
+        }
         if (!installed) return;
 
         if (mcpCustomName) mcpCustomName.value = '';
         if (mcpCustomCommand) mcpCustomCommand.value = '';
         if (mcpCustomEnv) mcpCustomEnv.value = '';
+        if (mcpCustomArgs) mcpCustomArgs.value = '[]';
       });
     }
 
@@ -5412,11 +5428,16 @@ await window.mainV1.ready;
         modelPickerList.innerHTML = '<p class="main-style-236">لم يتم العثور على نماذج متاحة حالياً.</p>';
         return;
       }
+      const activeEl = document.activeElement;
+      const focusedModelId = activeEl ? activeEl.getAttribute('data-model-id') : null;
+      const isInitialOpen = (modelPickerList.children.length === 0);
+
       modelPickerList.innerHTML = '';
-      models.forEach((m, idx) => {
+      models.forEach((m) => {
         const isCurrent = (m.id === activeModel || m.name === activeModel);
         const card = document.createElement('button');
         card.type = 'button';
+        card.setAttribute('data-model-id', m.id || m.name);
         card.className = 'model-picker-item' + (isCurrent ? ' selected' : '');
         card.setAttribute('role', 'radio');
         card.setAttribute('aria-checked', isCurrent ? 'true' : 'false');
@@ -5441,10 +5462,15 @@ await window.mainV1.ready;
           await switchActiveModelDirectly(m.id || m.name, m.name);
         });
         modelPickerList.appendChild(card);
-        if (idx === 0) {
-          setTimeout(() => card.focus(), 50);
-        }
       });
+
+      if (isInitialOpen) {
+        const first = modelPickerList.querySelector('.model-picker-item');
+        if (first) setTimeout(() => first.focus(), 50);
+      } else if (focusedModelId) {
+        const target = modelPickerList.querySelector(`[data-model-id="${focusedModelId}"]`);
+        if (target) target.focus();
+      }
     }
 
     async function switchActiveModelDirectly(modelId, modelName) {

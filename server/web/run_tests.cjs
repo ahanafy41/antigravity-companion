@@ -19,7 +19,7 @@ function load(name, extras = {}) {
   await api.restoreSession();
   await api.request('/sessions', {method:'POST', body:{cwd:'.'}});
   assert.equal(calls[1].options.headers['X-CSRF-Token'], 'test-token');
-  assert.equal(calls[1].options.credentials, 'same-origin');
+  assert.equal(calls[1].options.credentials, 'include');
   assert.equal(calls[1].url, '/api/v1/sessions');
   const stream = load('api.js').parseSseFrames;
   const frames = stream('event: delta\r\ndata: {"text_delta":"سلام"}\r\n\r\nevent: result\ndata: {"state":"completed"}\n\npartial');
