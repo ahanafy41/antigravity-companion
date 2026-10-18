@@ -129,6 +129,20 @@ class AndroidWebAssetTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual((source / "b.js").read_bytes(), b"B")
 
+    def test_inferred_source_root_sync_succeeds_for_sibling_directories(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / "canonical"
+            destination = root / "mirror-inferred"
+            source.mkdir()
+            destination.mkdir()
+            (source / "a.js").write_bytes(b"A")
+            files = {"a.js": source / "a.js"}
+            from sync_android_web import sync_files
+            sync_files(files, destination)
+            self.assertEqual((destination / "a.js").read_bytes(), b"A")
+            self.assertEqual((source / "a.js").read_bytes(), b"A")
+
 
 
 def main():

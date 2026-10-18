@@ -43,13 +43,18 @@ def sync_files(files, destination, source_root=None):
     dst_res = Path(destination).resolve()
     if source_root is not None:
         validate_sync_paths(source_root, destination)
-    else:
-        for src in files.values():
-            s_res = src.resolve()
-            for s_par in [s_res, *s_res.parents]:
-                if s_par == dst_res or dst_res in s_par.parents or s_par in dst_res.parents:
-                    raise ValueError("Source and destination must not overlap or contain each other")
-    expected_relatives = set(files.keys())
+    elif files:
+        inferred_roots = set()
+        for rel, src in files.items():
+            parts_len = len(Path(rel).parts)
+            src_res = src.resolve()
+            if len(src_res.parts) > parts_len:
+                inferred_roots.add(src_res.parents[parts_len - 1])
+            else:
+                inferred_roots.add(src_res.parent)
+        for root in inferred_roots:
+            validate_sync_paths(root, destination)
+    expected_relatives = {Path(r).as_posix() for r in files.keys()}
     source_canonical = {src.resolve() for src in files.values()}
     for relative, source in files.items():
         target = destination / relative
@@ -66,7 +71,7 @@ def sync_files(files, destination, source_root=None):
             if existing.is_file() or existing.is_symlink():
                 if existing.resolve() in source_canonical:
                     continue
-                rel = existing.relative_to(destination)
+                rel = existing.relative_to(destination).as_posix()
                 if rel not in expected_relatives:
                     existing.unlink()
         for d in sorted([p for p in destination.rglob("*") if p.is_dir()], key=lambda p: len(p.parts), reverse=True):
