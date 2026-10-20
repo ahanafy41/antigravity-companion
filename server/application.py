@@ -166,6 +166,8 @@ def register_routes(application):
         web.get("/api/v1/runs/{run_id}", run_detail),
         web.post("/api/v1/runs/{run_id}/cancel", cancel_run),
         web.get("/api/v1/runs/{run_id}/events", stream_events),
+        web.post("/api/v1/permission", handle_permission),
+        web.post("/api/ai/permission", handle_permission),
         web.get("/api/v1/artifacts", list_artifacts),
         web.get("/api/v1/artifacts/content", read_artifact),
         web.get("/api/v1/files", list_files),
@@ -802,6 +804,15 @@ async def cancel_run(request):
     return web.json_response(
         await request.app["sessions"].cancel(request.match_info["run_id"])
     )
+
+
+async def handle_permission(request):
+    payload = await object_body(request)
+    key = str(payload.get("key", "n")).lower()
+    run_id = payload.get("run_id")
+    sessions = request.app["sessions"]
+    resolved = sessions.resolve_permission(key, run_id)
+    return web.json_response({"status": "ok", "key": key, "resolved": resolved})
 
 
 async def stream_events(request):

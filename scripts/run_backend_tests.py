@@ -1074,6 +1074,28 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(run["state"], "failed")
 
+    async def test_interactive_permission_prompt_and_resolution(self):
+        session = self.session
+        # 1. read_file does not need permission
+        self.assertFalse(self.sessions.needs_permission(session, "read_file", {}))
+        # 2. run_command needs permission under safe mode
+        self.assertTrue(self.sessions.needs_permission(session, "run_command", {"command": "ls"}))
+        # 3. Autopilot bypasses permission
+        self.assertFalse(self.sessions.needs_permission({"autopilot": True}, "run_command", {"command": "ls"}))
+        # 4. Whitelisted command bypasses permission
+        self.sessions.store.write("settings", {"safe_mode": True, "whitelist": ["run_command(*)"]})
+        self.assertFalse(self.sessions.needs_permission(session, "run_command", {"command": "ls"}))
+
+        # 5. resolve_permission resolves pending permission
+        run_id = "test-run-perm"
+        loop = asyncio.get_running_loop()
+        fut = loop.create_future()
+        self.sessions.pending_permissions[run_id] = fut
+        resolved = self.sessions.resolve_permission("y", run_id)
+        self.assertTrue(resolved)
+        self.assertEqual(await fut, "y")
+        self.assertNotIn(run_id, self.sessions.pending_permissions)
+
     def test_event_retention_does_not_return_partial_replay_as_complete(self):
         log = EventLog(self.store.root, "testlog")
         for index in range(510):

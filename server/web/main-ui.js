@@ -1651,8 +1651,11 @@ await window.mainV1.ready;
                 }
                 // D) Error event
                 else if (data.type === 'error') {
-                  accumulatedText += '\n[خطأ: ' + (data.message || '') + ']';
-                  scheduleAiRender(true);
+                  const errorMsg = '[خطأ: ' + (data.message || '') + ']';
+                  if (!accumulatedText.includes(errorMsg)) {
+                    accumulatedText += (accumulatedText ? '\n' : '') + errorMsg;
+                    scheduleAiRender(true);
+                  }
                 }
                 // E) Artifact event
                 else if (data.type === 'artifact' && (data.artifact || data.name)) {

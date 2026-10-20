@@ -507,6 +507,18 @@
         output: out
       };
     }
+    if (event.event === 'permission_request') return {
+      type: 'permission_request',
+      tool: payload.tool,
+      question: payload.question,
+      params: payload.params || {}
+    };
+    if (event.event === 'permission_result') return {
+      type: 'permission_result',
+      tool: payload.tool,
+      answer: payload.answer,
+      label: payload.label
+    };
     if (event.event === 'error' || event.event === 'replay_unavailable') return {type: 'error', message: payload.message || 'تعذر استعادة البث؛ افتح سجل المحادثة.'};
     if (event.event === 'result') return {type: 'final_result', response: payload.response || '', state: payload.state};
     return null;
@@ -528,6 +540,7 @@
       start(output) {
         const emit = payload => output.enqueue(encoder.encode('data: ' + JSON.stringify(payload) + '\n\n'));
         emit({type: 'init', conversation_id: current.conversationId});
+        let hasEmittedError = false;
         const onEvent = event => {
           if (event.id) { if (current.sessionId === sessionId) { current.cursor = event.id; persist(); } }
           if (event.payload.conversation_id && current.sessionId === sessionId) {
@@ -535,7 +548,10 @@
             emit({type: 'init', conversation_id: current.conversationId});
           }
           const converted = convertEvent(event);
-          if (converted) emit(converted);
+          if (converted) {
+            if (converted.type === 'error') hasEmittedError = true;
+            emit(converted);
+          }
         };
         (async () => {
           let streamFailure;
@@ -547,7 +563,7 @@
           const snapshot = await request('/runs/' + encode(runId), {signal: controller.signal});
           if (terminal.has(snapshot.state)) {
             if (snapshot.conversation_id) emit({type: 'init', conversation_id: snapshot.conversation_id});
-            if (snapshot.error) emit({type: 'error', message: snapshot.error});
+            if (snapshot.error && !hasEmittedError) emit({type: 'error', message: snapshot.error});
             emit({type: 'final_result', response: snapshot.response || '', state: snapshot.state});
             await saveHistory(sessionId);
             output.close(); return;
@@ -651,7 +667,7 @@
         return {whitelist: saved.settings.whitelist, settings: saved.settings, baseline: saved.baseline};
       }
       case 'ai/permission': {
-        return {status: 'ok', key: body.key || 'y'};
+        return request('/permission', {method: 'POST', body: body});
       }
       case 'ai/quota': {
         const report = await request('/quota' + (query.get('refresh') === '1' ? '?refresh=1' : ''));

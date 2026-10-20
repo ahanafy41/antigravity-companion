@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import signal
 import time
 import uuid
 
@@ -20,6 +21,92 @@ from storage import redact
 TERMINAL = {"completed", "failed", "cancelled", "interrupted"}
 EVENT_RETENTION_SECONDS = 24 * 60 * 60
 EVENT_STORAGE_LIMIT = 32 * MAX_LINE
+
+
+def format_human_permission_question(tool_name, params):
+    if not isinstance(params, dict):
+        params = {}
+    if tool_name in ("run_command", "command"):
+        cmd_str = str(params.get("CommandLine") or params.get("command") or "").strip()
+        if len(cmd_str) > 200:
+            cmd_str = cmd_str[:200] + "..."
+        cwd = str(params.get("Cwd") or params.get("cwd") or "").strip()
+        cwd_part = f"\nالمجلد الحالي: {cwd}" if cwd else ""
+        return f"هل تريد الموافقة على تشغيل أمر الطرفية التالي:\n{cmd_str}{cwd_part}"
+
+    elif tool_name in ("write_file", "write_to_file", "write"):
+        target = str(params.get("TargetFile") or params.get("path") or params.get("Path") or "").strip()
+        desc = str(params.get("Description") or "").strip()
+        desc_part = f"\nالوصف: {desc}" if desc else ""
+        return f"هل تريد الموافقة على إنشاء أو كتابة الملف التالي:\n{target}{desc_part}"
+
+    elif tool_name in ("edit_file", "replace_file_content", "multi_replace_file_content"):
+        target = str(params.get("TargetFile") or params.get("path") or params.get("Path") or "").strip()
+        instruction = str(params.get("Instruction") or params.get("Description") or "").strip()
+        inst_part = f"\nالتعليمات: {instruction}" if instruction else ""
+        return f"هل تريد الموافقة على تعديل محتوى الملف التالي:\n{target}{inst_part}"
+
+    elif tool_name in ("search_web", "web_search"):
+        query = str(params.get("query") or params.get("Query") or "").strip()
+        domain = str(params.get("domain") or "").strip()
+        domain_part = f" (نطاق البحث: {domain})" if domain else ""
+        return f"هل تريد الموافقة على إجراء بحث في الويب عن:\n\"{query}\"{domain_part}؟"
+
+    elif tool_name in ("read_url_content", "fetch", "browser_open"):
+        url = str(params.get("Url") or params.get("url") or params.get("Uri") or "").strip()
+        return f"هل تريد الموافقة على جلب وقراءة محتوى الرابط التالي:\n{url}"
+
+    elif tool_name == "invoke_subagent":
+        subagents = params.get("Subagents", [])
+        if isinstance(subagents, list) and len(subagents) > 0 and isinstance(subagents[0], dict):
+            first = subagents[0]
+            role = first.get("Role") or first.get("TypeName") or "وكيل فرعي"
+            prompt_snippet = str(first.get("Prompt", "")).strip()
+            if len(prompt_snippet) > 150:
+                prompt_snippet = prompt_snippet[:150] + "..."
+            return f"هل تريد الموافقة على استدعاء وتفويض الوكيل الفرعي ({role}):\nالمهمة: {prompt_snippet}"
+        else:
+            role = params.get("Role") or params.get("TypeName") or "وكيل فرعي"
+            return f"هل تريد الموافقة على استدعاء وتكليف الوكيل الفرعي ({role})؟"
+
+    elif tool_name == "define_subagent":
+        name = params.get("name") or params.get("Name") or "وكيل جديد"
+        desc = params.get("description") or params.get("Description") or ""
+        return f"هل تريد الموافقة على تعريف وتجهيز وكيل فرعي جديد ({name}):\n{desc}"
+
+    elif tool_name == "manage_subagents":
+        action = params.get("Action", "إدارة")
+        return f"هل تريد الموافقة على إجراء إدارة الوكلاء الفرعيين (إجراء: {action})؟"
+
+    elif tool_name == "send_message":
+        recipient = params.get("Recipient", "وكيل فرعي")
+        msg = str(params.get("Message", "")).strip()
+        if len(msg) > 120:
+            msg = msg[:120] + "..."
+        return f"هل تريد الموافقة على إرسال رسالة إلى الوكيل ({recipient}):\n{msg}"
+
+    elif tool_name == "schedule":
+        duration = params.get("DurationSeconds")
+        cron = params.get("CronExpression")
+        prompt = str(params.get("Prompt", "")).strip()
+        if len(prompt) > 120:
+            prompt = prompt[:120] + "..."
+        if duration:
+            time_info = f"بعد {duration} ثانية"
+        elif cron:
+            time_info = f"حسب جدول cron: {cron}"
+        else:
+            time_info = "مؤقت مجدول"
+        return f"هل تريد الموافقة على جدولة مهمة خلفية ({time_info}):\n{prompt}"
+
+    elif tool_name == "manage_task":
+        action = params.get("Action", "")
+        task_id = params.get("TaskId", "")
+        return f"هل تريد الموافقة على إدارة المهمة الخلفية ({task_id}) بإجراء: {action}؟"
+
+    else:
+        desc = params.get("toolSummary") or params.get("toolAction") or tool_name
+        return f"هل تريد الموافقة والمتابعة لتنفيذ الإجراء التالي:\n{desc}"
 
 
 class RunConflict(Exception):
@@ -136,6 +223,7 @@ class Sessions:
         self.tasks = {}
         self.session_closures = {}
         self.logs = {}
+        self.pending_permissions = {}
         self.restore_missing_runs()
         for run in self.runs.values():
             if run["state"] == "running":
@@ -369,6 +457,158 @@ class Sessions:
                 "Storage limit reached; preserve/export local history"
             )
 
+    def resolve_permission(self, key, run_id=None):
+        if run_id and run_id in self.pending_permissions:
+            fut = self.pending_permissions.pop(run_id)
+            if not fut.done():
+                fut.set_result(key)
+                return True
+        elif self.pending_permissions:
+            for r_id, fut in list(self.pending_permissions.items()):
+                self.pending_permissions.pop(r_id, None)
+                if not fut.done():
+                    fut.set_result(key)
+                    return True
+        return False
+
+    def needs_permission(self, session, tool_name, params):
+        st = {}
+        try:
+            st = self.store.read("settings")
+        except Exception:
+            pass
+
+        ap = session.get("autopilot")
+        if ap is None:
+            ap = bool(st.get("autopilot", False))
+        if ap:
+            return False
+
+        sm = session.get("safe_mode")
+        if sm is None:
+            sm = bool(st.get("safe_mode", True))
+        if not sm:
+            return False
+
+        approved = session.get("approved_tools")
+        if approved and tool_name in approved:
+            return False
+
+        if st.get("allow_commands") and tool_name in ("run_command", "command"):
+            return False
+        if (st.get("allow_write") or st.get("allow_file_write")) and tool_name in (
+            "write_file",
+            "write_to_file",
+            "write",
+            "edit_file",
+            "replace_file_content",
+            "multi_replace_file_content",
+        ):
+            return False
+        if st.get("allow_web") and tool_name in (
+            "search_web",
+            "web_search",
+            "read_url_content",
+            "fetch",
+            "browser_open",
+        ):
+            return False
+        if st.get("allow_subagent") and tool_name in (
+            "invoke_subagent",
+            "define_subagent",
+            "manage_subagents",
+        ):
+            return False
+        if st.get("allow_schedule") and tool_name in ("schedule", "manage_task"):
+            return False
+
+        wl = st.get("whitelist") or st.get("permissions", {}).get("allow", [])
+        if isinstance(wl, list):
+            if tool_name in wl or f"{tool_name}(*)" in wl or "command(*)" in wl:
+                return False
+            cmd_str = str(params.get("CommandLine") or params.get("command") or "").strip()
+            if cmd_str and (f"command({cmd_str})" in wl or f"run_command({cmd_str})" in wl):
+                return False
+
+        if tool_name in ("read_file", "read"):
+            return False
+
+        return True
+
+    async def prompt_permission(self, session, run, tool_name, params):
+        process = self.processes.get(session["session_id"])
+        is_suspended = False
+        if process and process.returncode is None:
+            try:
+                os.killpg(process.pid, signal.SIGSTOP)
+                is_suspended = True
+            except Exception:
+                pass
+
+        q_text = format_human_permission_question(tool_name, params)
+        self.emit(
+            run,
+            "permission_request",
+            {
+                "tool": tool_name,
+                "question": q_text,
+                "params": redact(params),
+            },
+        )
+
+        fut = asyncio.get_running_loop().create_future()
+        self.pending_permissions[run["run_id"]] = fut
+        try:
+            decision = await asyncio.wait_for(fut, timeout=120.0)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            decision = "n"
+        finally:
+            self.pending_permissions.pop(run["run_id"], None)
+
+        if decision in ("y", "a"):
+            session.setdefault("approved_tools", set()).add(tool_name)
+            if decision == "a":
+                try:
+                    st = self.store.read("settings")
+                    wl = st.get("whitelist", [])
+                    if isinstance(wl, list) and tool_name not in wl:
+                        wl.append(tool_name)
+                        st["whitelist"] = wl
+                        self.store.write("settings", st)
+                except Exception:
+                    pass
+            if is_suspended and process and process.returncode is None:
+                try:
+                    os.killpg(process.pid, signal.SIGCONT)
+                except Exception:
+                    pass
+            self.emit(
+                run,
+                "permission_result",
+                {
+                    "answer": decision,
+                    "label": "تمت الموافقة ✅" if decision == "y" else "موافقة دائماً ✅🔄",
+                    "tool": tool_name,
+                },
+            )
+        else:
+            if is_suspended and process and process.returncode is None:
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except Exception:
+                    pass
+            self.emit(
+                run,
+                "permission_result",
+                {
+                    "answer": "n",
+                    "label": "تم الرفض ❌",
+                    "tool": tool_name,
+                },
+            )
+            self.finish(session, run, "cancelled")
+            raise asyncio.CancelledError("User rejected permission request")
+
     async def process(self, session):
         session_id = session["session_id"]
         process = self.processes.get(session_id)
@@ -379,9 +619,8 @@ class Sessions:
             "stream-json",
             "--output-format",
             "stream-json",
+            "--dangerously-skip-permissions",
         ]
-        if session.get("autopilot") is True and session.get("safe_mode") is not True:
-            arguments.append("--dangerously-skip-permissions")
         for option in ("model", "agent", "effort", "mode", "project"):
             if session.get(option):
                 arguments.extend(["--" + option, session[option]])
@@ -483,9 +722,11 @@ class Sessions:
                     raise CLIUnavailable("CLI ended before a result event")
                 if len(line) > MAX_LINE:
                     raise CLIUnavailable("CLI event exceeds the line limit")
-                self.consume(
+                outcome = self.consume(
                     session, run, json.loads(line.decode("utf-8-sig"))
                 )
+                if asyncio.iscoroutine(outcome):
+                    await outcome
         except asyncio.CancelledError:
             if poll_task:
                 poll_task.cancel()
@@ -536,14 +777,20 @@ class Sessions:
                 run, "state", {"conversation_id": session["conversation_id"]}
             )
         elif name == "step_update":
-            self.consume_step(run, event.get("step_update", {}))
+            return self.consume_step(session, run, event.get("step_update", {}))
         elif name == "result":
             self.consume_result(session, run, event.get("result", {}))
         elif name == "error":
             self.finish(session, run, "failed", "CLI reported an error")
 
-    def consume_step(self, run, step):
-        if step.get("step_type") == "agent_response":
+    def consume_step(self, session, run, step=None):
+        if step is None:
+            step = run
+            run = session
+            session = self.sessions.get(run.get("session_id"), {})
+        stype = step.get("step_type")
+        state = step.get("state")
+        if stype == "agent_response":
             delta = step.get("text_delta", "")
             if not isinstance(delta, str):
                 raise ValueError("CLI delta must be text")
@@ -551,7 +798,7 @@ class Sessions:
                 raise CLIUnavailable("Turn response exceeds the safety limit")
             run["response"] += delta
             self.emit(run, "delta", {"text_delta": delta})
-        elif step.get("step_type") == "tool":
+        elif stype == "tool":
             self.emit(run, "tool", redact(step))
             tool_name = step.get("tool_name") or step.get("tool") or ""
             args = step.get("parameters") or step.get("args") or {}
@@ -566,7 +813,11 @@ class Sessions:
                     "requestFeedback": bool(meta.get("RequestFeedback") or meta.get("requestFeedback", False)),
                     "userFacing": bool(meta.get("UserFacing", True) if "UserFacing" in meta else meta.get("userFacing", True)),
                 })
-        elif step.get("step_type") == "thought":
+            self.persist()
+            if state != "DONE" and self.needs_permission(session, tool_name, args):
+                return self.prompt_permission(session, run, tool_name, args)
+            return None
+        elif stype == "thought":
             self.emit(run, "thought", {"text": step.get("thought") or step.get("text") or ""})
         self.persist()
 
@@ -595,16 +846,37 @@ class Sessions:
         denied = result.get("denied_actions", [])
         run["denied_actions"] = redact(denied)
         status = str(result.get("status", "")).upper()
-        if (
+        res_text = run.get("response", "")
+
+        if (not res_text or not res_text.strip()) and denied:
+            action_names = []
+            for da in denied:
+                if isinstance(da, dict):
+                    action_names.append(da.get("display_name") or da.get("action") or "أمر طرفية")
+                elif isinstance(da, str):
+                    action_names.append(da)
+            act_str = "، ".join(set(action_names)) if action_names else "تنفيذ الأوامر"
+            notice_text = (
+                f"🔒 **تنبيه إدارة الصلاحيات (Antigravity):**\n\n"
+                f"حاول الوكيل تنفيذ الإجراء المطلوب ({act_str})، ولكن تم إيقافه لأن وضع الأمان مفعل وهذا الإجراء غير مصرح به حالياً.\n\n"
+                f"💡 **خيارات المتابعة الفورية:**\n"
+                f"1. **وضع الطيار الآلي (موصى به):** افتح **الإعدادات ⚙️** وقم بتفعيل 'وضع الطيار الآلي' لتنفيذ كافة العمليات وتعديلات الأكواد بحرية وسرعة.\n"
+                f"2. **السماح بالأوامر:** أو فعّل خيار 'السماح بتنفيذ أوامر الطرفية' من قسم الصلاحيات للموافقة الدائمة على أوامر Bash دون توقف."
+            )
+            run["response"] = notice_text
+            self.emit(run, "delta", {"text_delta": notice_text})
+            self.finish(session, run, "completed")
+        elif (
             result.get("error")
-            or status not in ("SUCCESS", "COMPLETED")
-            or denied
+            or (not res_text and status not in ("SUCCESS", "COMPLETED", "DONE"))
+            or status in ("FAILED", "ERROR")
         ):
+            err_msg = str(result.get("error") or "CLI reported failure or denied actions")
             self.finish(
                 session,
                 run,
                 "failed",
-                "CLI reported failure or denied actions",
+                err_msg,
             )
         else:
             self.finish(session, run, "completed")
