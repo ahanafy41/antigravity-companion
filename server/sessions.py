@@ -490,8 +490,8 @@ class Sessions:
         if not sm:
             return False
 
-        approved = session.get("approved_tools")
-        if approved and tool_name in approved:
+        approved = session.get("approved_tools") or []
+        if tool_name in approved:
             return False
 
         if st.get("allow_commands") and tool_name in ("run_command", "command"):
@@ -566,7 +566,12 @@ class Sessions:
             self.pending_permissions.pop(run["run_id"], None)
 
         if decision in ("y", "a"):
-            session.setdefault("approved_tools", set()).add(tool_name)
+            approved = session.setdefault("approved_tools", [])
+            if isinstance(approved, set):
+                approved = list(approved)
+                session["approved_tools"] = approved
+            if tool_name not in approved:
+                approved.append(tool_name)
             if decision == "a":
                 try:
                     st = self.store.read("settings")
@@ -744,6 +749,8 @@ class Sessions:
             UnicodeError,
             json.JSONDecodeError,
             ValueError,
+            TypeError,
+            KeyError,
             asyncio.TimeoutError,
         ) as failure:
             if poll_task:
@@ -800,9 +807,10 @@ class Sessions:
             self.emit(run, "delta", {"text_delta": delta})
         elif stype == "tool":
             self.emit(run, "tool", redact(step))
-            tool_name = step.get("tool_name") or step.get("tool") or ""
-            args = step.get("parameters") or step.get("args") or {}
-            target = str(args.get("TargetFile") or args.get("target_file") or "").strip().strip('"').strip("'")
+            tool_info = step.get("tool_info") or {}
+            tool_name = step.get("tool_name") or step.get("tool") or tool_info.get("name") or ""
+            args = step.get("parameters") or step.get("args") or tool_info.get("parameters") or {}
+            target = str(args.get("TargetFile") or args.get("target_file") or args.get("Path") or args.get("path") or "").strip().strip('"').strip("'")
             if "brain" in str(target) and tool_name in ("write_to_file", "write"):
                 art_name = Path(target).name.strip().strip('"').strip("'")
                 meta = args.get("ArtifactMetadata") or {}

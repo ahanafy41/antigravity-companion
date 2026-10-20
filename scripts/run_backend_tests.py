@@ -1096,6 +1096,13 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await fut, "y")
         self.assertNotIn(run_id, self.sessions.pending_permissions)
 
+        # 6. approved_tools is JSON-serializable list and does not break persist
+        session.setdefault("approved_tools", []).append("run_command")
+        self.sessions.persist()
+        # Verify it was written to disk and can be read back as valid JSON
+        saved_sessions = self.store.read("sessions")["sessions"]
+        self.assertIn("run_command", saved_sessions[session["session_id"]]["approved_tools"])
+
     def test_event_retention_does_not_return_partial_replay_as_complete(self):
         log = EventLog(self.store.root, "testlog")
         for index in range(510):
