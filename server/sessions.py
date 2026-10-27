@@ -137,8 +137,9 @@ class EventLog:
                         raise
                     recovery_length = valid_length
                     break
-                self.sequence = event["id"]
-                self.events.append(event)
+                if isinstance(event, dict) and "id" in event:
+                    self.sequence = event["id"]
+                    self.events.append(event)
                 valid_length += len(line)
                 if not line.endswith(b"\n"):
                     recovery_length = valid_length
@@ -170,26 +171,26 @@ class EventLog:
             os.fsync(stream.fileno())
 
     def append(self, name, payload):
-        encoded_data = json.dumps(payload, ensure_ascii=False)
-        encoded_len = len(encoded_data.encode("utf-8"))
-        if encoded_len > MAX_LINE // 2:
-            raise CLIUnavailable("Normalized event exceeds the safety limit")
         self.sequence += 1
         event = {"id": self.sequence, "event": name, "data": payload}
+        encoded_event = json.dumps(event, ensure_ascii=False)
+        encoded_len = len(encoded_event.encode("utf-8"))
+        if encoded_len > MAX_LINE // 2:
+            raise CLIUnavailable("Normalized event exceeds the safety limit")
         self.events.append(event)
         
         # High performance streaming: O(1) size tracking without serializing 500 events on every token
         if not hasattr(self, "_retained_size"):
             self._retained_size = sum(len(json.dumps(r, ensure_ascii=False).encode("utf-8")) for r in self.events)
         else:
-            self._retained_size += encoded_len + 30
+            self._retained_size += encoded_len
 
         while self._retained_size > MAX_LINE // 2 and len(self.events) > 1:
             removed = self.events.popleft()
             self._retained_size -= len(json.dumps(removed, ensure_ascii=False).encode("utf-8"))
 
         with self.path.open("a", encoding="utf-8") as stream:
-            stream.write(encoded_data + "\n")
+            stream.write(encoded_event + "\n")
             stream.flush()
             # Fsync only on terminal states to avoid blocking asyncio event loop on every delta token
             if name in ("result", "error"):
