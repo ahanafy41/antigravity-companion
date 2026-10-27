@@ -16,13 +16,17 @@ graph TD
         MA["MainActivity.java"]
         CWV["CompanionWebViewClient.java"]
         WAL["WebViewAssetLoader (https://appassets.androidplatform.net)"]
+        WML["WebViewCompat.addWebMessageListener (CompanionNative)"]
         TB["TermuxBridge.java"]
         AUM["AppUpdateManager.java"]
-        NBP["NativeBridgePolicy.java (HMAC Proofs)"]
+        NBP["NativeBridgePolicy.java (LOCAL vs AUTHENTICATED controls)"]
+        SC["ServerConnection.java (Loopback HMAC Authentic Server Probe)"]
     end
 
     subgraph WebFrontend ["Frontend Web Studio (server/web/ & assets/web/)"]
         UI["main-ui.js (State, ARIA live, UI controls)"]
+        NAT["native.js (Companion.native.request -> postMessage)"]
+        STATE["state.js (Shared client state management)"]
         API["api.js (REST/SSE client, CSRF handling)"]
         CSS["main-ui.css (RTL, Accessible Themes)"]
         HIST["history.js (Offline cache & sync)"]
@@ -45,6 +49,11 @@ graph TD
     MA --> CWV
     CWV --> WAL
     WAL --> UI
+    UI --> NAT
+    NAT -- "CompanionNative.postMessage" --> WML
+    WML --> MA
+    MA --> NBP
+    MA --> SC
     UI <--> API
     API -- "HTTP REST / SSE (:7681)" --> APP
     APP --> SEC
@@ -53,8 +62,7 @@ graph TD
     CLI -- "stream-json pipe" --> AGY
     TB -- "RUN_COMMAND" --> RUN
     RUN --> SRV
-    UI -- "window.CompanionNative" --> NBP
-    NBP --> MA
+    SC -- "HMAC Proof Probe (:7681/api/status)" --> APP
 ```
 
 ### Core Communication Sequences
@@ -67,7 +75,8 @@ graph TD
    - Is port `7681` already responding (`ServerConnection.java`)?
 3. **Dispatch**: If not running, `TermuxBridge.java` sends a `RUN_COMMAND` intent to execute `server/launch_server.sh`.
 4. **Daemonization**: `launch_server.sh` spawns `server/server.py --port 7681 --data-dir ~/.antigravity-companion` in the background and writes PID to `.server.pid`.
-5. **Readiness Probe**: `MainActivity` polls `http://127.0.0.1:7681/api/status` until HTTP 200 is confirmed, then switches UI state to `ONLINE`.
+5. **Readiness & Authentication Probe**: `ServerConnection.java` probes `http://127.0.0.1:7681/api/status`. If available, it executes `authenticServer()` to prove loopback authenticity via HMAC challenge (`NativeSecrets.java` and `NativeProof.java`), bootstraps the session cookie, and flags `serverConnected = true`.
+6. **UI Transition**: `MainActivity` switches UI state to `ONLINE` and reports status to screen readers.
 
 #### 2. Chat Turn & Token Streaming Sequence
 1. **User Input**: User submits a message via Web Studio (`main-ui.js`).
@@ -78,10 +87,15 @@ graph TD
 6. **Streaming Egress**: Server streams Server-Sent Events (`text/event-stream`) back to `api.js`.
 7. **Screen Reader Announcement**: `main-ui.js` updates live regions (`aria-live="polite"`), triggers WebAudio chimes, and handles speech synthesis if enabled.
 
-#### 3. Native Bridge Security Protocol
-- JavaScript invokes Android methods via `window.CompanionNative`.
-- **HMAC Proof Guard**: Sensitive native calls (e.g., launching Termux commands, reading system state) require an HMAC proof generated using `NativeSecrets.java` and verified by `NativeBridgePolicy.java`.
-- Prevents malicious external websites from triggering native actions if loaded in the WebView.
+#### 3. Native Web Message Bridge Protocol
+- Modern Web-to-Native communication uses AndroidX `WebViewCompat.addWebMessageListener` bound to channel `"CompanionNative"`.
+- **Client Dispatch**: JavaScript in `server/web/native.js` invokes `Companion.native.request(action, args)`, generating a UUID `request_id` and calling `window.CompanionNative.postMessage(JSON.stringify({request_id, action, args}))`.
+- **Android Ingestion**: `MainActivity.java` receives the message in `receiveNativeRequest(message)`:
+  1. Validates payload JSON structure and `request_id` regex.
+  2. Evaluates `NativeBridgePolicy.allows(actionName, serverConnected, isDashboard)`.
+  3. Validates action parameters with `NativeActionArguments.validate(actionName, request.args)`.
+  4. Dispatches to the registered handler in `actions.get(actionName)`.
+  5. Emits `companion-native-result` event back to the WebView with `{request_id, success, result/error}`.
 
 ---
 
@@ -116,7 +130,6 @@ The codebase is strictly segregated into 4 isolated tiers:
 * **Role**: Automated regression suites, release packaging, cryptographic signing, and environment preflight checks.
 * **Core Language**: Python standard library (`unittest`), Bash, Java (ReleaseSigner).
 
-
 ---
 
 ## 3. File-by-File Matrix (Complete Inventory)
@@ -127,23 +140,23 @@ This matrix catalogs all production source files, their primary responsibilities
 
 | File | Core Responsibilities & Symbols | Dependencies In / Calling | Dependencies Out / Called By |
 |---|---|---|---|
-| `MainActivity.java` | Main Android Activity; manages lifecycle, initializes WebView, binds JavaScript native interface, handles back button, triggers background updates. Key symbols: `onCreate()`, `setupWebView()`, `checkAppUpdates()`, `initDiagnosticBanner()`. | Android OS, `CompanionWebViewClient`, `TermuxBridge`, `AppUpdateManager` | System launch intent |
+| `MainActivity.java` | Main Android Activity; manages lifecycle, initializes WebView, sets up `WebViewCompat.addWebMessageListener` on channel `CompanionNative`, registers native actions (`actions.put`), triggers background updates. Key symbols: `onCreate()`, `setupWebView()`, `receiveNativeRequest()`, `checkAppUpdates()`, `actions`. | Android OS, `CompanionWebViewClient`, `TermuxBridge`, `AppUpdateManager`, `NativeBridgePolicy`, `NativeActionArguments` | System launch intent |
 | `CompanionWebViewClient.java` | Custom `WebViewClient` using `WebViewAssetLoader` to serve bundled assets securely; intercepts internal links, enforces origin validation. Key symbols: `shouldInterceptRequest()`, `shouldOverrideUrlLoading()`. | `OriginPolicy`, `WebViewAssetLoader` | `MainActivity` |
 | `TermuxBridge.java` | Dispatches execution intents to Termux using `com.termux.RUN_COMMAND`; handles permission verification, background execution results, and socket probes. Key symbols: `launchServerIntent()`, `isTermuxInstalled()`, `hasRunCommandPermission()`. | `TermuxLaunchContract`, Android `Intent` | `MainActivity`, `DoctorDiagnosticEngine` |
 | `DoctorDiagnosticEngine.java` | Performs comprehensive on-device health checks (Termux presence, RUN_COMMAND permission, local server responsiveness, battery optimization). Key symbols: `runAllDiagnostics()`, `DiagnosticResult`, `checkServerConnection()`. | `TermuxBridge`, `ServerConnection` | `MainActivity` |
 | `AppUpdateManager.java` | Manages in-app OTA updates via GitHub Releases; checks version codes, downloads update APK via `UpdateTransfer`, validates checksums, triggers package installer. Key symbols: `checkForUpdate()`, `downloadAndInstall()`, `ReleaseInfo`. | `UpdatePolicy`, `UpdateCompatibility`, `UpdateTransfer` | `MainActivity` |
-| `NativeBridgePolicy.java` | Security enforcement gate for JavaScript-to-Java calls exposed through `window.CompanionNative`; validates HMAC request proof tokens. Key symbols: `validateAction()`, `isAuthorizedCaller()`, `PolicyViolationException`. | `NativeProof`, `NativeSecrets`, `NativeRequestLedger` | `MainActivity` (JavaScript Interface) |
-| `OriginPolicy.java` | Verifies allowed web origins (restricts to `https://appassets.androidplatform.net` and `http://127.0.0.1:7681`). Key symbols: `isAllowedOrigin()`, `sanitizeUrl()`. | Android Uri | `CompanionWebViewClient`, `NativeBridgePolicy` |
-| `NativeSecrets.java` | Manages cryptographic session tokens and keystore-derived keys used to authenticate native bridge calls. Key symbols: `getSessionSecret()`, `deriveHmacKey()`. | Android Keystore | `NativeBridgePolicy`, `NativeProof` |
-| `NativeRequestLedger.java` | Replay protection ledger; records nonce timestamps to prevent replay of intercepted native bridge calls. Key symbols: `recordNonce()`, `isNonceValid()`, `evictExpired()`. | Java Collections | `NativeBridgePolicy` |
-| `NativeProof.java` | Validates HMAC-SHA256 signatures passed with native action invocations. Key symbols: `computeProof()`, `verifyProof()`. | `NativeSecrets`, `javax.crypto.Mac` | `NativeBridgePolicy` |
-| `NativeActionArguments.java` | Deserializes and validates JSON arguments passed from JavaScript to native methods. Key symbols: `parseArguments()`, `getString()`, `getInt()`. | `org.json.JSONObject` | `MainActivity` |
-| `ServerConnection.java` | HTTP ping client checking local server health on `127.0.0.1:7681/api/status`. Key symbols: `pingServer()`, `fetchStatus()`, `ConnectionCallback`. | `java.net.HttpURLConnection` | `DoctorDiagnosticEngine`, `MainActivity` |
+| `NativeBridgePolicy.java` | Policy authorization engine for Web-to-Native calls; categorizes actions into `LOCAL_CONTROLS` (executable offline) vs `AUTHENTICATED_CONTROLS` (requires authenticated server connection). Key symbols: `allows(action, authenticated, localPage)`, `LOCAL_CONTROLS`, `AUTHENTICATED_CONTROLS`. | `Set<String>` | `MainActivity` (`receiveNativeRequest`) |
+| `OriginPolicy.java` | Verifies allowed web origins (restricts to `https://appassets.androidplatform.net` and `http://127.0.0.1:7681`). Key symbols: `isAllowedOrigin()`, `allowsNativeOrigin()`, `allowsNativePage()`, `ASSET_ORIGIN`, `DASHBOARD_URL`. | Android Uri | `CompanionWebViewClient`, `MainActivity` |
+| `NativeSecrets.java` | Manages cryptographic session tokens and keystore-derived keys used by `ServerConnection` to authenticate the local Python server. Key symbols: `sessionSecret()`, `localOriginSecret()`. | Android Keystore | `ServerConnection`, `NativeProof` |
+| `NativeRequestLedger.java` | Replay protection ledger; records nonce timestamps and reserves active request IDs to prevent replay of native calls. Key symbols: `reserve()`, `contains()`, `evictExpired()`. | Java Collections | `MainActivity` |
+| `NativeProof.java` | Computes and validates HMAC-SHA256 signatures passed during server-to-Android authentication probes. Key symbols: `verifyProof()`, `computeProof()`. | `NativeSecrets`, `javax.crypto.Mac` | `ServerConnection` |
+| `NativeActionArguments.java` | Deserializes and validates JSON arguments passed from JavaScript to native methods. Key symbols: `validate()`, `required()`, `optional()`. | `com.google.gson.JsonObject` | `MainActivity` |
+| `ServerConnection.java` | HTTP ping and HMAC authentication client checking local server health on `127.0.0.1:7681/api/status`. Key symbols: `probe()`, `authenticServer()`, `bootstrapCookie()`. | `java.net.HttpURLConnection`, `NativeSecrets`, `NativeProof` | `DoctorDiagnosticEngine`, `MainActivity` |
 | `TermuxLaunchContract.java` | Constant definitions and intent action/extra contracts for interacting with Termux. Key symbols: `ACTION_EXECUTE`, `EXTRA_COMMAND_PATH`, `EXTRA_ARGUMENTS`. | None | `TermuxBridge` |
 | `UpdatePolicy.java` | Business rules determining whether a discovered GitHub release is compatible and eligible for auto-install. Key symbols: `shouldPromptUpdate()`, `isDowngradeProhibited()`. | `UpdateCompatibility` | `AppUpdateManager` |
 | `UpdateCompatibility.java` | Checks Android SDK version compatibility and CPU architecture (arm64-v8a vs universal) for download candidate. Key symbols: `isCompatible()`, `getSupportedAbis()`. | Android `Build` | `UpdatePolicy`, `AppUpdateManager` |
 | `UpdateTransfer.java` | File downloader streaming update APK bytes to isolated app storage with SHA256 verification. Key symbols: `downloadFile()`, `verifyChecksum()`. | `java.net.URL`, `java.security.MessageDigest` | `AppUpdateManager` |
-| `BootReceiver.java` | Android BroadcastReceiver listening for `ACTION_BOOT_COMPLETED` to trigger optional background companion services. Key symbols: `onReceive()`. | Android `BroadcastReceiver` | Android OS |
+| `BootReceiver.java` | Android BroadcastReceiver listening for `ACTION_BOOT_COMPLETED` to trigger optional background companion services. Key symbols: `onReceive()`, `recovered()`. | Android `BroadcastReceiver` | Android OS |
 
 ---
 
@@ -153,7 +166,7 @@ This matrix catalogs all production source files, their primary responsibilities
 |---|---|---|---|
 | `server.py` | CLI entry point and process lifecycle manager; parses `--host`, `--port`, `--data-dir`, binds HTTP server. Key symbols: `main()`, `run_server()`, `parse_args()`. | `application.py`, `launcher.py` | Shell / Termux `launch_server.sh` |
 | `auth_flow.py` | Inspects and decodes Google Antigravity OAuth session tokens (`~/.gemini/antigravity-cli/antigravity-oauth-token`); checks email, expiration timestamp, and login validity. Key symbols: `get_oauth_token_info()`, `NAME`, `AUTH_TOKEN_FILE`. | `base64`, `json`, `pathlib` | `application.py` |
-| `application.py` | Primary HTTP request router and endpoint controller; handles `/api/status`, `/api/chat`, `/api/sessions`, `/api/mcp`, `/api/doctor`, `/api/shutdown`. Key symbols: `CompanionRequestHandler`, `handle_chat()`, `handle_status()`, `dispatch_route()`. | `security.py`, `sessions.py`, `cli_client.py`, `runtime_status.py`, `mcp_probe.py` | `server.py` |
+| `application.py` | Primary HTTP request router and endpoint controller; handles `/api/status`, `/api/chat`, `/api/sessions`, `/api/mcp`, `/api/doctor`, `/api/shutdown`. Key symbols: `CompanionRequestHandler`, `handle_chat()`, `handle_status()`, `dispatch_route()`. | `security.py`, `sessions.py`, `cli_client.py`, `runtime_status.py`, `mcp_probe.py`, `auth_flow.py` | `server.py` |
 | `sessions.py` | Session management and state persistence; maintains chat conversation trees, history saves, and turn serialization locks. Key symbols: `SessionStore`, `get_session()`, `create_session()`, `append_turn()`, `acquire_turn_lock()`. | `storage.py`, `cli_client.py` | `application.py` |
 | `cli_client.py` | Subprocess bridge and IPC coordinator to the Google `agy` CLI; formats model flags, reasoning effort, and stream-json pipes. Key symbols: `AgyCliClient`, `run_prompt_streaming()`, `discover_cli_path()`, `spawn_worker()`. | `cli_catalog.py`, `subprocess` | `sessions.py`, `application.py` |
 | `cli_catalog.py` | Catalog of available Gemini models, alias mappings, reasoning capability flags, and default system instructions. Key symbols: `MODEL_CATALOG`, `resolve_model_alias()`, `get_model_capabilities()`. | None | `cli_client.py`, `cli_settings.py` |
@@ -183,15 +196,30 @@ This matrix catalogs all production source files, their primary responsibilities
 
 | File | Core Responsibilities & Symbols | Interacting Files |
 |---|---|---|
-| `index.html` | Core responsive single-page interface; contains chat message stream, prompt textarea, reasoning effort toggles, model selector, diagnostic drawer, and ARIA live regions for screen readers. | `main-ui.css`, `main-ui.js`, `api.js` |
-| `start.html` | First-run / fallback onboarding page displayed when server is offline or initializing. | `main-ui.css`, `CompanionNative` |
-| `main-ui.js` | UI state controller; manages message DOM rendering, markdown formatting, auto-scrolling, accessibility focus traps, keyboard shortcuts (`Ctrl+Enter`), and WebAudio feedback. | `index.html`, `api.js`, `history.js` |
-| `main-ui.css` | Accessible CSS design system; RTL layouts, high contrast dark/light themes, WCAG AA compliant contrast ratios, fluid responsiveness. | `index.html`, `start.html` |
+| `index.html` | Core responsive single-page interface; contains chat message stream, prompt textarea, reasoning effort toggles, model selector, diagnostic drawer, and ARIA live regions for screen readers. | `main-ui.css`, `main-ui.js`, `api.js`, `native.js`, `state.js` |
+| `start.html` | First-run / fallback onboarding page displayed when server is offline or initializing. | `start-ui.css`, `start-ui.js`, `native.js` |
+| `main-ui.js` | UI state controller; manages message DOM rendering, markdown formatting, auto-scrolling, accessibility focus traps, keyboard shortcuts (`Ctrl+Enter`), and WebAudio feedback. | `index.html`, `api.js`, `history.js`, `state.js` |
+| `main-ui.css` | Accessible CSS design system; RTL layouts, high contrast dark/light themes, WCAG AA compliant contrast ratios, fluid responsiveness. | `index.html` |
+| `native.js` | Modern native bridge client; encapsulates `Companion.native.request(action, args)` using AndroidX WebMessage listener (`CompanionNative.postMessage`). | `index.html`, `start.html`, `main-ui.js`, `MainActivity.java` |
+| `state.js` | Shared frontend reactive state container; manages active session metadata, model presets, and UI connection flags. | `main-ui.js`, `api.js` |
+| `main-v1-adapter.js` | Compatibility adapter bridging legacy v1 chat endpoints with the modern streaming API. | `main-ui.js`, `api.js` |
+| `start-ui.js` | First-run setup and diagnostics controller for `start.html`; coordinates Termux installation checks and server boot. | `start.html`, `native.js` |
+| `start-ui.css` | Dedicated styles for the first-run / offline setup onboarding screen. | `start.html` |
 | `api.js` | Asynchronous REST and SSE client; manages HTTP session tokens, CSRF handshakes, message chunk parsing, and reconnection retries. Key symbols: `sendMessageStream()`, `fetchStatus()`, `fetchSessions()`. | `main-ui.js`, Backend `application.py` |
 | `history.js` | Client-side IndexedDB / LocalStorage cache for offline conversation browsing and search. | `main-ui.js` |
+| `legacy-native.js` | Backward-compatibility shim providing fallback JS bridge functions for older WebViews. | `start.html`, `MainActivity.java` |
+| `styles.css` | Base utility stylesheet and typographic resets. | `index.html`, `start.html` |
+| `ui.js` | Common modal dialogs, accessible alert banners, and focus restoration helpers. | `main-ui.js`, `start-ui.js` |
 | `manifest.json` | Progressive Web App (PWA) manifest; defines theme colors, app icons, and standalone display mode. | Browser / WebView |
 | `sw.js` | Service Worker; caches static shell assets (`css`, `js`, `svg`) while bypassing API endpoints (`/api/*`). | Browser / PWA runtime |
 | `icon.svg` | Scalable vector logo for Antigravity Companion. | `manifest.json`, `index.html` |
+| `run_features_tests.cjs` | Web unit test runner validating message streaming and prompt dispatch. | Node.js test harness |
+| `run_legacy_native_tests.cjs` | Test suite validating legacy bridge compatibility and fallback behavior. | Node.js test harness |
+| `run_main_ui_tests.cjs` | Headless DOM tests for UI element binding, ARIA updates, and chat rendering. | Node.js test harness |
+| `run_mentions_tests.cjs` | Tests parsing of @-mentions and tool scoping in the prompt textarea. | Node.js test harness |
+| `run_tests.cjs` | Master Node.js runner executing all client-side unit test suites. | Web CI / Node.js |
+| `run_ui_tests.cjs` | Tests for UI interaction states, dark mode toggle, and settings panel. | Node.js test harness |
+| `vendor/` | Directory containing vendored libraries: `alpine-csp.min.js`, `marked.umd.js`, `purify.min.js`, `tailwind.min.css`. | `index.html` |
 
 ---
 
@@ -206,16 +234,42 @@ This matrix catalogs all production source files, their primary responsibilities
 | `install_release.py` | Verifies and selects Termux package releases atomically with rollback protection. | Used by update orchestrator. |
 | `ReleaseSigner.java` | Java cryptographic utility for RSA/ECDSA signing of release manifests. | Run via JDK. |
 | `phase1_preflight.py` | Preflight suite testing CLI `--help` flags, argument parsing, and local HTTP endpoint readiness. | Required CI/Preflight gate. |
+| `phone_acceptance.py` | On-device chat API and screen reader automation acceptance harness. | Requires device or emulator. |
 | `run_tests.py` | Main test runner discovering all unit and integration suites under `scripts/`. | Python standard `unittest`. |
 | `run_backend_tests.py` | Comprehensive test suite for `application.py`, `sessions.py`, `security.py`, and `storage.py`. | 60+ test cases. |
-| `run_android_web_asset_tests.py` | Validates parity between canonical web assets and Android bundled assets. | Checks hashes. |
+| `run_android_web_asset_tests.py` | Validates parity between canonical web assets and Android bundled assets. | Checks MD5 hashes. |
 | `run_auth_tests.py` | Tests CSRF validation, session cookie handling, and Origin policy enforcement. | Security gate. |
 | `run_feature_tests.py` | End-to-end chat turn and SSE streaming tests against mock CLI runners. | Feature gate. |
 | `run_launcher_tests.py` | Tests PID file management, daemon spawning, and signal handling. | Process management. |
 | `run_mcp_scope_tests.py` | Tests MCP server discovery, schema extraction, and tool execution scopes. | MCP integration. |
+| `run_pairing_tests.py` | Tests device pairing and authentication handshakes. | Security test suite. |
 | `run_parity_tests.py` | Regression tests checking behavioral parity between local and remote models. | Parity verification. |
-| `test_code_map_integrity.py` | Automated integrity test for `CODE_MAP.md`; verifies sections, recipes, and 100% file indexing. | Self-referential test gate. |
+| `run_phone_harness_tests.py` | Unit tests for the phone acceptance testing harness itself. | Testing tooling. |
+| `run_phone_tests.py` | Host ADB acceptance test runner for Android device interaction. | ADB automation. |
+| `run_planner_tests.py` | Tests for intent parsing and voice command planners. | Planner validation. |
+| `run_process_tests.py` | Process isolation, child killing, and zombie prevention tests. | Concurrency security. |
+| `run_release_tests.py` | Cryptographic signature and packaging verification tests. | Release gate. |
+| `run_schedule_tests.py` | Tests for recurring cron schedules and background task timers. | Task scheduling. |
+| `run_settings_panel_tests.py` | Tests for reading/writing configuration values and schema defaults. | Settings persistence. |
+| `run_shutdown_tests.py` | Tests graceful daemon termination and resource cleanup. | Server lifecycle. |
+| `run_stream_retry_tests.js` | SSE streaming reconnection and retry behavior test suite. | Node.js streaming tests. |
+| `run_task_tests.py` | Tests background task queueing, execution, and cancellation. | Task runner suite. |
+| `run_tts_tests.py` | Tests WebAudio synthesis and speech playback integrations. | Accessibility audio. |
+| `run_voice_tests.py` | End-to-end speech recognition and voice loop tests. | Voice agent suite. |
+| `test_code_map_integrity.py` | Automated integrity test for `CODE_MAP.md`; verifies sections, recipes, and 100% dynamic file indexing. | Self-referential test gate. |
 
+#### Android Native Unit Tests (`app/src/test/java/com/antigravity/companion/`)
+- `DoctorDiagnosticEngineTest.java`: Tests Termux detection and diagnostic rules.
+- `NativeActionArgumentsTest.java`: Tests argument schema validation.
+- `NativeBridgePolicyTest.java`: Tests `LOCAL_CONTROLS` and `AUTHENTICATED_CONTROLS` permission boundaries.
+- `NativeProofTest.java`: Tests HMAC-SHA256 verification.
+- `NativeRequestLedgerTest.java`: Tests request ID deduplication and replay prevention.
+- `OriginPolicyTest.java`: Tests origin URL matching and sanitization.
+- `ServerConnectionTest.java`: Tests loopback probing and status reporting.
+- `TermuxLaunchContractTest.java`: Tests intent extras and action constants.
+- `UpdateCompatibilityTest.java`: Tests architecture and ABI matching for APK updates.
+- `UpdatePolicyTest.java`: Tests update prompts and downgrade prevention.
+- `UpdateTransferTest.java`: Tests SHA256 checksum verification during download.
 
 ---
 
@@ -237,10 +291,12 @@ Use these 8 prescriptive recipes whenever implementing features or fixing bugs. 
   1. Define path constant and parameter validation in `server/application.py`.
   2. If the endpoint requires persistence, delegate storage logic to `server/storage.py` or `server/sessions.py`.
   3. Implement JSON response serialization using `self._send_json(data, status=200)`.
-  4. Write unit test in `scripts/run_backend_tests.py`.
+  4. Update client fetch helper in `server/web/api.js`.
+  5. Synchronize web assets: `python3 scripts/sync_android_web.py`.
+  6. Write unit test in `scripts/run_backend_tests.py`.
 * **Verification Command**:
   ```bash
-  python3 scripts/run_backend_tests.py -v
+  python3 scripts/sync_android_web.py --check && python3 scripts/run_backend_tests.py -v
   ```
 
 ---
@@ -252,6 +308,7 @@ Use these 8 prescriptive recipes whenever implementing features or fixing bugs. 
   1. `server/web/index.html` (Markup, ARIA live regions, semantic buttons).
   2. `server/web/main-ui.css` (Styles, RTL rules, WCAG color contrast).
   3. `server/web/main-ui.js` (DOM event listeners, screen reader announcements).
+  4. `server/web/state.js` (If modifying UI reactive state).
 * **Files to NEVER Touch**:
   - Direct edits to `app/src/main/assets/web/*` (WILL BE OVERWRITTEN by sync script).
 * **Step-by-Step Procedure**:
@@ -276,24 +333,27 @@ Use these 8 prescriptive recipes whenever implementing features or fixing bugs. 
 
 * **Goal**: Allow Web JavaScript to call a new Android system action via `window.CompanionNative`.
 * **Files to Modify**:
-  1. `app/src/main/java/com/antigravity/companion/MainActivity.java` — Add `@JavascriptInterface` method.
-  2. `app/src/main/java/com/antigravity/companion/NativeBridgePolicy.java` — Register action name in allowed policy list and require HMAC proof.
-  3. `app/src/main/java/com/antigravity/companion/NativeActionArguments.java` — Add argument validation parser.
-  4. `server/web/api.js` — Expose JS helper `window.CompanionNative.action(...)`.
+  1. `app/src/main/java/com/antigravity/companion/MainActivity.java` — Register the new action in `actions.put("action_name", request -> handleAction(request))`.
+  2. `app/src/main/java/com/antigravity/companion/NativeBridgePolicy.java` — Add `"action_name"` to `LOCAL_CONTROLS` (if safe offline) or `AUTHENTICATED_CONTROLS` (if requiring an authentic server).
+  3. `app/src/main/java/com/antigravity/companion/NativeActionArguments.java` — Add argument validation schema in `validate()`.
+  4. `server/web/native.js` — Expose JS helper `Companion.native.action_name = (args) => Companion.native.request('action_name', args)`.
 * **Files to NEVER Touch**:
   - `app/src/main/java/com/antigravity/companion/OriginPolicy.java` (Do not weaken origin restrictions).
 * **Step-by-Step Procedure**:
-  1. Register action name in `NativeBridgePolicy.java`.
-  2. Implement native Java logic in `MainActivity.java` with proof validation:
+  1. Register action name in `NativeBridgePolicy.java` under appropriate set (`LOCAL_CONTROLS` or `AUTHENTICATED_CONTROLS`).
+  2. Add argument validation rules in `NativeActionArguments.java`.
+  3. Implement action handler in `MainActivity.java`:
      ```java
-     if (!nativeBridgePolicy.validateAction(actionName, proofToken, args)) {
-         throw new SecurityException("Unauthorized native invocation");
-     }
+     actions.put("action_name", request -> {
+         // Perform native work
+         reply(request, resultObject);
+     });
      ```
-  3. Sync web assets via `python3 scripts/sync_android_web.py`.
+  4. Add JS dispatch wrapper in `server/web/native.js` using `Companion.native.request("action_name", args)`.
+  5. Sync web assets: `python3 scripts/sync_android_web.py`.
 * **Verification Command**:
   ```bash
-  python3 scripts/sync_android_web.py --check
+  python3 scripts/sync_android_web.py --check && python3 scripts/run_android_web_asset_tests.py
   ```
 
 ---
@@ -411,7 +471,6 @@ Use these 8 prescriptive recipes whenever implementing features or fixing bugs. 
   python3 scripts/run_mcp_scope_tests.py -v
   ```
 
-
 ---
 
 ## 5. Verification & Safety Guardrails
@@ -421,7 +480,7 @@ To prevent breaking changes, state pollution, or security leaks, all contributor
 ### 5.1. Mandatory Pre-Commit Checklist
 
 - [ ] **Dual-Copy Parity**: If modifying `server/web/`, did you run `python3 scripts/sync_android_web.py`?
-- [ ] **Native Security Invariant**: If adding or altering native bridge actions, is an HMAC proof token validated in `NativeBridgePolicy.java`?
+- [ ] **Native Security Invariant**: If adding or altering native bridge actions, are they registered in `NativeBridgePolicy.java` under the appropriate control tier (`LOCAL_CONTROLS` or `AUTHENTICATED_CONTROLS`)?
 - [ ] **Strict Localhost Binding**: Is `server.py` strictly bound to `127.0.0.1`?
 - [ ] **Subprocess Safety**: Are all `subprocess.Popen` / `subprocess.run` calls invoked with argument lists and `shell=False`?
 - [ ] **Accessibility Invariant**: Are all new buttons, inputs, and status indicators accompanied by descriptive Arabic ARIA labels and live regions for TalkBack and Jieshuo (`CSR`) screen readers?
@@ -431,7 +490,7 @@ To prevent breaking changes, state pollution, or security leaks, all contributor
 Execute these verification commands directly from the repository root:
 
 ```bash
-# 1. Code Map Integrity Check (verifies 100% file coverage and recipes)
+# 1. Code Map Integrity Check (verifies 100% dynamic file coverage, recipes, and bridge accuracy)
 python3 scripts/test_code_map_integrity.py -v
 
 # 2. Canonical Web Asset Synchronization Check
