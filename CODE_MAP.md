@@ -215,3 +215,198 @@ This matrix catalogs all production source files, their primary responsibilities
 | `run_mcp_scope_tests.py` | Tests MCP server discovery, schema extraction, and tool execution scopes. | MCP integration. |
 | `run_parity_tests.py` | Regression tests checking behavioral parity between local and remote models. | Parity verification. |
 | `test_code_map_integrity.py` | Automated integrity test for `CODE_MAP.md`; verifies sections, recipes, and 100% file indexing. | Self-referential test gate. |
+
+
+---
+
+## 4. Surgical Modification Playbooks
+
+Use these 8 prescriptive recipes whenever implementing features or fixing bugs. Follow each step in order; do not guess or edit files outside the recipe.
+
+### Recipe A: Adding or Modifying a Backend REST API Endpoint
+
+* **Goal**: Expose a new HTTP route (e.g., `/api/new-feature`) or change an existing response schema.
+* **Files to Modify**:
+  1. `server/application.py` — Add route dispatch in `do_GET()` / `do_POST()` and write the handler method `handle_new_feature()`.
+  2. `server/security.py` — If state-changing (POST/PUT/DELETE), add CSRF token validation and session cookie verification.
+  3. `server/web/api.js` — Add the client-side async fetch wrapper.
+* **Files to NEVER Touch**:
+  - `server/server.py` (CLI entry point, socket binding only).
+  - `app/src/main/java/com/antigravity/companion/MainActivity.java` (Android shell does not route HTTP).
+* **Step-by-Step Procedure**:
+  1. Define path constant and parameter validation in `server/application.py`.
+  2. If the endpoint requires persistence, delegate storage logic to `server/storage.py` or `server/sessions.py`.
+  3. Implement JSON response serialization using `self._send_json(data, status=200)`.
+  4. Write unit test in `scripts/run_backend_tests.py`.
+* **Verification Command**:
+  ```bash
+  python3 scripts/run_backend_tests.py -v
+  ```
+
+---
+
+### Recipe B: Updating Web UI Layout or Chat Interactions
+
+* **Goal**: Modify UI styling, add buttons, adjust RTL layout, or change markdown rendering.
+* **Files to Modify**:
+  1. `server/web/index.html` (Markup, ARIA live regions, semantic buttons).
+  2. `server/web/main-ui.css` (Styles, RTL rules, WCAG color contrast).
+  3. `server/web/main-ui.js` (DOM event listeners, screen reader announcements).
+* **Files to NEVER Touch**:
+  - Direct edits to `app/src/main/assets/web/*` (WILL BE OVERWRITTEN by sync script).
+* **Step-by-Step Procedure**:
+  1. Make edits ONLY inside `server/web/`.
+  2. Test in local browser or run preflight checks.
+  3. Run the canonical synchronization tool:
+     ```bash
+     python3 scripts/sync_android_web.py
+     ```
+  4. Verify MD5 asset parity:
+     ```bash
+     python3 scripts/sync_android_web.py --check
+     ```
+* **Verification Command**:
+  ```bash
+  python3 scripts/sync_android_web.py --check && python3 scripts/run_android_web_asset_tests.py
+  ```
+
+---
+
+### Recipe C: Adding a New Android Native Bridge Method
+
+* **Goal**: Allow Web JavaScript to call a new Android system action via `window.CompanionNative`.
+* **Files to Modify**:
+  1. `app/src/main/java/com/antigravity/companion/MainActivity.java` — Add `@JavascriptInterface` method.
+  2. `app/src/main/java/com/antigravity/companion/NativeBridgePolicy.java` — Register action name in allowed policy list and require HMAC proof.
+  3. `app/src/main/java/com/antigravity/companion/NativeActionArguments.java` — Add argument validation parser.
+  4. `server/web/api.js` — Expose JS helper `window.CompanionNative.action(...)`.
+* **Files to NEVER Touch**:
+  - `app/src/main/java/com/antigravity/companion/OriginPolicy.java` (Do not weaken origin restrictions).
+* **Step-by-Step Procedure**:
+  1. Register action name in `NativeBridgePolicy.java`.
+  2. Implement native Java logic in `MainActivity.java` with proof validation:
+     ```java
+     if (!nativeBridgePolicy.validateAction(actionName, proofToken, args)) {
+         throw new SecurityException("Unauthorized native invocation");
+     }
+     ```
+  3. Sync web assets via `python3 scripts/sync_android_web.py`.
+* **Verification Command**:
+  ```bash
+  python3 scripts/sync_android_web.py --check
+  ```
+
+---
+
+### Recipe D: Adjusting agy CLI Interaction Flags or Model Catalogue
+
+* **Goal**: Add a new Gemini model, change reasoning effort levels, or update CLI subprocess flags.
+* **Files to Modify**:
+  1. `server/cli_catalog.py` — Add model name, alias, and capability flags to `MODEL_CATALOG`.
+  2. `server/cli_client.py` — Update CLI argument construction in `build_cli_args()`.
+  3. `server/cli_settings.py` — Update validation rules for user settings.
+  4. `server/web/main-ui.js` — Add model option to `<select id="model-select">`.
+* **Files to NEVER Touch**:
+  - Subprocess spawn safety: Never use `shell=True`. Always pass argument lists.
+* **Step-by-Step Procedure**:
+  1. Add model entry to `cli_catalog.py`.
+  2. Update CLI flag builder in `cli_client.py`.
+  3. Update UI select element and run `python3 scripts/sync_android_web.py`.
+* **Verification Command**:
+  ```bash
+  python3 scripts/run_feature_tests.py -v
+  ```
+
+---
+
+### Recipe E: Modifying Termux Diagnostic Checks
+
+* **Goal**: Add or adjust diagnostic checks (e.g., verifying a new package or socket).
+* **Files to Modify**:
+  1. `scripts/doctor.py` — Add CLI diagnostic function `check_new_requirement()`.
+  2. `app/src/main/java/com/antigravity/companion/DoctorDiagnosticEngine.java` — Add on-device check.
+  3. `server/runtime_status.py` — Expose status in `/api/doctor`.
+* **Files to NEVER Touch**:
+  - `server/server.py`.
+* **Step-by-Step Procedure**:
+  1. Implement diagnostic check in `scripts/doctor.py`.
+  2. Mirror check in `DoctorDiagnosticEngine.java` with localized Arabic description in `strings.xml`.
+  3. Test CLI output:
+     ```bash
+     python3 scripts/doctor.py --doctor
+     ```
+* **Verification Command**:
+  ```bash
+  python3 scripts/doctor.py --doctor
+  ```
+
+---
+
+### Recipe F: Updating and Publishing an In-App OTA Release
+
+* **Goal**: Cut a new release of Antigravity Companion so existing app installations auto-update.
+* **Files to Modify**:
+  1. `app/build.gradle` — Increment `versionCode` and update `versionName`.
+  2. `.github/workflows/build-apk.yml` — Update release tag / version environment.
+  3. `project_spec.json` — Update `"version"`.
+  4. `server/version.json` — Update server release version and build date.
+* **Files to NEVER Touch**:
+  - `app/keystore/antigravity-release-key.jks` (Permanent release key).
+* **Step-by-Step Procedure**:
+  1. Sync web assets: `python3 scripts/sync_android_web.py`.
+  2. Verify all tests pass: `python3 scripts/run_backend_tests.py`.
+  3. Commit and tag:
+     ```bash
+     git commit -am "release: vX.Y.Z"
+     git tag vX.Y.Z
+     git push origin main --tags
+     ```
+  4. GitHub Actions builds and signs APK; `AppUpdateManager.java` detects the release via GitHub API.
+* **Verification Command**:
+  ```bash
+  python3 scripts/phase1_preflight.py
+  ```
+
+---
+
+### Recipe G: Adding a New Backend Unit Test
+
+* **Goal**: Write regression tests for a newly introduced server feature or bugfix.
+* **Files to Modify**:
+  1. `scripts/run_backend_tests.py` (or create dedicated `scripts/run_<feature>_tests.py`).
+  2. `scripts/run_tests.py` (if creating a new test module, add to test loader).
+* **Files to NEVER Touch**:
+  - Production code inside `server/` (tests must only test behavior, not modify it).
+* **Step-by-Step Procedure**:
+  1. Create a subclass of `unittest.TestCase`.
+  2. Use mock socket / HTTP fixtures; never make external network calls.
+  3. Run test runner:
+     ```bash
+     python3 scripts/run_backend_tests.py -v
+     ```
+* **Verification Command**:
+  ```bash
+  python3 scripts/run_tests.py
+  ```
+
+---
+
+### Recipe H: Modifying MCP Server Discovery or Probing Logic
+
+* **Goal**: Add new MCP tool schema inspection, custom tool scopes, or connection timeouts.
+* **Files to Modify**:
+  1. `server/mcp_probe.py` — Adjust discovery path (`~/.gemini/antigravity-cli/mcp/`) or schema parser.
+  2. `server/mcp_settings.py` — Adjust tool enable/disable toggles.
+  3. `server/application.py` — Update `/api/mcp` endpoint output.
+* **Files to NEVER Touch**:
+  - User's MCP tool definition files in `~/.gemini/antigravity-cli/mcp/` (Read-only discovery).
+* **Step-by-Step Procedure**:
+  1. Update probing logic in `mcp_probe.py`.
+  2. Run dedicated MCP scope test suite:
+     ```bash
+     python3 scripts/run_mcp_scope_tests.py -v
+     ```
+* **Verification Command**:
+  ```bash
+  python3 scripts/run_mcp_scope_tests.py -v
+  ```
