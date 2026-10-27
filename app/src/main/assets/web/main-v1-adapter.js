@@ -24,8 +24,8 @@
         try { global.onUpdateCheckResult?.(await native('check_update')); }
         catch (error) { global.onUpdateCheckError?.({error: error.message}); }
       },
-      startUpdateDownload: async () => {
-        try { global.onUpdateDownloadComplete?.(await native('download_update')); }
+      startUpdateDownload: async (url) => {
+        try { global.onUpdateDownloadComplete?.(await native('download_update', url ? {url} : {})); }
         catch (error) { global.onUpdateDownloadError?.({error: error.message}); report(error); }
       }
     };

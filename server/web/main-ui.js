@@ -5622,6 +5622,7 @@ await window.mainV1.ready;
     const drawerUpdateBadge = document.getElementById('drawer-update-badge');
 
     let currentUpdateAvailable = false;
+    let currentUpdateDownloadUrl = '';
     let lastAnnouncedProgressMilestone = 0;
 
     async function openUpdateDialog() {
@@ -5682,6 +5683,7 @@ await window.mainV1.ready;
       if (info.hasUpdate) {
         if (drawerUpdateBadge) drawerUpdateBadge.style.display = 'inline-block';
         currentUpdateAvailable = info.hasUpdate === true;
+        currentUpdateDownloadUrl = info.downloadUrl || '';
 
         if (updateStatusMessage) {
           updateStatusMessage.textContent = 'يوجد تحديث جديد متاح: الإصدار ' + (info.latestVersion || '');
@@ -5748,7 +5750,15 @@ await window.mainV1.ready;
       announce('بدء تنزيل حزمة التحديث');
 
       if (window.AntigravityBridge && typeof window.AntigravityBridge.startUpdateDownload === 'function') {
-        window.AntigravityBridge.startUpdateDownload();
+        try {
+          if (currentUpdateDownloadUrl) {
+            window.AntigravityBridge.startUpdateDownload(currentUpdateDownloadUrl);
+          } else {
+            window.AntigravityBridge.startUpdateDownload();
+          }
+        } catch (callErr) {
+          try { window.AntigravityBridge.startUpdateDownload(); } catch (ignored) {}
+        }
       } else {
         window.onUpdateCheckError({error: 'تنزيل حزمة Android متاح داخل التطبيق فقط.'});
         if (updateProgressContainer) updateProgressContainer.style.display = 'none';

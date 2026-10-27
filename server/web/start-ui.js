@@ -212,7 +212,11 @@ function reportError(error) {
         async function downloadUpdate(url) {
             announce('بدء تنزيل التحديث...');
             if (window.AntigravityBridge && typeof window.AntigravityBridge.startUpdateDownload === 'function') {
-                await window.AntigravityBridge.startUpdateDownload(url);
+                try {
+                    await window.AntigravityBridge.startUpdateDownload(url || '');
+                } catch(e) {
+                    await window.AntigravityBridge.startUpdateDownload();
+                }
             }
         }
 
