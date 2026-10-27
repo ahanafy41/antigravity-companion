@@ -260,6 +260,24 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
             csrf = (await response.json())["csrf_token"]
         return {"X-CSRF-Token": csrf}
 
+    async def test_csrf_grace_period_accepts_recently_active_token_during_cookie_rotation(self):
+        headers = await self.authenticated()
+        csrf_1 = headers["X-CSRF-Token"]
+
+        # Simulate native Android bootstrap rotating the cookie
+        cookie_2, _ = self.app["pairing"].new_session()
+        self.client.cookie_jar.update_cookies({"agy_session": cookie_2})
+
+        sessions = self.app["sessions"]
+        session = sessions.create({"cwd": self.folder.name})
+        endpoint = self.url + "/api/v1/sessions/" + session["session_id"] + "/runs"
+        async with self.client.post(
+            endpoint,
+            json={"message": "Grace test", "client_request_id": "grace-1"},
+            headers={"X-CSRF-Token": csrf_1},
+        ) as reply:
+            self.assertNotEqual(reply.status, 403)
+
     async def test_commands_capability_matches_available_catalog_route(self):
         await self.authenticated()
         self.app["cli"].executable = sys.executable

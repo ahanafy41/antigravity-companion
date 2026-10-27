@@ -128,9 +128,18 @@ async def isolation(request, handler):
         pairing = request.app["pairing"]
         if pairing.authorized(cookie):
             if request.method not in ("GET", "HEAD", "OPTIONS"):
-                if not pairing.valid_csrf(
-                    cookie, request.headers.get("X-CSRF-Token", "")
-                ):
+                csrf = request.headers.get("X-CSRF-Token", "")
+                valid = pairing.valid_csrf(cookie, csrf)
+                if not valid:
+                    # Grace validation: check if CSRF matches any active unexpired session
+                    valid = bool(
+                        csrf
+                        and any(
+                            sess[0] == csrf and sess[1] > time.monotonic()
+                            for sess in pairing.sessions.values()
+                        )
+                    )
+                if not valid:
                     return error("csrf_failed", "CSRF token is required", 403)
         else:
             token = request.headers.get("X-CSRF-Token", "")
