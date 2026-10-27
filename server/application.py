@@ -689,9 +689,50 @@ def workspaces(request):
 
 
 async def list_sessions(request):
-    return web.json_response(
-        {"sessions": list(request.app["sessions"].sessions.values())}
-    )
+    sessions_obj = request.app["sessions"]
+    runs = sessions_obj.runs
+    result = []
+    for s in sessions_obj.sessions.values():
+        s_dict = dict(s)
+        s_runs = s.get("runs", [])
+        if not s_runs:
+            continue
+        first_run = runs.get(s_runs[0]) if s_runs else None
+        last_run = runs.get(s_runs[-1]) if s_runs else None
+
+        title = ""
+        if first_run and first_run.get("message"):
+            msg = first_run["message"]
+            if "<USER_REQUEST>" in msg:
+                msg = msg.split("<USER_REQUEST>")[1].split("</USER_REQUEST>")[0].strip()
+            clean = re.sub(r"<[^>]+>", " ", msg).strip()
+            clean = re.sub(r"^(?:/[a-zA-Z0-9_\.\-]+(?:\s*))+", "", clean).strip()
+            for line in clean.split("\n"):
+                line = line.strip()
+                if line and not line.startswith("/"):
+                    title = line[:60]
+                    break
+            if not title:
+                raw_first = first_run["message"].split("\n")[0].strip()
+                if raw_first.startswith("/"):
+                    cmd = raw_first.split()[0].lstrip("/")
+                    title = f"أمر: {cmd}"
+                else:
+                    title = raw_first[:60]
+
+        created_at = (first_run.get("created_at") or 0) if first_run else 0
+        mtime = (
+            (last_run.get("completed_at") or last_run.get("created_at") or created_at)
+            if last_run
+            else created_at
+        )
+
+        s_dict["title"] = title or "محادثة سابقة"
+        s_dict["created_at"] = created_at
+        s_dict["mtime"] = mtime
+        s_dict["steps"] = len(s_runs) * 2
+        result.append(s_dict)
+    return web.json_response({"sessions": result})
 
 
 async def create_session(request):

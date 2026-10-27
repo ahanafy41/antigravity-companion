@@ -3190,16 +3190,20 @@ await window.mainV1.ready;
           item.className = 'conv-card-item' + (isCurrent ? ' active' : '');
           item.setAttribute('role', 'listitem');
 
+          const ariaText = isCurrent
+            ? `المحادثة الحالية المفتوحة: ${c.title}`
+            : `استئناف المحادثة: ${c.title}${c.date ? '، تاريخ ' + c.date : ''}`;
+
           item.innerHTML = `
             <div class="conv-card-info">
               <div class="conv-card-title">${escapeHtml(c.title)}</div>
               <div class="conv-card-meta">
-                <span>📅 ${escapeHtml(c.date)}</span>
-                <span>🔢 ${c.steps} خطوة</span>
-                ${isCurrent ? '<span class="main-style-177">● المحادثة النشطة</span>' : ''}
+                <span>📅 ${escapeHtml(c.date || 'بدون تاريخ')}</span>
+                <span>🔢 ${c.steps} رسالة وخطوة</span>
+                ${isCurrent ? '<span class="main-style-177">● المحادثة المفتوحة حالياً</span>' : ''}
               </div>
             </div>
-            <button type="button" class="btn-resume-conv" data-id="${escapeHtml(c.id)}" data-title="${escapeHtml(c.title)}" aria-label="استئناف المحادثة: ${escapeHtml(c.title)}">
+            <button type="button" class="btn-resume-conv" data-id="${escapeHtml(c.id)}" data-title="${escapeHtml(c.title)}" aria-label="${escapeHtml(ariaText)}">
               ${isCurrent ? 'مفتوحة الآن' : 'استئناف 💬'}
             </button>
           `;

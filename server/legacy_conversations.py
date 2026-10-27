@@ -49,7 +49,7 @@ class LegacyConversations:
         candidates.sort(key=lambda x: x[2], reverse=True)
         conversations = []
         import datetime
-        for cid, tfile, mtime in candidates[:40]:
+        for cid, tfile, mtime in candidates[:100]:
             try:
                 title = ""
                 step_count = 0
@@ -64,13 +64,21 @@ class LegacyConversations:
                                     if "<USER_REQUEST>" in c:
                                         c = c.split("<USER_REQUEST>")[1].split("</USER_REQUEST>")[0].strip()
                                     clean_text = re.sub(r"<[^>]+>", " ", c).strip()
-                                    first_line = clean_text.split("\n")[0].strip()
-                                    if first_line:
-                                        title = first_line[:60]
+                                    clean_text = re.sub(r"^(?:/[a-zA-Z0-9_\.\-]+(?:\s*))+", "", clean_text).strip()
+                                    for l in clean_text.split("\n"):
+                                        l = l.strip()
+                                        if l and not l.startswith("/"):
+                                            title = l[:60]
+                                            break
+                                    if not title:
+                                        first_l = c.split("\n")[0].strip()
+                                        if first_l.startswith("/"):
+                                            cmd = first_l.split()[0].lstrip("/")
+                                            title = f"أمر: {cmd}"
                             except Exception:
                                 pass
                 if not title:
-                    title = f"محادثة {cid[:8]}"
+                    title = "محادثة سابقة"
                 dt = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
                 conversations.append(
                     {
