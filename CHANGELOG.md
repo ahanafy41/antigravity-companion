@@ -1,5 +1,7 @@
 # سجل التغيير
 
+- 2026-10-27 — release 1.3.7 (code 13): إيقاف الخادم الموثوق بـ Watchdog و stop_server.sh، سكريبت تثبيت ذاتي متكامل setup.sh للبدء من الصفر، تعافي وتجديد آلي لـ CSRF Tokens مع منع تكرار الطلبات، تحسين سرعة البث المباشر (Streaming)، وترتيب المحادثات الحقيقي بالتاريخ الدقيق.
+
 - 2026-10-16 — refactor: remove the orphan Termux port probe, seven unused Android resources and two retired web assets/routes; migrate dependent checks to the active interface while preserving server entry, launcher and security contracts.
 
 - 2026-10-16 — refactor: retire native automation/voice and Java-WebSocket, reduce the dashboard to five controls and diagnostics to three checks, preserve private shutdown and settings guards, and migrate acceptance tools to the lean chat shell.
