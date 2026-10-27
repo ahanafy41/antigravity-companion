@@ -21,11 +21,20 @@ android {
     signingConfigs {
         release {
             def configuredKeystore = System.getenv("SIGNING_KEYSTORE")
+            def defaultKeystore = file("keystore/antigravity-release-key.jks")
             if (configuredKeystore) {
                 storeFile file(configuredKeystore)
                 storePassword System.getenv("SIGNING_STORE_PASSWORD")
                 keyAlias System.getenv("SIGNING_KEY_ALIAS")
                 keyPassword System.getenv("SIGNING_KEY_PASSWORD")
+                storeType "PKCS12"
+                v1SigningEnabled true
+                v2SigningEnabled true
+            } else if (defaultKeystore.exists()) {
+                storeFile defaultKeystore
+                storePassword System.getenv("SIGNING_STORE_PASSWORD") ?: "antigravity2026"
+                keyAlias System.getenv("SIGNING_KEY_ALIAS") ?: "antigravity"
+                keyPassword System.getenv("SIGNING_KEY_PASSWORD") ?: "antigravity2026"
                 storeType "PKCS12"
                 v1SigningEnabled true
                 v2SigningEnabled true
@@ -95,9 +104,12 @@ def companionAssets = tasks.register("syncCompanionAssets", Sync) {
 tasks.named("preBuild").configure { dependsOn companionAssets }
 tasks.matching { it.name == "validateSigningRelease" }.configureEach {
     doFirst {
-        ["SIGNING_KEYSTORE", "SIGNING_STORE_PASSWORD", "SIGNING_KEY_ALIAS", "SIGNING_KEY_PASSWORD"].each { name ->
-            if (!System.getenv(name)) {
-                throw new GradleException("Missing private release signing configuration: " + name)
+        def defaultKeystore = file("keystore/antigravity-release-key.jks")
+        if (!defaultKeystore.exists()) {
+            ["SIGNING_KEYSTORE", "SIGNING_STORE_PASSWORD", "SIGNING_KEY_ALIAS", "SIGNING_KEY_PASSWORD"].each { name ->
+                if (!System.getenv(name)) {
+                    throw new GradleException("Missing private release signing configuration: " + name)
+                }
             }
         }
     }

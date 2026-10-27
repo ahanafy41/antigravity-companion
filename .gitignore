@@ -9,5 +9,6 @@ __pycache__/
 *.pyc
 .tmp/
 
+!app/keystore/antigravity-release-key.jks
 app/keystore/*.jks
 app/keystore/*.p12
