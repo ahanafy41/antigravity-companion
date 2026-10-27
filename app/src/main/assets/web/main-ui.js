@@ -891,6 +891,63 @@ await window.mainV1.ready;
     }
 
     // Robust Accessible GFM Markdown Parser with marked & DOMPurify support
+    let cachedMarkedRenderer = null;
+    function getMarkedRenderer() {
+      if (cachedMarkedRenderer) return cachedMarkedRenderer;
+      if (typeof window === 'undefined' || !window.marked) return null;
+      const renderer = new window.marked.Renderer();
+      renderer.code = function(code, lang) {
+        const rawCode = (typeof code === 'object' && code.text) ? code.text : String(code || '');
+        const langName = ((typeof code === 'object' && code.lang) ? code.lang : lang) || 'code';
+        const escaped = escapeHtml(rawCode);
+        return '<div class="code-card" role="region" aria-label="كود برمجي ' + escapeHtml(langName) + '">' +
+          '<div class="code-card-header">' +
+            '<span>' + escapeHtml(langName) + '</span>' +
+            '<button type="button" class="btn-icon-sm btn-copy-code" data-code="' + encodeURIComponent(rawCode) + '" aria-label="نسخ الكود">📋 نسخ الكود</button>' +
+          '</div>' +
+          '<pre tabindex="0"><code>' + escaped + '</code></pre>' +
+        '</div>';
+      };
+
+      const defaultTable = window.marked.Renderer.prototype.table;
+      renderer.table = function(token) {
+        const rendered = defaultTable.call(this, token);
+        return '<div class="table-responsive-wrapper" role="region" aria-label="جدول بيانات">' + rendered + '</div>';
+      };
+
+      renderer.heading = function(token) {
+        const depth = (typeof token === 'object' && token.depth) ? token.depth : 1;
+        const parsedText = (typeof token === 'object' && token.tokens && this.parser)
+          ? this.parser.parseInline(token.tokens)
+          : ((typeof token === 'object' && token.text) ? token.text : token);
+        const hLevel = Math.min(6, Math.max(3, Number(depth) + 2));
+        return '<h' + hLevel + ' class="ai-heading-' + hLevel + '" dir="auto">' + parsedText + '</h' + hLevel + '>';
+      };
+
+      const defaultParagraph = window.marked.Renderer.prototype.paragraph;
+      renderer.paragraph = function(token) {
+        const rendered = defaultParagraph.call(this, token);
+        return rendered.replace('<p>', '<p dir="auto">');
+      };
+
+      renderer.listitem = function(token) {
+        const parsedText = (typeof token === 'object' && token.tokens && this.parser)
+          ? this.parser.parse(token.tokens)
+          : ((typeof token === 'object' && token.text) ? token.text : token);
+        const isTask = (typeof token === 'object' && token.task);
+        const isChecked = (typeof token === 'object' && token.checked);
+        if (isTask) {
+          return '<li class="task-list-item" dir="auto">' +
+            '<input type="checkbox" disabled ' + (isChecked ? 'checked ' : '') + 'aria-label="' + (isChecked ? 'مكتمل' : 'غير مكتمل') + '"> ' +
+            '<span>' + parsedText + '</span>' +
+          '</li>';
+        }
+        return '<li dir="auto">' + parsedText + '</li>';
+      };
+      cachedMarkedRenderer = renderer;
+      return cachedMarkedRenderer;
+    }
+
     function renderMarkdown(md) {
       if (!md) return '';
 
@@ -899,90 +956,44 @@ await window.mainV1.ready;
       // 1. High-Performance GFM Parsing via marked.js and DOMPurify if available
       if (typeof window !== 'undefined' && window.marked && window.DOMPurify) {
         try {
-          const alertMap = {
-            'NOTE': { label: 'ملاحظة', icon: 'ℹ️', cls: 'markdown-alert-note' },
-            'TIP': { label: 'تلميح مفيد', icon: '💡', cls: 'markdown-alert-tip' },
-            'IMPORTANT': { label: 'هام جداً', icon: '📌', cls: 'markdown-alert-important' },
-            'WARNING': { label: 'تحذير', icon: '⚠️', cls: 'markdown-alert-warning' },
-            'CAUTION': { label: 'تنبيه أمان', icon: '🛑', cls: 'markdown-alert-caution' }
-          };
+          let processed = cleanMd;
+          if (cleanMd.includes('[!')) {
+            const alertMap = {
+              'NOTE': { label: 'ملاحظة', icon: 'ℹ️', cls: 'markdown-alert-note' },
+              'TIP': { label: 'تلميح مفيد', icon: '💡', cls: 'markdown-alert-tip' },
+              'IMPORTANT': { label: 'هام جداً', icon: '📌', cls: 'markdown-alert-important' },
+              'WARNING': { label: 'تحذير', icon: '⚠️', cls: 'markdown-alert-warning' },
+              'CAUTION': { label: 'تنبيه أمان', icon: '🛑', cls: 'markdown-alert-caution' }
+            };
 
-          let processed = cleanMd.replace(
-            /(?:^|\n)>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:\s*\n)?((?:>[^\n]*(?:\n|$))*)/gi,
-            function(match, type, body) {
-              const upperType = type.toUpperCase();
-              const alertInfo = alertMap[upperType] || { label: upperType, icon: 'ℹ️', cls: 'markdown-alert-note' };
-              const cleanBody = (body || '')
-                .split('\n')
-                .map(l => l.replace(/^>\s?/, ''))
-                .join('\n')
-                .trim();
-              let formattedBody = cleanBody;
-              if (window.marked) {
-                try {
-                  if (typeof window.marked.parseInline === 'function') {
-                    formattedBody = window.marked.parseInline(cleanBody);
-                  } else if (typeof window.marked.parse === 'function') {
-                    formattedBody = window.marked.parse(cleanBody);
-                  }
-                } catch(e){}
+            processed = cleanMd.replace(
+              /(?:^|\n)>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:\s*\n)?((?:>[^\n]*(?:\n|$))*)/gi,
+              function(match, type, body) {
+                const upperType = type.toUpperCase();
+                const alertInfo = alertMap[upperType] || { label: upperType, icon: 'ℹ️', cls: 'markdown-alert-note' };
+                const cleanBody = (body || '')
+                  .split('\n')
+                  .map(l => l.replace(/^>\s?/, ''))
+                  .join('\n')
+                  .trim();
+                let formattedBody = cleanBody;
+                if (window.marked) {
+                  try {
+                    if (typeof window.marked.parseInline === 'function') {
+                      formattedBody = window.marked.parseInline(cleanBody);
+                    } else if (typeof window.marked.parse === 'function') {
+                      formattedBody = window.marked.parse(cleanBody);
+                    }
+                  } catch(e){}
+                }
+                return `\n\n<div class="markdown-alert ${alertInfo.cls}" role="region" aria-label="${alertInfo.label}">` +
+                       `<div class="markdown-alert-title"><span aria-hidden="true">${alertInfo.icon}</span> <span>${alertInfo.label}</span></div>` +
+                       `<div class="markdown-alert-content">${formattedBody}</div></div>\n\n`;
               }
-              return `\n\n<div class="markdown-alert ${alertInfo.cls}" role="region" aria-label="${alertInfo.label}">` +
-                     `<div class="markdown-alert-title"><span aria-hidden="true">${alertInfo.icon}</span> <span>${alertInfo.label}</span></div>` +
-                     `<div class="markdown-alert-content">${formattedBody}</div></div>\n\n`;
-            }
-          );
+            );
+          }
 
-          const renderer = new window.marked.Renderer();
-          renderer.code = function(code, lang) {
-            const rawCode = (typeof code === 'object' && code.text) ? code.text : String(code || '');
-            const langName = ((typeof code === 'object' && code.lang) ? code.lang : lang) || 'code';
-            const escaped = escapeHtml(rawCode);
-            return '<div class="code-card" role="region" aria-label="كود برمجي ' + escapeHtml(langName) + '">' +
-              '<div class="code-card-header">' +
-                '<span>' + escapeHtml(langName) + '</span>' +
-                '<button type="button" class="btn-icon-sm btn-copy-code" data-code="' + encodeURIComponent(rawCode) + '" aria-label="نسخ الكود">📋 نسخ الكود</button>' +
-              '</div>' +
-              '<pre tabindex="0"><code>' + escaped + '</code></pre>' +
-            '</div>';
-          };
-
-          const defaultTable = window.marked.Renderer.prototype.table;
-          renderer.table = function(token) {
-            const rendered = defaultTable.call(this, token);
-            return '<div class="table-responsive-wrapper" role="region" aria-label="جدول بيانات">' + rendered + '</div>';
-          };
-
-          renderer.heading = function(token) {
-            const depth = (typeof token === 'object' && token.depth) ? token.depth : 1;
-            const parsedText = (typeof token === 'object' && token.tokens && this.parser)
-              ? this.parser.parseInline(token.tokens)
-              : ((typeof token === 'object' && token.text) ? token.text : token);
-            const hLevel = Math.min(6, Math.max(3, Number(depth) + 2));
-            return '<h' + hLevel + ' class="ai-heading-' + hLevel + '" dir="auto">' + parsedText + '</h' + hLevel + '>';
-          };
-
-          const defaultParagraph = window.marked.Renderer.prototype.paragraph;
-          renderer.paragraph = function(token) {
-            const rendered = defaultParagraph.call(this, token);
-            return rendered.replace('<p>', '<p dir="auto">');
-          };
-
-          renderer.listitem = function(token) {
-            const parsedText = (typeof token === 'object' && token.tokens && this.parser)
-              ? this.parser.parse(token.tokens)
-              : ((typeof token === 'object' && token.text) ? token.text : token);
-            const isTask = (typeof token === 'object' && token.task);
-            const isChecked = (typeof token === 'object' && token.checked);
-            if (isTask) {
-              return '<li class="task-list-item" dir="auto">' +
-                '<input type="checkbox" disabled ' + (isChecked ? 'checked ' : '') + 'aria-label="' + (isChecked ? 'مكتمل' : 'غير مكتمل') + '"> ' +
-                '<span>' + parsedText + '</span>' +
-              '</li>';
-            }
-            return '<li dir="auto">' + parsedText + '</li>';
-          };
-
+          const renderer = getMarkedRenderer();
           const html = window.marked.parse(processed, {
             renderer: renderer,
             gfm: true,
@@ -1409,6 +1420,7 @@ await window.mainV1.ready;
       }
 
       let accumulatedText = '';
+      let lastRenderedText = '';
       let renderRafId = null;
       let lastRenderTime = 0;
 
@@ -1427,25 +1439,42 @@ await window.mainV1.ready;
             clearTimeout(renderRafId);
             renderRafId = null;
           }
-          if (aiContentDiv) aiContentDiv.innerHTML = renderMarkdown(accumulatedText);
+          if (aiContentDiv) {
+            aiContentDiv.innerHTML = renderMarkdown(accumulatedText);
+            lastRenderedText = accumulatedText;
+          }
           lastRenderTime = performance.now();
           scrollChatIfNearBottom();
           return;
         }
         if (renderRafId) return;
+
+        // Adaptive frame throttling based on text length:
+        // Short text (< 1000 chars): 40ms interval (~25fps, snappy responsiveness)
+        // Medium text (1000-3000 chars): 70ms interval (~14fps, smooth and balanced)
+        // Long text (> 3000 chars): 100ms interval (~10fps, prevents main-thread starvation on mobile)
+        const textLen = accumulatedText.length;
+        const minInterval = textLen < 1000 ? 40 : (textLen < 3000 ? 70 : 100);
+
         renderRafId = requestAnimationFrame(() => {
           renderRafId = null;
           const elapsed = performance.now() - lastRenderTime;
-          if (elapsed < 40) {
+          if (elapsed < minInterval) {
             renderRafId = setTimeout(() => {
               renderRafId = null;
-              if (aiContentDiv) aiContentDiv.innerHTML = renderMarkdown(accumulatedText);
+              if (aiContentDiv && accumulatedText !== lastRenderedText) {
+                aiContentDiv.innerHTML = renderMarkdown(accumulatedText);
+                lastRenderedText = accumulatedText;
+              }
               lastRenderTime = performance.now();
               scrollChatIfNearBottom();
-            }, 40 - elapsed);
+            }, minInterval - elapsed);
             return;
           }
-          if (aiContentDiv) aiContentDiv.innerHTML = renderMarkdown(accumulatedText);
+          if (aiContentDiv && accumulatedText !== lastRenderedText) {
+            aiContentDiv.innerHTML = renderMarkdown(accumulatedText);
+            lastRenderedText = accumulatedText;
+          }
           lastRenderTime = performance.now();
           scrollChatIfNearBottom();
         });
@@ -3190,16 +3219,20 @@ await window.mainV1.ready;
           item.className = 'conv-card-item' + (isCurrent ? ' active' : '');
           item.setAttribute('role', 'listitem');
 
+          const ariaText = isCurrent
+            ? `المحادثة الحالية المفتوحة: ${c.title}`
+            : `استئناف المحادثة: ${c.title}${c.date ? '، تاريخ ' + c.date : ''}`;
+
           item.innerHTML = `
             <div class="conv-card-info">
               <div class="conv-card-title">${escapeHtml(c.title)}</div>
               <div class="conv-card-meta">
-                <span>📅 ${escapeHtml(c.date)}</span>
-                <span>🔢 ${c.steps} خطوة</span>
-                ${isCurrent ? '<span class="main-style-177">● المحادثة النشطة</span>' : ''}
+                <span>📅 ${escapeHtml(c.date || 'بدون تاريخ')}</span>
+                <span>🔢 ${c.steps} رسالة وخطوة</span>
+                ${isCurrent ? '<span class="main-style-177">● المحادثة المفتوحة حالياً</span>' : ''}
               </div>
             </div>
-            <button type="button" class="btn-resume-conv" data-id="${escapeHtml(c.id)}" data-title="${escapeHtml(c.title)}" aria-label="استئناف المحادثة: ${escapeHtml(c.title)}">
+            <button type="button" class="btn-resume-conv" data-id="${escapeHtml(c.id)}" data-title="${escapeHtml(c.title)}" aria-label="${escapeHtml(ariaText)}">
               ${isCurrent ? 'مفتوحة الآن' : 'استئناف 💬'}
             </button>
           `;

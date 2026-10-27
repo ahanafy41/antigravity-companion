@@ -470,7 +470,7 @@
       if (!cid) continue;
       map.set(cid, {
         id: cid,
-        title: rec.title || 'محادثة',
+        title: rec.title || 'محادثة سابقة',
         date: rec.date || (rec.mtime ? new Date(rec.mtime * 1000).toLocaleString('ar-EG') : ''),
         mtime: rec.mtime || 0,
         steps: rec.steps || 0
@@ -485,14 +485,24 @@
       const runsCount = (sess.runs || []).length;
       if (existing) {
         existing.steps = Math.max(existing.steps, runsCount * 2);
-        if (!existing.mtime) existing.mtime = Date.now() / 1000;
+        if (sess.mtime && sess.mtime > (existing.mtime || 0)) {
+          existing.mtime = sess.mtime;
+          existing.date = new Date(sess.mtime * 1000).toLocaleString('ar-EG');
+        }
+        if (sess.title && (!existing.title || existing.title === 'محادثة سابقة' || existing.title.startsWith('محادثة '))) {
+          existing.title = sess.title;
+        }
       } else {
+        if (runsCount === 0 && !sess.title) continue;
         const localTitle = local.find(r => r.id === sess.session_id || r.id === sess.conversation_id)?.title;
+        const title = sess.title || localTitle;
+        if (!title && runsCount === 0) continue;
+        const mtime = sess.mtime || 0;
         map.set(cid, {
           id: cid,
-          title: localTitle || cid || 'محادثة نشطة',
-          date: 'محادثة نشطة',
-          mtime: Date.now() / 1000,
+          title: title || 'محادثة سابقة',
+          date: sess.date || (mtime ? new Date(mtime * 1000).toLocaleString('ar-EG') : ''),
+          mtime: mtime,
           steps: runsCount * 2
         });
       }
@@ -500,10 +510,10 @@
 
     // 3. Fallback to local offline records if not already present
     for (const rec of local) {
-      if (rec.id && !map.has(rec.id)) {
+      if (rec.id && !map.has(rec.id) && rec.title) {
         map.set(rec.id, {
           id: rec.id,
-          title: rec.title || 'محادثة محفوظة',
+          title: rec.title,
           date: '',
           mtime: 0,
           read_only: rec.read_only
@@ -613,7 +623,12 @@
         emit({type: 'init', conversation_id: current.conversationId});
         let hasEmittedError = false;
         const onEvent = event => {
-          if (event.id) { if (current.sessionId === sessionId) { current.cursor = event.id; persist(); } }
+          if (event.id && current.sessionId === sessionId) {
+            current.cursor = event.id;
+            if (event.event !== 'delta' && event.event !== 'thought') {
+              persist();
+            }
+          }
           if (event.payload.conversation_id && current.sessionId === sessionId) {
             current.conversationId = event.payload.conversation_id; persist();
             emit({type: 'init', conversation_id: current.conversationId});

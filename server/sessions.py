@@ -1,8 +1,10 @@
 """Durable session turns and single-owner streaming CLI processes."""
 
 import asyncio
+import bisect
 from collections import deque
 import hashlib
+import itertools
 import json
 import os
 from pathlib import Path
@@ -216,9 +218,21 @@ class EventLog:
     def after(self, cursor):
         if self.expired:
             return None
-        if self.events and cursor < self.events[0]["id"] - 1:
+        if not self.events or cursor >= self.events[-1]["id"]:
+            return []
+        if cursor < self.events[0]["id"] - 1:
             return None
-        return [event for event in self.events if event["id"] > cursor]
+        if cursor == self.events[-1]["id"] - 1:
+            return [self.events[-1]]
+
+        # Fast path: strictly contiguous sequence IDs without gaps (O(1))
+        offset = cursor + 1 - self.events[0]["id"]
+        if 0 <= offset < len(self.events) and self.events[offset]["id"] == cursor + 1:
+            return list(itertools.islice(self.events, offset, None))
+
+        # Fallback binary search if sequence IDs have gaps (O(log N))
+        idx = bisect.bisect_right(self.events, cursor, key=lambda e: e["id"])
+        return list(itertools.islice(self.events, idx, None))
 
 
 class Sessions:
@@ -814,6 +828,7 @@ class Sessions:
                 raise CLIUnavailable("Turn response exceeds the safety limit")
             run["response"] += delta
             self.emit(run, "delta", {"text_delta": delta})
+            return
         elif stype == "tool":
             self.emit(run, "tool", redact(step))
             tool_info = step.get("tool_info") or {}
@@ -836,6 +851,7 @@ class Sessions:
             return None
         elif stype == "thought":
             self.emit(run, "thought", {"text": step.get("thought") or step.get("text") or ""})
+            return
         self.persist()
 
     def consume_result(self, session, run, result):

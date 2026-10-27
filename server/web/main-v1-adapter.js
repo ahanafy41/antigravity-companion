@@ -623,7 +623,12 @@
         emit({type: 'init', conversation_id: current.conversationId});
         let hasEmittedError = false;
         const onEvent = event => {
-          if (event.id) { if (current.sessionId === sessionId) { current.cursor = event.id; persist(); } }
+          if (event.id && current.sessionId === sessionId) {
+            current.cursor = event.id;
+            if (event.event !== 'delta' && event.event !== 'thought') {
+              persist();
+            }
+          }
           if (event.payload.conversation_id && current.sessionId === sessionId) {
             current.conversationId = event.payload.conversation_id; persist();
             emit({type: 'init', conversation_id: current.conversationId});
