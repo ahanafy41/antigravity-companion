@@ -794,14 +794,15 @@ await window.mainV1.ready;
     let audioCtx = null;
 
     function playBeep(freq, dur) {
-      if (window.mainV1.preferences().sound === false) return;
       try {
+        const prefs = (window.mainV1 && typeof window.mainV1.preferences === 'function') ? window.mainV1.preferences() : {};
+        if (prefs.tones_enabled === false || prefs.sound === false) return;
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (audioCtx.state === 'suspended') audioCtx.resume();
         const osc = audioCtx.createOscillator();
         const g = audioCtx.createGain();
         osc.frequency.value = freq;
-        g.gain.value = 0.12;
+        g.gain.value = 0.14;
         g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
         osc.connect(g);
         g.connect(audioCtx.destination);
@@ -853,18 +854,23 @@ await window.mainV1.ready;
       const summary = params.toolSummary || params.summary || '';
       const intent = action || summary;
 
-      if (toolName === 'run_command') {
-        const cmd = params.CommandLine || params.command || '';
+      if (toolName === 'run_command' || toolName === 'command') {
+        const cmd = params.CommandLine || params.command || params.cmd || '';
         const shortCmd = cmd.length > 500 ? (cmd.slice(0, 500) + '...') : cmd;
         if (intent) return intent + (shortCmd ? ` (${shortCmd})` : '');
         return 'تشغيل أمر الطرفية: ' + shortCmd;
-      } else if (toolName === 'view_file' || toolName === 'read_resource') {
-        const p = params.AbsolutePath || params.TargetFile || params.path || '';
-        return (intent ? `${intent}: ` : 'قراءة وفحص الملف: ') + (p || 'ملف');
-      } else if (toolName === 'write_to_file' || toolName === 'replace_file_content') {
-        const p = params.TargetFile || params.AbsolutePath || params.path || '';
-        const desc = params.Description || '';
-        return (intent ? `${intent}: ` : 'تعديل أو كتابة الملف: ') + p + (desc ? ` (${desc})` : '');
+      } else if (toolName === 'read_file' || toolName === 'view_file' || toolName === 'read_resource') {
+        const p = params.Path || params.path || params.AbsolutePath || params.TargetFile || params.Uri || params.uri || '';
+        const name = p ? (p.split(/[\/\\]/).pop() || p) : '';
+        if (intent) return `${intent}: ${name || 'ملف'}`;
+        return name ? `قراءة الملف: ${name}` : 'قراءة وفحص ملف';
+      } else if (toolName === 'write_file' || toolName === 'edit_file' || toolName === 'write_to_file' || toolName === 'replace_file_content') {
+        const p = params.Path || params.path || params.TargetFile || params.AbsolutePath || '';
+        const name = p ? (p.split(/[\/\\]/).pop() || p) : '';
+        const desc = params.Description || params.description || '';
+        const prefix = (toolName.includes('edit') || toolName.includes('replace')) ? 'تعديل الملف: ' : 'كتابة وإنشاء الملف: ';
+        if (intent) return `${intent}: ${name || 'ملف'}` + (desc ? ` (${desc})` : '');
+        return prefix + (name || 'ملف') + (desc ? ` (${desc})` : '');
       } else if (toolName === 'list_dir' || toolName === 'find_by_name') {
         return intent || 'فحص محتويات المجلد';
       } else if (toolName === 'invoke_subagent') {
@@ -876,10 +882,10 @@ await window.mainV1.ready;
         return `💬 تواصل وتنسيق مع ${recipient}`;
       } else if (toolName === 'manage_subagents' || toolName === 'manage_task') {
         return intent || '⚙️ إدارة ومتابعة مهام الوكلاء';
-      } else if (toolName === 'search_web') {
+      } else if (toolName === 'search_web' || toolName === 'web_search') {
         return '🌐 بحث حي في الويب: ' + (params.query || params.Query || intent || '');
-      } else if (toolName === 'read_url_content') {
-        return '🌐 قراءة وتلخيص صفحة ويب: ' + (params.Url || params.url || '');
+      } else if (toolName === 'read_url_content' || toolName === 'fetch' || toolName === 'browser_read') {
+        return '🌐 قراءة وتلخيص صفحة ويب: ' + (params.Url || params.url || params.url_content || '');
       }
       return intent || ('تنفيذ أداة: ' + toolName);
     }
@@ -6355,10 +6361,20 @@ await window.mainV1.ready;
 
     const tonesButton = document.getElementById('btn-toggle-tones');
     tonesButton?.addEventListener('click', async () => {
-      const enabled = window.mainV1.preferences().sound === false;
-      const response = await window.mainV1Fetch('/api/ai/settings', {method: 'POST', body: JSON.stringify({tones_enabled: enabled})});
-      if (response.ok) { tonesButton.setAttribute('aria-pressed', String(enabled)); announce(enabled ? 'النغمات مفعلة.' : 'النغمات معطلة.'); }
+      const prefs = (window.mainV1 && typeof window.mainV1.preferences === 'function') ? window.mainV1.preferences() : {};
+      const currentlyEnabled = (prefs.tones_enabled !== false && prefs.sound !== false);
+      const newEnabled = !currentlyEnabled;
+      const response = await window.mainV1Fetch('/api/ai/settings', {
+        method: 'POST',
+        body: JSON.stringify({tones_enabled: newEnabled, sound: newEnabled})
+      });
+      if (response.ok) {
+        tonesButton.setAttribute('aria-pressed', String(newEnabled));
+        announce(newEnabled ? 'النغمات مفعلة.' : 'النغمات معطلة.');
+        if (newEnabled) playStartChime();
+      }
     });
+
     // Report immediately on load
     reportVisibility(document.visibilityState === 'visible');
     const savedConversation = window.mainV1.currentConversation();

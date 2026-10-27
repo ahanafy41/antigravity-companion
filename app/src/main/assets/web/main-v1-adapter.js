@@ -325,8 +325,13 @@
   function context() { return cwd() ? {cwd: cwd()} : {}; }
   function scoped(route) { return route + (cwd() ? '?cwd=' + encode(cwd()) : ''); }
   async function closeCurrent() {
-    if (current.pending || current.pendingQueue) unsupported('نتيجة بدء الطلب غير مؤكدة؛ أعد متابعة الطلب نفسه قبل الانتقال.');
-    if (current.sessionId) await request('/sessions/' + encode(current.sessionId) + '/close', {method: 'POST', body: {}});
+    current.pending = null;
+    current.pendingQueue = null;
+    if (current.sessionId) {
+      try {
+        await request('/sessions/' + encode(current.sessionId) + '/close', {method: 'POST', body: {}});
+      } catch (e) {}
+    }
     current = {}; persist();
   }
   async function ensureSession(payload) {
@@ -444,28 +449,72 @@
   }
   async function conversations() {
     await historyReady;
-    const local = await companion.history.list();
-    let sessions, legacy;
+    let local = [];
+    try { local = await companion.history.list(); } catch(e) {}
+    let sessions = [], legacy = [];
     try {
-      sessions = (await request('/sessions')).sessions;
-      legacy = (await request('/legacy/conversations')).conversations;
+      const sRes = await request('/sessions');
+      sessions = sRes.sessions || [];
+      const lRes = await request('/legacy/conversations');
+      legacy = lRes.conversations || [];
     } catch (error) {
       if (error.status) throw error;
-      return {conversations: local.map(record => ({id: record.id, title: record.title, date: '', read_only: true}))};
+      return {conversations: (local || []).map(record => ({id: record.id, title: record.title, date: '', read_only: true}))};
     }
-    const rows = new Map(local.map(record => [record.id, {id: record.id, title: record.title, date: '', read_only: record.read_only}]));
-    for (const session of sessions) rows.set(session.session_id, {id: session.conversation_id || session.session_id,
-      title: local.find(record => record.id === session.session_id)?.title || session.conversation_id || 'محادثة', date: '', message_count: session.runs.length * 2});
-    for (const record of legacy) if (![...rows.values()].some(row => row.id === (record.conversation_id || record.id))) {
-      const cid = record.conversation_id || record.id;
-      rows.set(cid, {
+
+    const map = new Map();
+
+    // 1. Put legacy conversations first (they have real titles, real mtimes, and real step counts)
+    for (const rec of legacy) {
+      const cid = rec.conversation_id || rec.id;
+      if (!cid) continue;
+      map.set(cid, {
         id: cid,
-        title: record.title,
-        date: record.date || new Date((record.mtime || 0) * 1000).toLocaleString(),
-        steps: record.steps || 0
+        title: rec.title || 'محادثة',
+        date: rec.date || (rec.mtime ? new Date(rec.mtime * 1000).toLocaleString('ar-EG') : ''),
+        mtime: rec.mtime || 0,
+        steps: rec.steps || 0
       });
     }
-    return {conversations: [...rows.values()]};
+
+    // 2. Supplement with active sessions from backend
+    for (const sess of sessions) {
+      const cid = sess.conversation_id || sess.session_id;
+      if (!cid) continue;
+      const existing = map.get(cid);
+      const runsCount = (sess.runs || []).length;
+      if (existing) {
+        existing.steps = Math.max(existing.steps, runsCount * 2);
+        if (!existing.mtime) existing.mtime = Date.now() / 1000;
+      } else {
+        const localTitle = local.find(r => r.id === sess.session_id || r.id === sess.conversation_id)?.title;
+        map.set(cid, {
+          id: cid,
+          title: localTitle || cid || 'محادثة نشطة',
+          date: 'محادثة نشطة',
+          mtime: Date.now() / 1000,
+          steps: runsCount * 2
+        });
+      }
+    }
+
+    // 3. Fallback to local offline records if not already present
+    for (const rec of local) {
+      if (rec.id && !map.has(rec.id)) {
+        map.set(rec.id, {
+          id: rec.id,
+          title: rec.title || 'محادثة محفوظة',
+          date: '',
+          mtime: 0,
+          read_only: rec.read_only
+        });
+      }
+    }
+
+    // 4. CRITICAL: Sort all conversations by mtime descending (newest conversation ALWAYS first!)
+    const sorted = [...map.values()].sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+
+    return {conversations: sorted};
   }
   async function mentions(query) {
     if (!settingsDocument) await settings();
@@ -524,11 +573,33 @@
     return null;
   }
   async function stream(payload, signal) {
-    if (current.pending && current.pending.message !== payload.prompt) unsupported('طلب سابق غير مؤكد؛ تابع النص السابق دون إنشاء طلب آخر.');
+    if (current.pending && current.pending.message !== payload.prompt) {
+      current.pending = null;
+      persist();
+    }
     await ensureSession(payload);
     current.pending = current.pending || {message: payload.prompt, requestId: uuid()}; persist();
-    const started = await request('/sessions/' + encode(current.sessionId) + '/runs', {method: 'POST',
-      body: {message: current.pending.message, client_request_id: current.pending.requestId}});
+    let started;
+    try {
+      started = await request('/sessions/' + encode(current.sessionId) + '/runs', {method: 'POST',
+        body: {message: current.pending.message, client_request_id: current.pending.requestId}});
+    } catch (runErr) {
+      // Auto-recovery if session closed, capacity reached, or conflict: reset session and retry once
+      if (runErr.status === 404 || runErr.status === 409) {
+        current.sessionId = null;
+        current.pending = null;
+        persist();
+        await ensureSession(payload);
+        current.pending = {message: payload.prompt, requestId: uuid()};
+        persist();
+        started = await request('/sessions/' + encode(current.sessionId) + '/runs', {method: 'POST',
+          body: {message: current.pending.message, client_request_id: current.pending.requestId}});
+      } else {
+        current.pending = null;
+        persist();
+        throw runErr;
+      }
+    }
     current.runId = started.run_id; current.cursor = ''; current.pending = null; persist();
     const sessionId = current.sessionId;
     const runId = current.runId;
