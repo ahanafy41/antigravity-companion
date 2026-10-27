@@ -19,6 +19,11 @@ public final class TermuxLaunchContract {
                 + "/.antigravity-server/launch_server.sh", "--android-token-stdin"};
     }
 
+    public static String[] stopArguments(String applicationDataDir) {
+        return new String[]{workingDirectory(applicationDataDir)
+                + "/.antigravity-server/stop_server.sh"};
+    }
+
     public static String interactiveWorkingDirectory(String applicationDataDir, String requested) {
         if (requested == null) return workingDirectory(applicationDataDir);
         if (!requested.startsWith("/") || requested.length() > 4096)

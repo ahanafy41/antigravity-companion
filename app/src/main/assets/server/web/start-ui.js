@@ -38,7 +38,8 @@ function reportError(error) {
                 return ready;
             } catch (error) {
                 if (revision !== statusRevision) return null;
-                throw error;
+                showServerStatus(false);
+                return false;
             }
         }
 
@@ -77,13 +78,16 @@ function reportError(error) {
                     if (!stopped.ok) throw new Error((await stopped.json()).error || 'تعذر إيقاف الخادم');
                 }
                 for (let attempt = 0; attempt < (start ? 15 : 8); attempt++) {
+                    await pause(start ? 800 : 500);
                     if (await checkStatus() === start) {
                         announce(start ? 'خادم تيرمكس نشط ومتصل.' : 'خادم تيرمكس متوقف الآن.');
                         return true;
                     }
-                    await pause(start ? 800 : 500);
                 }
                 announce(start ? 'لم يتأكد تشغيل الخادم؛ افحص Termux وأعد المحاولة.' : 'لم يتأكد إيقاف الخادم؛ أعد فتح الصفحة لفحص الحالة.');
+                return false;
+            } catch (error) {
+                announce(error.message || 'حدث خطأ أثناء تنفيذ الأمر.');
                 return false;
             } finally {
                 serverBusy = false;

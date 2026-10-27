@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 import sys
+import threading
+import time
 
 from aiohttp import web
 from application import create_app
@@ -68,6 +70,12 @@ def bootstrap_configuration():
 
 
 def request_shutdown():
+    def hard_exit():
+        time.sleep(1.0)
+        os._exit(0)
+
+    thread = threading.Thread(target=hard_exit, daemon=True)
+    thread.start()
     raise web.GracefulExit()
 
 
@@ -83,21 +91,26 @@ def main():
     try:
         options.port = options.port or configured_port(options.data_dir)
         with server_lock(options.data_dir):
-            app = create_app(options.data_dir, options.port)
-            app["shutdown_callback"] = request_shutdown
-            if options.android_token_stdin:
-                app["android"].configure(bootstrap_configuration())
-            print(
-                "Local URL: http://127.0.0.1:" + str(options.port), flush=True
-            )
-            web.run_app(
-                app,
-                host="127.0.0.1",
-                port=options.port,
-                access_log=None,
-                print=None,
-            )
-        return 0
+            pid_file = options.data_dir / "server.pid"
+            pid_file.write_text(str(os.getpid()), encoding="utf-8")
+            try:
+                app = create_app(options.data_dir, options.port)
+                app["shutdown_callback"] = request_shutdown
+                if options.android_token_stdin:
+                    app["android"].configure(bootstrap_configuration())
+                print(
+                    "Local URL: http://127.0.0.1:" + str(options.port), flush=True
+                )
+                web.run_app(
+                    app,
+                    host="127.0.0.1",
+                    port=options.port,
+                    access_log=None,
+                    print=None,
+                )
+            finally:
+                pid_file.unlink(missing_ok=True)
+        os._exit(0)
     except (OSError, ValueError, UnicodeError) as failure:
         print("Server could not start: " + str(failure), file=sys.stderr)
         return 1

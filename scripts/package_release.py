@@ -23,6 +23,7 @@ def release_files(root):
     files = list(server.glob("*.py"))
     files += [
         server / "launch_server.sh",
+        server / "stop_server.sh",
         server / "release-cert.der",
         server / "version.json",
     ]

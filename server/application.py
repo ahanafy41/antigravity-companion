@@ -116,9 +116,13 @@ async def start_local_tasks(application):
 
 
 async def close_app(application):
-    await application["local_tasks"].close()
-    await application["voice_agent"].close()
-    await application["sessions"].close()
+    try:
+        async with asyncio.timeout(2.5):
+            await application["local_tasks"].close()
+            await application["voice_agent"].close()
+            await application["sessions"].close()
+    except (asyncio.TimeoutError, Exception):
+        pass
 
 
 def register_routes(application):

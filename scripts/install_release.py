@@ -203,6 +203,7 @@ def verify_installed(release, manifest):
 def install_launchers(root, release):
     for name in (
         "launch_server.sh",
+        "stop_server.sh",
         "launcher.py",
         "install_release.py",
         "release-cert.der",

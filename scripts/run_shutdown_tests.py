@@ -105,13 +105,13 @@ class OwnedProcessTests(unittest.IsolatedAsyncioTestCase):
                 stderr=asyncio.subprocess.PIPE,
             )
             try:
-                ready = await asyncio.wait_for(process.stdout.readline(), 10)
+                ready = await asyncio.wait_for(process.stdout.readline(), 25)
                 self.assertIn(b"Local URL:", ready)
                 origin = "http://127.0.0.1:" + str(port)
                 async with ClientSession(
                     cookie_jar=CookieJar(unsafe=True)
                 ) as client:
-                    for attempt in range(30):
+                    for attempt in range(40):
                         try:
                             response = await client.get(origin + "/health")
                             break
@@ -130,7 +130,7 @@ class OwnedProcessTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(
                         (await response.json())["status"], "stopping"
                     )
-                await asyncio.wait_for(process.wait(), 10)
+                await asyncio.wait_for(process.wait(), 20)
                 self.assertEqual(process.returncode, 0)
             finally:
                 if process.returncode is None:

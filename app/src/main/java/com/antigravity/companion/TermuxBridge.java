@@ -54,6 +54,35 @@ public final class TermuxBridge {
             else callback.onState(state("failed", "Termux could not accept startup request"));
         }
     }
+    public static void stopServer(Context context, LaunchCallback callback) {
+        String nonce = UUID.randomUUID().toString();
+        try {
+            String applicationDataDir = context.getPackageManager()
+                    .getApplicationInfo(TERMUX_PACKAGE, 0).dataDir;
+            Intent callbackIntent = new Intent(context, TermuxResultReceiver.class)
+                    .setAction(ACTION_TERMUX_RESULT).setData(Uri.parse("companion-result://stop/" + nonce));
+            int flags = PendingIntent.FLAG_ONE_SHOT;
+            if (Build.VERSION.SDK_INT >= 31) flags |= PendingIntent.FLAG_MUTABLE;
+            PendingIntent pending = PendingIntent.getBroadcast(context, REQUEST_IDS.incrementAndGet(), callbackIntent, flags);
+            Runnable timeout = () -> finish(nonce, state("outcome_unknown", "Termux stop result timeout"));
+            REQUESTS.put(nonce, new LaunchRequest(context, pending, callback, timeout));
+            DEADLINES.postDelayed(timeout, 10000);
+            Intent stopIntent = new Intent("com.termux.RUN_COMMAND")
+                    .setComponent(new ComponentName(TERMUX_PACKAGE, "com.termux.app.RunCommandService"))
+                    .putExtra("com.termux.RUN_COMMAND_PATH", TermuxLaunchContract.executable(applicationDataDir))
+                    .putExtra("com.termux.RUN_COMMAND_ARGUMENTS", TermuxLaunchContract.stopArguments(applicationDataDir))
+                    .putExtra("com.termux.RUN_COMMAND_WORKDIR", TermuxLaunchContract.workingDirectory(applicationDataDir))
+                    .putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
+                    .putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pending);
+            if (context.startService(stopIntent) == null) {
+                throw new IllegalStateException("Termux command service is unavailable");
+            }
+            if (callback != null) callback.onState(state("accepted", ""));
+        } catch (PackageManager.NameNotFoundException | SecurityException | IllegalStateException failure) {
+            if (REQUESTS.containsKey(nonce)) finish(nonce, state("failed", "Termux could not accept stop request"));
+            else if (callback != null) callback.onState(state("failed", "Termux could not accept stop request"));
+        }
+    }
     public static JsonObject startInteractive(Context context, String purpose, String workingDirectory) {
         try {
             String applicationDataDir = context.getPackageManager()

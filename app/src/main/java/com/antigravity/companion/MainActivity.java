@@ -312,16 +312,35 @@ public final class MainActivity extends AppCompatActivity {
         connectionExecutor.execute(() -> {
             try {
                 ServerConnection.Availability availability = server.probe();
-                if (availability == ServerConnection.Availability.LEGACY) server.stopLegacy();
-                else if (availability == ServerConnection.Availability.MODERN) server.stopModern();
-                runOnUiThread(() -> {
-                    if (destroyed) return;
-                    serverConnected = false; serverAvailable = false;
-                    refreshLegacyState(); reply(request, flag("stopping", true));
-                });
-            } catch (IOException failure) {
-                runOnUiThread(() -> { if (!destroyed) reply(request, error(failure.getMessage())); });
+                if (availability == ServerConnection.Availability.LEGACY) {
+                    server.stopLegacy();
+                } else if (availability == ServerConnection.Availability.MODERN) {
+                    try {
+                        server.stopModern();
+                    } catch (IOException ignored) {
+                        // Server token may be unauthenticated or shutting down; fallback to Termux stop
+                    }
+                }
+            } catch (IOException ignored) {
+                // If probe or HTTP fails, proceed to OS-level Termux stop
             }
+            if (checkSelfPermission("com.termux.permission.RUN_COMMAND") == PackageManager.PERMISSION_GRANTED) {
+                runOnUiThread(() -> TermuxBridge.stopServer(this, null));
+            }
+            boolean confirmedOffline = false;
+            for (int attempt = 0; attempt < 8; attempt++) {
+                try { Thread.sleep(250); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+                if (server.probe() == ServerConnection.Availability.OFFLINE) {
+                    confirmedOffline = true;
+                    break;
+                }
+            }
+            final boolean isOffline = confirmedOffline || (server.probe() == ServerConnection.Availability.OFFLINE);
+            runOnUiThread(() -> {
+                if (destroyed) return;
+                serverConnected = false; serverAvailable = !isOffline;
+                refreshLegacyState(); reply(request, flag("stopping", isOffline));
+            });
         });
     }
     private JsonObject legacyState() {

@@ -998,9 +998,24 @@ class Sessions:
             if not task.done():
                 task.cancel()
         await asyncio.gather(*self.tasks.values(), return_exceptions=True)
-        for process in self.processes.values():
-            await terminate_process(process)
-            await asyncio.gather(process.stderr_task, return_exceptions=True)
+        processes = list(self.processes.values())
+        if processes:
+            async def close_one(proc):
+                try:
+                    await terminate_process(proc)
+                except Exception:
+                    pass
+                if getattr(proc, "stderr_task", None):
+                    await asyncio.gather(proc.stderr_task, return_exceptions=True)
+
+            try:
+                async with asyncio.timeout(2.0):
+                    await asyncio.gather(
+                        *[close_one(p) for p in processes],
+                        return_exceptions=True,
+                    )
+            except (asyncio.TimeoutError, Exception):
+                pass
 
 
 def safe_failure(failure):
