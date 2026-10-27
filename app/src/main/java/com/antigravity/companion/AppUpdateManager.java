@@ -3,485 +3,286 @@ package com.antigravity.companion;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.ActivityNotFoundException;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.Signature;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
-
 import androidx.core.content.FileProvider;
-
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
-
+import com.google.gson.JsonParseException;
 import java.io.File;
+import java.io.InputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
+import okhttp3.Call;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 
-/**
- * AppUpdateManager: Native OTA In-App Update Engine for Antigravity Companion.
- * Handles GitHub Releases querying, SemVer comparison, OkHttp streaming APK download,
- * atomic replacement in cache, unknown app installation permission verification,
- * and secure system package installer invocation via FileProvider.
- */
-public class AppUpdateManager {
-
-    private static final Logger LOGGER = Logger.getLogger(AppUpdateManager.class.getName());
-
-    public static final String GITHUB_RELEASES_LATEST_URL =
-            "https://api.github.com/repos/ahanafy41/antigravity-companion/releases/latest";
-
-    private static final String UPDATE_DIR_NAME = "apk_updates";
-    private static final String TEMP_APK_NAME = "update_download.tmp";
-    public static final String TARGET_APK_NAME = "app-release.apk";
-
-    private static volatile AppUpdateManager sInstance;
-
-    private final Context mContext;
-    private final Handler mMainHandler;
-    private final ExecutorService mExecutor;
-    private final OkHttpClient mHttpClient;
-
-    public static class UpdateInfo {
-        public final boolean hasUpdate;
-        public final String latestVersion;
-        public final String currentVersion;
-        public final String downloadUrl;
-        public final String releaseName;
-        public final String releaseNotes;
-        public final long apkSize;
-
-        public UpdateInfo(boolean hasUpdate, String latestVersion, String currentVersion,
-                          String downloadUrl, String releaseName, String releaseNotes, long apkSize) {
-            this.hasUpdate = hasUpdate;
-            this.latestVersion = latestVersion;
-            this.currentVersion = currentVersion;
-            this.downloadUrl = downloadUrl;
-            this.releaseName = releaseName != null ? releaseName : "";
-            this.releaseNotes = releaseNotes != null ? releaseNotes : "";
-            this.apkSize = apkSize;
-        }
-
-        public JsonObject toJsonObject() {
-            JsonObject json = new JsonObject();
-            json.addProperty("hasUpdate", hasUpdate);
-            json.addProperty("latestVersion", latestVersion);
-            json.addProperty("currentVersion", currentVersion);
-            json.addProperty("downloadUrl", downloadUrl);
-            json.addProperty("releaseName", releaseName);
-            json.addProperty("releaseNotes", releaseNotes);
-            json.addProperty("apkSize", apkSize);
-            return json;
-        }
+public final class AppUpdateManager implements AutoCloseable {
+    private static final String RELEASE_URL = "https://api.github.com/repos/ahanafy41/antigravity-companion/releases/latest";
+    private static final long MAX_APK_BYTES = 128L * 1024 * 1024;
+    private final Context context;
+    private final Handler mainThread = new Handler(Looper.getMainLooper());
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final AtomicBoolean downloading = new AtomicBoolean();
+    private volatile UpdateTransfer activeTransfer = new UpdateTransfer();
+    private final OkHttpClient client;
+    private volatile String checkedAsset = "";
+    private volatile Call activeDownload;
+    private volatile boolean closed;
+    interface DownloadListener {
+        void progress(int percent, long bytes, long total);
+        void downloaded(File apk);
+        void failed(String error);
     }
-
-    public interface CheckUpdateCallback {
-        void onSuccess(UpdateInfo info);
-        void onError(String error);
+    AppUpdateManager(Context context) {
+        this.context = context.getApplicationContext();
+        client = new OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).callTimeout(280, TimeUnit.SECONDS)
+                .addNetworkInterceptor(chain -> {
+                    okhttp3.HttpUrl url = chain.request().url();
+                    String host = url.host();
+                    if (!url.isHttps() || url.port() != 443 || (!host.equals("api.github.com")
+                            && !host.equals("github.com") && !host.equals("release-assets.githubusercontent.com")))
+                        throw new IOException("Untrusted update redirect");
+                    return chain.proceed(chain.request());
+                }).build();
     }
-
-    public interface DownloadProgressListener {
-        void onProgress(int percent, long bytesDownloaded, long totalBytes);
-        void onComplete(File apkFile);
-        void onError(String error);
-    }
-
-    private AppUpdateManager(Context context) {
-        this.mContext = context.getApplicationContext();
-        this.mMainHandler = new Handler(Looper.getMainLooper());
-        this.mExecutor = Executors.newSingleThreadExecutor();
-        this.mHttpClient = new OkHttpClient.Builder()
-                .connectTimeout(20, TimeUnit.SECONDS)
-                .readTimeout(60, TimeUnit.SECONDS)
-                .followRedirects(true)
-                .followSslRedirects(true)
-                .build();
-    }
-
-    public static AppUpdateManager getInstance(Context context) {
-        if (sInstance == null) {
-            synchronized (AppUpdateManager.class) {
-                if (sInstance == null) {
-                    sInstance = new AppUpdateManager(context);
-                }
-            }
-        }
-        return sInstance;
-    }
-
-    /**
-     * Retrieves the installed application version name.
-     */
     public String getCurrentVersionName() {
+        try { return context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionName; }
+        catch (PackageManager.NameNotFoundException impossible) { throw new IllegalStateException(impossible); }
+    }
+    long currentVersionCode() {
+        try { return versionCode(context.getPackageManager().getPackageInfo(context.getPackageName(), 0)); }
+        catch (PackageManager.NameNotFoundException impossible) { throw new IllegalStateException(impossible); }
+    }
+    void checkForUpdates(Consumer<JsonObject> callback) {
+        executor.execute(() -> {
+            checkedAsset = "";
+            try (Response response = client.newCall(new Request.Builder().url(RELEASE_URL)
+                    .header("Accept", "application/vnd.github+json").build()).execute()) {
+                if (!response.isSuccessful() || response.body() == null) throw new IOException("GitHub release check failed: " + response.code());
+                JsonElement root = JsonParser.parseString(response.body().string());
+                if (!root.isJsonObject()) throw new IOException("Malformed GitHub release");
+                JsonObject release = root.getAsJsonObject();
+                JsonObject update = releaseDescription(release);
+                mainThread.post(() -> { if (!closed) callback.accept(update); });
+            } catch (IOException | JsonParseException | IllegalArgumentException | IllegalStateException failure) {
+                JsonObject error = new JsonObject(); error.addProperty("error", failure.getMessage());
+                mainThread.post(() -> { if (!closed) callback.accept(error); });
+            }
+        });
+    }
+    private JsonObject releaseDescription(JsonObject release) throws IOException {
+        if (!release.has("draft") || !release.has("prerelease") || !release.has("assets")
+                || !release.get("assets").isJsonArray() || !release.get("draft").isJsonPrimitive()
+                || !release.get("draft").getAsJsonPrimitive().isBoolean() || !release.get("prerelease").isJsonPrimitive()
+                || !release.get("prerelease").getAsJsonPrimitive().isBoolean()) throw new IOException("Malformed GitHub release");
+        if (release.get("draft").getAsBoolean() || release.get("prerelease").getAsBoolean())
+            throw new IOException("Release is not stable");
+        String tag = NativeActionArguments.required(release, "tag_name");
+        JsonObject description = new JsonObject(); description.addProperty("latestVersion", tag);
+        description.addProperty("currentVersion", getCurrentVersionName());
+        description.addProperty("releaseName", release.has("name") && !release.get("name").isJsonNull() ? release.get("name").getAsString() : tag);
+        description.addProperty("releaseNotes", release.has("body") && !release.get("body").isJsonNull() ? release.get("body").getAsString() : "");
+        long size = 0;
+        for (JsonElement entry : release.getAsJsonArray("assets")) {
+            if (!entry.isJsonObject()) throw new IOException("Malformed release asset");
+            JsonObject asset = entry.getAsJsonObject();
+            if (!"app-release.apk".equals(NativeActionArguments.required(asset, "name"))) continue;
+            String url = NativeActionArguments.required(asset, "browser_download_url");
+            if (!UpdatePolicy.trustedAsset(url)) throw new IOException("Untrusted release APK URL");
+            if (!asset.has("size") || !asset.get("size").isJsonPrimitive()
+                    || !asset.get("size").getAsJsonPrimitive().isNumber()) throw new IOException("Missing APK size");
+            size = asset.get("size").getAsLong();
+            if (size < 1 || size > MAX_APK_BYTES) throw new IOException("Invalid release APK size");
+            checkedAsset = url; break;
+        }
+        description.addProperty("apkSize", size);
+        description.addProperty("hasUpdate", !checkedAsset.isEmpty() && isNewerVersion(tag, getCurrentVersionName()));
+        return description;
+    }
+    static boolean isNewerVersion(String latest, String current) {
+        if (latest == null || current == null) return false;
+        String[] newer = latest.replaceFirst("^[vV]", "").split("[.+-]");
+        String[] installed = current.replaceFirst("^[vV]", "").split("[.+-]");
         try {
-            PackageInfo pInfo = mContext.getPackageManager().getPackageInfo(mContext.getPackageName(), 0);
-            if (pInfo.versionName != null && !pInfo.versionName.trim().isEmpty()) {
-                return pInfo.versionName.trim();
+            for (int index = 0; index < 3; index++) {
+                int candidate = index < newer.length ? Integer.parseInt(newer[index]) : 0;
+                int present = index < installed.length ? Integer.parseInt(installed[index]) : 0;
+                if (candidate != present) return candidate > present;
             }
-        } catch (PackageManager.NameNotFoundException e) {
-            LOGGER.log(Level.WARNING, "Unable to resolve current package version name", e);
-        }
-        return "1.1.0";
-    }
-
-    /**
-     * Compares two semantic version strings (SemVer).
-     * Returns true if latestVersion is strictly greater than currentVersion.
-     */
-    public static boolean isNewerVersion(String latestVersion, String currentVersion) {
-        if (latestVersion == null || currentVersion == null) {
             return false;
-        }
-
-        int[] vLatest = parseSemVer(latestVersion);
-        int[] vCurrent = parseSemVer(currentVersion);
-
-        int maxLen = Math.max(vLatest.length, vCurrent.length);
-        for (int i = 0; i < maxLen; i++) {
-            int partLatest = i < vLatest.length ? vLatest[i] : 0;
-            int partCurrent = i < vCurrent.length ? vCurrent[i] : 0;
-            if (partLatest > partCurrent) {
-                return true;
-            } else if (partLatest < partCurrent) {
-                return false;
-            }
-        }
-        return false;
+        } catch (NumberFormatException invalid) { return false; }
     }
-
-    private static int[] parseSemVer(String versionStr) {
-        if (versionStr == null) {
-            return new int[]{0};
-        }
-        String cleaned = versionStr.trim();
-        if (cleaned.startsWith("v") || cleaned.startsWith("V")) {
-            cleaned = cleaned.substring(1).trim();
-        }
-        int dashIdx = cleaned.indexOf('-');
-        if (dashIdx > 0) {
-            cleaned = cleaned.substring(0, dashIdx);
-        }
-        int plusIdx = cleaned.indexOf('+');
-        if (plusIdx > 0) {
-            cleaned = cleaned.substring(0, plusIdx);
-        }
-
-        String[] tokens = cleaned.split("\\.");
-        int[] result = new int[tokens.length];
-        for (int i = 0; i < tokens.length; i++) {
-            Matcher matcher = Pattern.compile("^(\\d+)").matcher(tokens[i].trim());
-            if (matcher.find()) {
-                try {
-                    result[i] = Integer.parseInt(matcher.group(1));
-                } catch (NumberFormatException e) {
-                    result[i] = 0;
-                }
-            } else {
-                result[i] = 0;
-            }
-        }
-        return result;
+    void download(DownloadListener listener) {
+        String url = checkedAsset;
+        if (!UpdatePolicy.trustedAsset(url)) { listener.failed("Check the trusted release before downloading"); return; }
+        if (!downloading.compareAndSet(false, true)) { listener.failed("An update download is already active"); return; }
+        activeTransfer.cancel();
+        UpdateTransfer transfer = new UpdateTransfer(); activeTransfer = transfer;
+        executor.execute(() -> downloadCheckedAsset(url, listener, transfer));
     }
-
-    /**
-     * Asynchronously queries GitHub Releases for the latest update.
-     */
-    public void checkForUpdatesAsync(final CheckUpdateCallback callback) {
-        mExecutor.execute(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Request request = new Request.Builder()
-                            .url(GITHUB_RELEASES_LATEST_URL)
-                            .header("User-Agent", "Antigravity-Companion-App")
-                            .header("Accept", "application/vnd.github.v3+json")
-                            .build();
-
-                    try (Response response = mHttpClient.newCall(request).execute()) {
-                        if (!response.isSuccessful() || response.body() == null) {
-                            final String err = "GitHub API response error: " + response.code();
-                            postError(callback, err);
-                            return;
-                        }
-
-                        String responseBodyStr = response.body().string();
-                        JsonObject releaseJson = JsonParser.parseString(responseBodyStr).getAsJsonObject();
-
-                        String rawTag = releaseJson.has("tag_name") && !releaseJson.get("tag_name").isJsonNull()
-                                ? releaseJson.get("tag_name").getAsString() : "";
-                        String releaseName = releaseJson.has("name") && !releaseJson.get("name").isJsonNull()
-                                ? releaseJson.get("name").getAsString() : rawTag;
-                        String releaseBody = releaseJson.has("body") && !releaseJson.get("body").isJsonNull()
-                                ? releaseJson.get("body").getAsString() : "";
-
-                        String normalizedTag = rawTag.startsWith("v") || rawTag.startsWith("V")
-                                ? rawTag.substring(1) : rawTag;
-
-                        String downloadUrl = "";
-                        long apkSize = 0;
-
-                        if (releaseJson.has("assets") && releaseJson.get("assets").isJsonArray()) {
-                            JsonArray assets = releaseJson.getAsJsonArray("assets");
-                            for (JsonElement elem : assets) {
-                                if (elem.isJsonObject()) {
-                                    JsonObject asset = elem.getAsJsonObject();
-                                    String assetName = asset.has("name") ? asset.get("name").getAsString() : "";
-                                    if (assetName.endsWith(".apk")) {
-                                        downloadUrl = asset.has("browser_download_url")
-                                                ? asset.get("browser_download_url").getAsString() : "";
-                                        apkSize = asset.has("size") ? asset.get("size").getAsLong() : 0;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                        String currentVersion = getCurrentVersionName();
-                        boolean hasUpdate = isNewerVersion(normalizedTag, currentVersion);
-
-                        final UpdateInfo updateInfo = new UpdateInfo(
-                                hasUpdate,
-                                normalizedTag,
-                                currentVersion,
-                                downloadUrl,
-                                releaseName,
-                                releaseBody,
-                                apkSize
-                        );
-
-                        mMainHandler.post(new Runnable() {
-                            @Override
-                            public void run() {
-                                if (callback != null) {
-                                    callback.onSuccess(updateInfo);
-                                }
-                            }
-                        });
-                    }
-                } catch (final Exception e) {
-                    LOGGER.log(Level.SEVERE, "Failed to query GitHub Releases", e);
-                    postError(callback, "فشل الاستعلام عن التحديثات: " + e.getMessage());
+    private void downloadCheckedAsset(String url, DownloadListener listener, UpdateTransfer transfer) {
+        File folder = new File(context.getCacheDir(), "apk_updates");
+        File staging = new File(folder, "download.tmp");
+        try {
+            if (!folder.isDirectory() && !folder.mkdirs()) throw new IOException("Cannot create update cache");
+            if (closed) throw new IOException("Download cancelled");
+            transfer.requireActive();
+            activeDownload = client.newCall(new Request.Builder().url(url).build());
+            try (Response response = activeDownload.execute()) {
+                if (!response.isSuccessful() || response.body() == null) throw new IOException("APK download failed: " + response.code());
+                streamApk(response.body(), staging, listener, transfer);
+            }
+            if (closed) throw new IOException("Download cancelled");
+            transfer.requireActive();
+            File apk = new File(folder, "app-release.apk");
+            transfer.verifyThenPublish(() -> verifyApk(staging), () -> {
+                if (apk.exists() && !apk.delete()) throw new IOException("Cannot replace cached APK");
+                if (!staging.renameTo(apk)) throw new IOException("Cannot publish verified APK");
+            });
+            mainThread.post(() -> {
+                if (closed) return;
+                try { transfer.deliver(() -> listener.downloaded(apk)); }
+                catch (IOException cancelled) { listener.failed(cancelled.getMessage()); }
+            });
+        } catch (IOException | IllegalArgumentException | IllegalStateException failure) {
+            mainThread.post(() -> { if (!closed) listener.failed(failure.getMessage()); });
+        } finally {
+            if (staging.exists() && !staging.delete()) android.util.Log.w("CompanionUpdate", "Unable to remove staging APK");
+            activeDownload = null; downloading.set(false);
+        }
+    }
+    private void streamApk(ResponseBody body, File destination, DownloadListener listener, UpdateTransfer transfer) throws IOException {
+        long total = body.contentLength(), count = 0, lastNotice = 0;
+        if (total > MAX_APK_BYTES) throw new IOException("APK exceeds maximum size");
+        try (InputStream input = body.byteStream(); FileOutputStream output = new FileOutputStream(destination)) {
+            byte[] buffer = new byte[8192]; int read;
+            while ((read = input.read(buffer)) != -1) {
+                if (closed) throw new IOException("Download cancelled");
+                transfer.requireActive();
+                count += read; if (count > MAX_APK_BYTES) throw new IOException("APK exceeds maximum size");
+                output.write(buffer, 0, read);
+                if (count - lastNotice >= 65536 || count == total) {
+                    postProgress(listener, count, total); lastNotice = count;
                 }
             }
-        });
-    }
-
-    private void postError(final CheckUpdateCallback callback, final String errorMsg) {
-        mMainHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                if (callback != null) {
-                    callback.onError(errorMsg);
-                }
-            }
-        });
-    }
-
-    /**
-     * Downloads APK from URL with streaming progress reporting and atomic cache replacement.
-     */
-    public void startDownloadAsync(final String downloadUrl, final DownloadProgressListener listener) {
-        if (downloadUrl == null || downloadUrl.trim().isEmpty()) {
-            if (listener != null) {
-                listener.onError("رابط التنزيل غير صالح");
-            }
-            return;
+            output.getFD().sync();
         }
-
-        mExecutor.execute(new Runnable() {
-            @Override
-            public void run() {
-                File cacheDir = new File(mContext.getCacheDir(), UPDATE_DIR_NAME);
-                if (!cacheDir.exists() && !cacheDir.mkdirs()) {
-                    postDownloadError(listener, "تعذر إنشاء مجلد التحديثات");
-                    return;
-                }
-
-                File tempFile = new File(cacheDir, TEMP_APK_NAME);
-                final File targetFile = new File(cacheDir, TARGET_APK_NAME);
-
-                if (tempFile.exists() && !tempFile.delete()) {
-                    LOGGER.warning("Could not delete existing temp APK file");
-                }
-
-                Request request = new Request.Builder()
-                        .url(downloadUrl)
-                        .header("User-Agent", "Antigravity-Companion-App")
-                        .header("Accept", "application/octet-stream")
-                        .build();
-
-                try (Response response = mHttpClient.newCall(request).execute()) {
-                    if (!response.isSuccessful()) {
-                        postDownloadError(listener, "فشل تنزيل ملف التحديث: كود " + response.code());
-                        return;
-                    }
-
-                    ResponseBody body = response.body();
-                    if (body == null) {
-                        postDownloadError(listener, "محتوى التحديث فارغ");
-                        return;
-                    }
-
-                    final long totalBytes = body.contentLength();
-                    long bytesDownloaded = 0;
-                    byte[] buffer = new byte[8192];
-                    int read;
-
-                    int lastReportedPercent = -1;
-
-                    try (InputStream is = body.byteStream();
-                         FileOutputStream fos = new FileOutputStream(tempFile)) {
-
-                        while ((read = is.read(buffer)) != -1) {
-                            fos.write(buffer, 0, read);
-                            bytesDownloaded += read;
-
-                            int currentPercent = totalBytes > 0
-                                    ? (int) ((bytesDownloaded * 100) / totalBytes)
-                                    : -1;
-
-                            if (currentPercent != lastReportedPercent && currentPercent >= 0) {
-                                lastReportedPercent = currentPercent;
-                                postProgress(listener, currentPercent, bytesDownloaded, totalBytes);
-                            }
-                        }
-                        fos.flush();
-                    }
-
-                    // Atomic replacement of target file
-                    if (targetFile.exists() && !targetFile.delete()) {
-                        LOGGER.warning("Could not delete old target APK file before rename");
-                    }
-
-                    if (!tempFile.renameTo(targetFile)) {
-                        postDownloadError(listener, "تعذر حفظ حزمة التحديث النهائية");
-                        return;
-                    }
-
-                    // Final 100% progress and completion
-                    postProgress(listener, 100, targetFile.length(), targetFile.length());
-                    mMainHandler.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            if (listener != null) {
-                                listener.onComplete(targetFile);
-                            }
-                        }
-                    });
-
-                } catch (final Exception e) {
-                    LOGGER.log(Level.SEVERE, "Error while downloading update APK", e);
-                    postDownloadError(listener, "خطأ أثناء تنزيل التحديث: " + e.getMessage());
-                }
+        if (count == 0 || (total >= 0 && count != total)) throw new IOException("Incomplete APK download");
+        postProgress(listener, count, total);
+    }
+    private void postProgress(DownloadListener listener, long count, long total) {
+        int percent = total > 0 ? (int) Math.min(100, count * 100 / total) : -1;
+        mainThread.post(() -> { if (!closed) listener.progress(percent, count, total); });
+    }
+    private void verifyApk(File apk) throws IOException {
+        PackageManager packages = context.getPackageManager();
+        int flags = Build.VERSION.SDK_INT >= 28 ? PackageManager.GET_SIGNING_CERTIFICATES : PackageManager.GET_SIGNATURES;
+        PackageInfo archive = packages.getPackageArchiveInfo(apk.getAbsolutePath(), flags);
+        if (archive == null) throw new IOException("Downloaded APK cannot be verified");
+        try {
+            PackageInfo installed = packages.getPackageInfo(context.getPackageName(), flags);
+            if (!UpdatePolicy.validUpgrade(new UpdatePolicy.Release(installed.packageName, versionCode(installed), fingerprints(installed)),
+                    new UpdatePolicy.Release(archive.packageName, versionCode(archive), fingerprints(archive))))
+                throw new IOException("APK package, versionCode or signing certificate does not match upgrade policy");
+        } catch (PackageManager.NameNotFoundException impossible) { throw new IOException("Installed package not found", impossible); }
+    }
+    private static String[] fingerprints(PackageInfo apk) throws IOException {
+        Signature[] signatures = Build.VERSION.SDK_INT >= 28 && apk.signingInfo != null
+                ? apk.signingInfo.getApkContentsSigners() : apk.signatures;
+        if (signatures == null || signatures.length == 0) throw new IOException("APK has no signing certificate");
+        try {
+            String[] digests = new String[signatures.length];
+            for (int index = 0; index < signatures.length; index++) {
+                byte[] digest = MessageDigest.getInstance("SHA-256").digest(signatures[index].toByteArray());
+                StringBuilder hex = new StringBuilder();
+                for (byte octet : digest) hex.append(String.format(java.util.Locale.ROOT, "%02x", octet & 255));
+                digests[index] = hex.toString();
             }
-        });
+            return digests;
+        } catch (NoSuchAlgorithmException impossible) { throw new AssertionError(impossible); }
     }
-
-    private void postProgress(final DownloadProgressListener listener, final int percent,
-                              final long bytesDownloaded, final long totalBytes) {
-        mMainHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                if (listener != null) {
-                    listener.onProgress(percent, bytesDownloaded, totalBytes);
-                }
-            }
-        });
+    private static long versionCode(PackageInfo apk) { return Build.VERSION.SDK_INT >= 28 ? apk.getLongVersionCode() : apk.versionCode; }
+    boolean canInstallUnknownApps() { return Build.VERSION.SDK_INT < 26 || context.getPackageManager().canRequestPackageInstalls(); }
+    void openInstallPermissionSettings(Activity activity) {
+        if (Build.VERSION.SDK_INT >= 26) activity.startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                .setData(Uri.parse("package:" + context.getPackageName())));
     }
-
-    private void postDownloadError(final DownloadProgressListener listener, final String error) {
-        mMainHandler.post(new Runnable() {
-            @Override
-            public void run() {
-                if (listener != null) {
-                    listener.onError(error);
-                }
-            }
-        });
-    }
-
-    /**
-     * Checks whether the application has permission to install unknown packages.
-     */
-    public boolean canInstallUnknownApps() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            return mContext.getPackageManager().canRequestPackageInstalls();
-        }
-        return true;
-    }
-
-    /**
-     * Directs user to Unknown Apps Install Settings.
-     */
-    public void openInstallPermissionSettings(Activity activity) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+    void installVerifiedApk(Activity activity, File apk, ServerConnection server, Consumer<JsonObject> completion) {
+        UpdateTransfer transfer = activeTransfer;
+        executor.execute(() -> {
             try {
-                Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
-                intent.setData(Uri.parse("package:" + mContext.getPackageName()));
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                if (activity != null) {
-                    activity.startActivity(intent);
-                } else {
-                    mContext.startActivity(intent);
-                }
-            } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "Failed to launch unknown sources settings", e);
+                transfer.requireActive();
+                verifyApk(apk);
+                transfer.requireActive();
+                server.requireUpdateCompatibility(embeddedServerVersion(apk));
+                transfer.requireActive();
+                mainThread.post(() -> {
+                    if (closed || activity.isFinishing() || activity.isDestroyed()) return;
+                    JsonObject outcome = new JsonObject();
+                    try { transfer.deliver(() -> openVerifiedInstaller(activity, apk, transfer)); outcome.addProperty("installer_opened", true); }
+                    catch (IOException failure) { outcome.addProperty("error", failure.getMessage()); }
+                    completion.accept(outcome);
+                });
+            } catch (IOException | JsonParseException | IllegalArgumentException | IllegalStateException failure) {
+                JsonObject outcome = new JsonObject(); outcome.addProperty("error", failure.getMessage());
+                mainThread.post(() -> { if (!closed) completion.accept(outcome); });
+            }
+        });
+    }
+    private String embeddedServerVersion(File apk) throws IOException {
+        PackageInfo archive = context.getPackageManager().getPackageArchiveInfo(apk.getAbsolutePath(), 0);
+        if (archive == null) throw new IOException("Downloaded APK cannot be verified");
+        try (ZipFile zip = new ZipFile(apk)) {
+            ZipEntry entry = zip.getEntry("assets/server/version.json");
+            if (entry == null) throw new IOException("APK has no embedded server version");
+            try (InputStream input = zip.getInputStream(entry)) {
+                byte[] bytes = new byte[4097];
+                int count = 0, read;
+                while (count < bytes.length && (read = input.read(bytes, count, bytes.length - count)) != -1) count += read;
+                if (count > 4096) throw new IOException("Embedded server version exceeds limit");
+                JsonObject version = JsonParser.parseString(new String(bytes, 0, count, StandardCharsets.UTF_8)).getAsJsonObject();
+                String name = NativeActionArguments.required(version, "version_name");
+                if (!UpdateCompatibility.embeddedVersionMatches(version, archive.versionName, versionCode(archive)))
+                    throw new IOException("APK and embedded server versions differ");
+                return name;
             }
         }
     }
-
-    /**
-     * Triggers the Android system package installer for the downloaded APK via FileProvider.
-     */
-    public boolean installApk(File apkFile) {
-        if (apkFile == null || !apkFile.exists()) {
-            LOGGER.warning("Install failed: target APK file does not exist");
-            return false;
-        }
-
-        try {
-            Uri apkUri = FileProvider.getUriForFile(
-                    mContext,
-                    mContext.getPackageName() + ".fileprovider",
-                    apkFile
-            );
-
-            Intent installIntent = new Intent(Intent.ACTION_VIEW);
-            installIntent.setDataAndType(apkUri, "application/vnd.android.package-archive");
-            installIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            installIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-
-            mContext.startActivity(installIntent);
-            return true;
-        } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to launch package installer for APK", e);
-            return false;
-        }
+    private void openVerifiedInstaller(Activity activity, File apk, UpdateTransfer transfer) throws IOException {
+        if (!canInstallUnknownApps()) throw new IOException("Install permission is required");
+        File expected = new File(context.getCacheDir(), "apk_updates/app-release.apk");
+        if (!expected.getCanonicalFile().equals(apk.getCanonicalFile())) throw new IOException("Unexpected APK path");
+        verifyApk(apk);
+        transfer.requireActive();
+        Uri uri = FileProvider.getUriForFile(context, context.getPackageName() + ".fileprovider", apk);
+        try { activity.startActivity(new Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)); }
+        catch (ActivityNotFoundException | SecurityException failure) { throw new IOException("Package installer unavailable", failure); }
     }
-
-    /**
-     * Helper to install the default downloaded APK in cache if it exists.
-     */
-    public boolean installDownloadedUpdate() {
-        File cacheDir = new File(mContext.getCacheDir(), UPDATE_DIR_NAME);
-        File targetFile = new File(cacheDir, TARGET_APK_NAME);
-        return installApk(targetFile);
+    void cancelDownload() { activeTransfer.cancel(); Call download = activeDownload; if (download != null) download.cancel(); }
+    @Override public void close() {
+        closed = true; cancelDownload(); executor.shutdownNow(); mainThread.removeCallbacksAndMessages(null);
+        client.dispatcher().cancelAll(); client.dispatcher().executorService().shutdown(); client.connectionPool().evictAll();
     }
 }

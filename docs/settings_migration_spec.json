@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "project_name": "antigravity-companion-settings-migration",
+  "version": "1.4.1",
+  "target": "Full Port of AI Settings, Permissions, Model Config & A11y Feedback to Clean Architecture Server",
+  "source_reference": "/data/data/com.termux/files/home/termux-accessible-web",
+  "target_workspace": "/data/data/com.termux/files/home/.gemini/antigravity-cli/scratch/antigravity-companion-app",
+  "components": {
+    "backend": [
+      {
+        "file": "server/cli_settings.py",
+        "description": "Extend CLISettings to support full settings.json reads and safe atomic writes for model, effort, safe_mode, trustedWorkspaces, feedback toggles, and permissions.allow mappings."
+      },
+      {
+        "file": "server/application.py",
+        "description": "Add /api/v1/cli/settings GET and PATCH endpoints with atomic ETag/revision support. Ensure /api/v1/settings continues rejecting cli_owned changes to preserve backward compatibility and HTTP test assertions."
+      }
+    ],
+    "adapter": [
+      {
+        "file": "server/web/main-v1-adapter.js",
+        "description": "Remove artificial cliFields blocking. Bridge /api/ai/settings GET and POST requests cleanly to /api/v1/cli/settings and /api/v1/cli/policy. Implement whitelist add/remove operations."
+      }
+    ],
+    "frontend": [
+      {
+        "file": "server/web/main-ui.js",
+        "description": "Remove unsupported disabled flags and explanatory notes. Enable all 5 permission switches (commands, write, web, subagents, schedule) and autopilot switch. Connect whitelist manager and trusted workspaces chip array."
+      }
+    ]
+  },
+  "verification": {
+    "backend_tests": "scripts/run_backend_tests.py (49 tests)",
+    "feature_tests": "scripts/run_feature_tests.py",
+    "validation_script": "validate_code.py",
+    "sync_script": "scripts/sync_android_web.py"
+  }
+}

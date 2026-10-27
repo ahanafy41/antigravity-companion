@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "packages": [
+    {
+      "package": "@alpinejs/csp",
+      "version": "3.14.9",
+      "file": "alpine-csp.min.js",
+      "license": "alpine-LICENSE.md",
+      "sha256": "820bc9503874024057da244dc30c21301548329eb9a00e7937e91c4d3908b273"
+    },
+    {
+      "package": "marked",
+      "version": "15.0.12",
+      "file": "marked.umd.js",
+      "license": "marked-LICENSE.md",
+      "sha256": "d7931d1cd7bf727dd756c871637edcc9e0f8538003b927368400ec1ee47a9dd9"
+    },
+    {
+      "package": "dompurify",
+      "version": "3.2.6",
+      "file": "purify.min.js",
+      "license": "dompurify-LICENSE.txt",
+      "sha256": "89e1fa7647cb495370d3a997ace4387f5d15d9f4c5af12352c53daa400956287"
+    },
+    {
+      "package": "tailwindcss",
+      "version": "3.4.17",
+      "file": "tailwind.min.css",
+      "license": "tailwind-LICENSE.txt",
+      "build": "npm exec --yes --package tailwindcss@3.4.17 -- tailwindcss -i server/web/vendor/tailwind-input.css -o server/web/vendor/tailwind.min.css --content server/web/index.html --minify",
+      "sha256": "5e89112c179352f234818f4650f636c0b28cb795ae1d01d4872bb1b29eb8888b"
+    }
+  ]
+}

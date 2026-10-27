@@ -1,5 +1,8 @@
 # Antigravity Companion & Bridge - Execution Tasks
 
+Current architecture (2026-10-16): [lean RFC](docs/lean-companion-architecture-rfc.md), [spec](docs/lean-companion-spec.json), [plan](docs/lean-companion-plan.md), [report](docs/lean-companion-report.md). Earlier native voice, AccessibilityService and port8765 requirements below are historical and superseded. Canonical web remains server/web; build-generated mirrors must match. Native connection status contains only server_available/version/can_install; Doctor contains only termux_installed/termux_run_command_permission/server_connectivity. Retain private HMAC/session/CSRF/origin guards, settings drafts/revisions and browser accessibility. Host acceptance phases are all/dashboard/chat; on-device phase is chat. No runtime version/signing change or phone acceptance is implied.
+
+
 ## Phase 1: Project Scaffolding & Permissions
 - [ ] Initialize Android project skeleton with Gradle (minSdk 24, targetSdk 34, compileSdk 34).
 - [ ] Declare permissions in `AndroidManifest.xml` (`android.permission.BIND_ACCESSIBILITY_SERVICE`, `com.termux.permission.RUN_COMMAND`, `android.permission.INTERNET`).
@@ -73,7 +76,7 @@
 - [x] Task 6: Verify AST integrity, human-grade craftsmanship, and zero-violation lint via `validate_code.py`.
 - [x] Task 7: Diagnose and resolve BUG-AUTH-TIMEZONE-FLAG-004 (UTC timezone skew in token expiry, invalid `-i` flag in PTY spawn, premature token deletion, and anchor tag link protection).
 - [x] Task 8: Add BROWSER=true defensive flag in server background CLI calls to eliminate unexpected browser popups while on the Android home screen.
-- [x] Task 9: Live server deployment and verification: verified `/api/auth/status` correctly recognizes active `ahanafy545@gmail.com` token (`is_valid: true`, `logged_in: true`).
+- [x] Task 9: Live server deployment and verification: verified `/api/auth/status` correctly recognizes active `user@example.com` token (`is_valid: true`, `logged_in: true`).
 
 ## Phase 12: توثيق ومصادقة بروتوكولات سياق النموذج (MCP Authentication & Token Pairing / Device Flow & Bearer Token) (Ready for Execution 🚀)
 - [ ] Task 1: دوال معالجة البروتوكول ومصادقة الأجهزة وفحص نبض الحياة (JSON-RPC initialize & ping) في `server/server.py`.

@@ -1,38 +1,40 @@
 {
-  "issue_id": "FIX-START-SCREEN-AND-KILL-SERVER",
-  "severity": "HIGH",
-  "environment": {
-    "os": "Android 14 (API 34) / Linux Termux aarch64",
-    "runtime": "Android Java / Python 3.11 / Web HTML5",
-    "dependencies": [
-      "MainActivity.java",
-      "TermuxBridge.java",
-      "server.py",
-      "start.html",
-      "index.html"
-    ]
-  },
-  "symptoms": [
-    "عدم ظهور شاشة البدء ولوحة التحكم للمستخدمين الجدد أو عند إغلاق خادم تيرمكس وظهور شاشة المحادثة مباشرة لأن assets/web/index.html استبدل بواجهة الشات وتعيين FALLBACK_ASSET_URL عليه",
-    "عدم وجود خيار وزر لإيقاف خادم تيرمكس نهائياً من شاشة البدء أو من داخل واجهة المحادثة"
+  "manifest_version": "1.0.0",
+  "task_type": "bugfix_and_performance_optimization",
+  "project_name": "antigravity-companion",
+  "target_repository": "/data/data/com.termux/files/home/.gemini/antigravity-cli/scratch/antigravity-companion-app",
+  "timestamp": "2026-10-17T12:30:00Z",
+  "diagnosed_issues": [
+    {
+      "id": "ISSUE-001",
+      "title": "Artifacts Markdown Rendering and BiDi Direction Collapse",
+      "severity": "HIGH",
+      "affected_files": [
+        "server/web/index.html",
+        "server/web/main-ui.js",
+        "server/web/main-ui.css"
+      ],
+      "root_cause": "renderMarkdown lacks GFM table, GitHub alert callout, task list, and horizontal rule support; hardcoded dir='rtl' on artifact viewer dialog causes text scrambling; marked.umd.js is present in vendor/ but unlinked.",
+      "remediation": "Link vendor/marked.umd.js and vendor/purify.min.js in index.html, enhance renderMarkdown with full GFM tables, GitHub alerts, code block styling, and add Raw/Formatted view tabs with full copy and download buttons."
+    },
+    {
+      "id": "ISSUE-002",
+      "title": "Accessibility Tree Bloat and UI Thrashing with Screen Readers",
+      "severity": "HIGH",
+      "affected_files": [
+        "server/web/main-ui.js",
+        "server/web/main-ui.css"
+      ],
+      "root_cause": "Tool output details are set to open=true by default creating thousands of open DOM text nodes that freeze TalkBack/Jieshuo; scheduleAiRender thrashes DOM every 40ms; background sync polls aggressively every 3.5s.",
+      "remediation": "Collapse tool execution details by default (open=false) with accessible toggle summary; throttle live render to 120ms; apply CSS content-visibility:auto; implement smart background polling backoff."
+    }
   ],
-  "diagnostic_branch": "Branch B: Lifecycle, Navigation Fallback & Device Control",
-  "exact_location_pinpoint": {
-    "file_path": "app/src/main/java/com/antigravity/companion/MainActivity.java",
-    "line_number": 46,
-    "symbol_or_ast_node": "MainActivity.FALLBACK_ASSET_URL",
-    "offending_snippet": "public static final String FALLBACK_ASSET_URL = \"file:///android_asset/web/index.html\";"
-  },
-  "hypothesis": "تطبيق الرفيق يوجه المستخدم عند إغلاق السيرفر أو التثبيت لأول مرة إلى FALLBACK_ASSET_URL الذي أصبح يمثل واجهة الشات بدلاً من شاشة البدء المستقلة. فصل شاشة البدء في start.html مخصصة وسريعة وضبط WebViewClient للتحويل إليها تلقائياً عند غياب السيرفر مع إضافة دوال الجسر stopServer و loadDashboardUrl و endpoint إيقاف السيرفر في server.py و stop_server.sh سيعيد شاشة البدء فوراً ويمنح تحكماً كاملاً بإيقاف السيرفر نهائياً.",
-  "fix_plan": [
-    "إنشاء شاشة البدء ولوحة التحكم المستقلة app/src/main/assets/web/start.html متوافقة 100% مع قارئات الشاشة والأزرار الكبيرة وحالة السيرفر وزر إيقاف السيرفر الجديد.",
-    "تحديث MainActivity.java لتعيين START_PAGE_URL = file:///android_asset/web/start.html كصفحة بديلة، وإضافة onReceivedError للتحويل التلقائي إليها، وتوفير دوال الجسر stopServer() و loadDashboardUrl().",
-    "تحديث TermuxBridge.java لإضافة stopServerAsync لإيقاف السيرفر عبر Termux RUN_COMMAND بـ pkill مع طلب HTTP الإيقاف اللحظي.",
-    "تحديث server/server.py لإضافة نقطة النهاية /api/shutdown، وإنشاء سكريبت stop_server.sh.",
-    "تحديث واجهة الشات server/web/index.html بإضافة زر لوحة التحكم وشاشة البدء في الشريط العلوي والقائمة الجانبية وزر إيقاف السيرفر نهائياً.",
-    "مزامنة ملفات الويب والسيرفر في assets و ~/.antigravity-server/.",
-    "تحديث MainActivity لتحميل شاشة البدء دائماً افتراضياً، وتحديث TermuxBridge لاستخدام مسارات tasker و bin الصالحة في Termux RUN_COMMAND.",
-    "رفع الإصدار إلى v1.2.7 (versionCode 10) في build.gradle و project_spec.json و build-apk.yml لتجهيز التحديث التلقائي OTA."
-  ],
-  "verification_test": "python3 /data/data/com.termux/files/home/.gemini/config/skills/universal-software-agency/scripts/validate_code.py --strict --manifest debug_manifest.json"
+  "execution_plan": [
+    "1. Backup target files via backup_manager.py",
+    "2. Link vendor libraries and improve artifact modal markup in server/web/index.html",
+    "3. Upgrade markdown rendering and optimize DOM/accessibility loops in server/web/main-ui.js",
+    "4. Add table, alert, and performance styles in server/web/main-ui.css",
+    "5. Sync updated web assets to app/src/main/assets/web/ and ~/.antigravity-server/web/",
+    "6. Run feature tests and validate with validate_code.py"
+  ]
 }

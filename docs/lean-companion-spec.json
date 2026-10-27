@@ -1,0 +1,88 @@
+{
+  "project_name": "antigravity-companion-lean",
+  "version": "1.4.0",
+  "track": "Track B: Universal Web / API",
+  "language": "Java + JavaScript",
+  "frameworks": ["Android SDK", "Vanilla JS", "Termux Bridge"],
+  "scoping_mode": "Fast-Track",
+  "architecture": {
+    "pattern": "Lean Native Bridge + WebUI",
+    "layers": ["Android Activity Shell", "WebView Client", "Termux Process Bridge", "Web UI Frontend"],
+    "a11y_strategy": "Native Screen Reader First (Pure WCAG/ARIA, zero AccessibilityService background overhead)"
+  },
+  "refactoring_type": "Architectural Purge & Modernization",
+  "deleted_files": {
+    "java_sources": [
+      "app/src/main/java/com/antigravity/companion/AntigravityAccessibilityService.java",
+      "app/src/main/java/com/antigravity/companion/LocalAutomationServer.java",
+      "app/src/main/java/com/antigravity/companion/ScreenSnapshot.java",
+      "app/src/main/java/com/antigravity/companion/ElementClick.java",
+      "app/src/main/java/com/antigravity/companion/DeviceActionPolicy.java",
+      "app/src/main/java/com/antigravity/companion/DeviceArguments.java",
+      "app/src/main/java/com/antigravity/companion/AppLaunchTarget.java",
+      "app/src/main/java/com/antigravity/companion/FloatingVoiceController.java",
+      "app/src/main/java/com/antigravity/companion/NativeSpeech.java",
+      "app/src/main/java/com/antigravity/companion/PendingSpeech.java",
+      "app/src/main/java/com/antigravity/companion/SpeechRequest.java",
+      "app/src/main/java/com/antigravity/companion/AutomationConnectionPolicy.java",
+      "app/src/main/java/com/antigravity/companion/PhoneResultBudget.java",
+      "app/src/main/java/com/antigravity/companion/HeadlessVoiceApi.java",
+      "app/src/main/java/com/antigravity/companion/HeadlessVoiceCommand.java",
+      "app/src/main/java/com/antigravity/companion/VoiceCapture.java",
+      "app/src/main/java/com/antigravity/companion/VoiceCommandActivity.java"
+    ],
+    "xml_resources": [
+      "app/src/main/res/xml/accessibility_service_config.xml"
+    ],
+    "unit_tests": [
+      "app/src/test/java/com/antigravity/companion/AutomationConnectionPolicyTest.java",
+      "app/src/test/java/com/antigravity/companion/DeviceActionPolicyTest.java",
+      "app/src/test/java/com/antigravity/companion/DeviceArgumentsTest.java",
+      "app/src/test/java/com/antigravity/companion/ElementClickTest.java",
+      "app/src/test/java/com/antigravity/companion/PhoneResultBudgetTest.java",
+      "app/src/test/java/com/antigravity/companion/SpeechActionPolicyTest.java",
+      "app/src/test/java/com/antigravity/companion/SpeechRequestTest.java",
+      "app/src/test/java/com/antigravity/companion/AppLaunchTargetTest.java",
+      "app/src/test/java/com/antigravity/companion/HeadlessVoiceCommandTest.java",
+      "app/src/test/java/com/antigravity/companion/LegacyVoiceApiTest.java"
+    ]
+  },
+  "surgical_modifications": [
+    {
+      "file": "app/src/main/AndroidManifest.xml",
+      "action": "remove_blocks",
+      "targets": ["<service android:name=\".AntigravityAccessibilityService\"", "<activity android:name=\".VoiceCommandActivity\""]
+    },
+    {
+      "file": "app/src/main/java/com/antigravity/companion/MainActivity.java",
+      "action": "cleanup_references",
+      "targets": ["accessibilityBanner", "AntigravityAccessibilityService", "automation_ready", "accessibility_active"]
+    },
+    {
+      "file": "app/src/main/java/com/antigravity/companion/DoctorDiagnosticEngine.java",
+      "action": "strip_check",
+      "targets": ["accessibility_connected"]
+    },
+    {
+      "file": "server/web/start.html",
+      "action": "overhaul_layout",
+      "targets": ["remove port 8765 badge", "remove accessibility badge", "add unified toggle server button", "streamline for talkback/csr"]
+    },
+    {
+      "file": "server/web/start-ui.js",
+      "action": "simplify_logic",
+      "targets": ["remove 8765 polling", "single server state", "spoken Arabic announcements"]
+    }
+  ],
+  "requirements": [
+    "Retire Android Accessibility Service completely",
+    "Retire Port 8765 WebSocket server",
+    "Keep Termux Server (Port 7681) as the sole backend",
+    "Streamline start screen to: Open Chat, Toggle Server, Setup Termux, Updates, Diagnostics",
+    "Pass 100% of remaining JVM tests and Python unit tests"
+  ],
+  "entry_points": {
+    "android": "app/src/main/java/com/antigravity/companion/MainActivity.java",
+    "web": "server/web/start.html"
+  }
+}
