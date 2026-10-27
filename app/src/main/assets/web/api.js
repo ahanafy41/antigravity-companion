@@ -22,6 +22,31 @@
     constructor(message, status, code) { super(message); this.status = status; this.code = code; }
   }
   let csrfToken = '';
+  let csrfRefreshPromise = null;
+  async function refreshCsrf() {
+    if (!csrfRefreshPromise) {
+      csrfRefreshPromise = (async () => {
+        try {
+          const response = await global.fetch(apiBase() + '/auth/session', {
+            credentials: 'include', cache: 'no-store', headers: {Accept: 'application/json'}
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data && data.csrf_token) {
+              csrfToken = data.csrf_token;
+              return csrfToken;
+            }
+          }
+        } catch (e) {
+          // Retain existing token if background refresh encounters transient network issue
+        } finally {
+          csrfRefreshPromise = null;
+        }
+        return csrfToken;
+      })();
+    }
+    return csrfRefreshPromise;
+  }
   function apiBase() {
     return (typeof global.location !== 'undefined' && global.location && global.location.origin === 'https://appassets.androidplatform.net')
       ? 'http://127.0.0.1:7681/api/v1'
@@ -30,23 +55,35 @@
   async function request(route, options = {}) {
     const headers = {Accept: 'application/json', ...options.headers};
     const method = options.method || 'GET';
-    if (method !== 'GET' && csrfToken) headers['X-CSRF-Token'] = csrfToken;
+    if (method !== 'GET') {
+      if (!csrfToken) {
+        await refreshCsrf();
+      }
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
+    }
     if (options.body !== undefined) headers['Content-Type'] = 'application/json';
     const response = await global.fetch(apiBase() + route, {
       ...options, method, headers, credentials: 'include', cache: 'no-store',
       body: options.body === undefined ? undefined : JSON.stringify(options.body)
     });
     const payload = await response.json();
-    if (!response.ok) throw new ApiError(payload.message || 'تعذر الطلب.', response.status, payload.code);
+    if (!response.ok) {
+      if (response.status === 403 && payload.code === 'csrf_failed' && !options._csrfRetried) {
+        csrfToken = '';
+        await refreshCsrf();
+        return await request(route, {...options, _csrfRetried: true});
+      }
+      throw new ApiError(payload.message || 'تعذر الطلب.', response.status, payload.code);
+    }
     return payload;
   }
   async function restoreSession() {
     try {
       const session = await request('/auth/session');
-      csrfToken = session.csrf_token || '';
+      if (session && session.csrf_token) csrfToken = session.csrf_token;
       return session;
     } catch (e) {
-      return {authenticated: true, csrf_token: ''};
+      return {authenticated: true, csrf_token: csrfToken || ''};
     }
   }
   async function pair(code) {
@@ -122,5 +159,5 @@
   }
   companion.parseSseFrames = parseSseFrames;
   companion.ApiError = ApiError;
-  companion.api = {request, restoreSession, pair, events};
+  companion.api = {request, restoreSession, pair, events, refreshCsrf};
 })(window);

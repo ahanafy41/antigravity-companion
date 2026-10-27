@@ -230,7 +230,7 @@
   async function request(route, options) {
     await connect();
     try { return await api.request(route, options); }
-    catch (error) { if (error.status === 401) connection = null; throw error; }
+    catch (error) { if (error.status === 401 || error.status === 403) connection = null; throw error; }
   }
   async function settings() {
     if (!settingsRefresh) {

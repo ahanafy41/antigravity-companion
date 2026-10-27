@@ -21,6 +21,29 @@ function load(name, extras = {}) {
   assert.equal(calls[1].options.headers['X-CSRF-Token'], 'test-token');
   assert.equal(calls[1].options.credentials, 'include');
   assert.equal(calls[1].url, '/api/v1/sessions');
+
+  // Test transparent CSRF self-healing and replay on 403 csrf_failed
+  let healPosts = 0;
+  const healingCalls = [];
+  const healingApi = load('api.js', { fetch: async (url, options) => {
+    healingCalls.push({url, options});
+    if (url.endsWith('/auth/session')) {
+      return {ok: true, status: 200, json: async () => ({csrf_token: 'healed-token'})};
+    }
+    if (url.endsWith('/test-mutate')) {
+      healPosts++;
+      if (healPosts === 1) {
+        return {ok: false, status: 403, json: async () => ({code: 'csrf_failed', message: 'CSRF token is required'})};
+      }
+      return {ok: true, status: 200, json: async () => ({success: true, usedToken: options.headers['X-CSRF-Token']})};
+    }
+    return {ok: true, status: 200, json: async () => ({})};
+  }}).api;
+
+  const healResult = await healingApi.request('/test-mutate', {method: 'POST', body: {action: 'check'}});
+  assert.equal(healResult.success, true);
+  assert.equal(healResult.usedToken, 'healed-token');
+  assert.equal(healPosts, 2);
   const stream = load('api.js').parseSseFrames;
   const frames = stream('event: delta\r\ndata: {"text_delta":"سلام"}\r\n\r\nevent: result\ndata: {"state":"completed"}\n\npartial');
   assert.equal(frames.events[0].payload.text_delta, 'سلام');
