@@ -1436,13 +1436,13 @@ await window.mainV1.ready;
         renderRafId = requestAnimationFrame(() => {
           renderRafId = null;
           const elapsed = performance.now() - lastRenderTime;
-          if (elapsed < 120) {
+          if (elapsed < 40) {
             renderRafId = setTimeout(() => {
               renderRafId = null;
               if (aiContentDiv) aiContentDiv.innerHTML = renderMarkdown(accumulatedText);
               lastRenderTime = performance.now();
               scrollChatIfNearBottom();
-            }, 120 - elapsed);
+            }, 40 - elapsed);
             return;
           }
           if (aiContentDiv) aiContentDiv.innerHTML = renderMarkdown(accumulatedText);

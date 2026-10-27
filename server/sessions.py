@@ -170,22 +170,30 @@ class EventLog:
             os.fsync(stream.fileno())
 
     def append(self, name, payload):
-        if len(json.dumps(payload).encode("utf-8")) > MAX_LINE // 2:
+        encoded_data = json.dumps(payload, ensure_ascii=False)
+        encoded_len = len(encoded_data.encode("utf-8"))
+        if encoded_len > MAX_LINE // 2:
             raise CLIUnavailable("Normalized event exceeds the safety limit")
         self.sequence += 1
         event = {"id": self.sequence, "event": name, "data": payload}
         self.events.append(event)
-        retained_size = sum(
-            len(json.dumps(retained).encode("utf-8"))
-            for retained in self.events
-        )
-        while retained_size > MAX_LINE // 2 and len(self.events) > 1:
+        
+        # High performance streaming: O(1) size tracking without serializing 500 events on every token
+        if not hasattr(self, "_retained_size"):
+            self._retained_size = sum(len(json.dumps(r, ensure_ascii=False).encode("utf-8")) for r in self.events)
+        else:
+            self._retained_size += encoded_len + 30
+
+        while self._retained_size > MAX_LINE // 2 and len(self.events) > 1:
             removed = self.events.popleft()
-            retained_size -= len(json.dumps(removed).encode("utf-8"))
+            self._retained_size -= len(json.dumps(removed, ensure_ascii=False).encode("utf-8"))
+
         with self.path.open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(event, ensure_ascii=False) + "\n")
+            stream.write(encoded_data + "\n")
             stream.flush()
-            os.fsync(stream.fileno())
+            # Fsync only on terminal states to avoid blocking asyncio event loop on every delta token
+            if name in ("result", "error"):
+                os.fsync(stream.fileno())
         if self.path.stat().st_size > MAX_LINE:
             staged = self.path.with_suffix(".tmp")
             with staged.open("w", encoding="utf-8") as stream:
