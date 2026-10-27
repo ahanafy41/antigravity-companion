@@ -410,3 +410,45 @@ Use these 8 prescriptive recipes whenever implementing features or fixing bugs. 
   ```bash
   python3 scripts/run_mcp_scope_tests.py -v
   ```
+
+
+---
+
+## 5. Verification & Safety Guardrails
+
+To prevent breaking changes, state pollution, or security leaks, all contributors and AI agents MUST verify changes against this safety gate before committing code.
+
+### 5.1. Mandatory Pre-Commit Checklist
+
+- [ ] **Dual-Copy Parity**: If modifying `server/web/`, did you run `python3 scripts/sync_android_web.py`?
+- [ ] **Native Security Invariant**: If adding or altering native bridge actions, is an HMAC proof token validated in `NativeBridgePolicy.java`?
+- [ ] **Strict Localhost Binding**: Is `server.py` strictly bound to `127.0.0.1`?
+- [ ] **Subprocess Safety**: Are all `subprocess.Popen` / `subprocess.run` calls invoked with argument lists and `shell=False`?
+- [ ] **Accessibility Invariant**: Are all new buttons, inputs, and status indicators accompanied by descriptive Arabic ARIA labels and live regions for TalkBack and Jieshuo (`CSR`) screen readers?
+
+### 5.2. Core Verification Commands
+
+Execute these verification commands directly from the repository root:
+
+```bash
+# 1. Code Map Integrity Check (verifies 100% file coverage and recipes)
+python3 scripts/test_code_map_integrity.py -v
+
+# 2. Canonical Web Asset Synchronization Check
+python3 scripts/sync_android_web.py --check
+
+# 3. CLI Argument & HTTP Endpoint Preflight
+python3 scripts/phase1_preflight.py
+
+# 4. Backend Server & Security Regression Suite
+python3 scripts/run_backend_tests.py -v
+
+# 5. Full Repository Test Suite
+python3 scripts/run_tests.py
+```
+
+### 5.3. Project Maintenance & Governance
+
+* **Original Creator**: **أحمد حنفي (Ahmed Hanafy)** — Egypt.
+* **Maintainer**: **Kamal Yaser** ([kamalyaser31@gmail.com](mailto:kamalyaser31@gmail.com), Telegram: `@kamalyaser31`).
+* **Update Policy**: In-app OTA updates are distributed via GitHub Releases and signed with `app/keystore/antigravity-release-key.jks`.
