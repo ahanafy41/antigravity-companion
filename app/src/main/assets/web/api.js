@@ -56,9 +56,6 @@
     const headers = {Accept: 'application/json', ...options.headers};
     const method = options.method || 'GET';
     if (method !== 'GET') {
-      if (!csrfToken) {
-        await refreshCsrf();
-      }
       if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
     }
     if (options.body !== undefined) headers['Content-Type'] = 'application/json';
