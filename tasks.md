@@ -76,7 +76,7 @@ Current architecture (2026-10-16): [lean RFC](docs/lean-companion-architecture-r
 - [x] Task 6: Verify AST integrity, human-grade craftsmanship, and zero-violation lint via `validate_code.py`.
 - [x] Task 7: Diagnose and resolve BUG-AUTH-TIMEZONE-FLAG-004 (UTC timezone skew in token expiry, invalid `-i` flag in PTY spawn, premature token deletion, and anchor tag link protection).
 - [x] Task 8: Add BROWSER=true defensive flag in server background CLI calls to eliminate unexpected browser popups while on the Android home screen.
-- [x] Task 9: Live server deployment and verification: verified `/api/auth/status` correctly recognizes active `ahanafy545@gmail.com` token (`is_valid: true`, `logged_in: true`).
+- [x] Task 9: Live server deployment and verification: verified `/api/auth/status` correctly recognizes active `user@example.com` token (`is_valid: true`, `logged_in: true`).
 
 ## Phase 12: توثيق ومصادقة بروتوكولات سياق النموذج (MCP Authentication & Token Pairing / Device Flow & Bearer Token) (Ready for Execution 🚀)
 - [ ] Task 1: دوال معالجة البروتوكول ومصادقة الأجهزة وفحص نبض الحياة (JSON-RPC initialize & ping) في `server/server.py`.
