@@ -45,13 +45,16 @@ public final class TermuxBridge {
             Runnable timeout = () -> finish(nonce, state("outcome_unknown", "Termux result timeout"));
             REQUESTS.put(nonce, new LaunchRequest(context, pending, callback, timeout));
             DEADLINES.postDelayed(timeout, 30000);
-            if (context.startService(launcherIntent(context, applicationDataDir, pending)) == null) {
+            if (!startCommandService(context, launcherIntent(context, applicationDataDir, pending))) {
                 throw new IllegalStateException("Termux command service is unavailable");
             }
             callback.onState(state("accepted", ""));
         } catch (PackageManager.NameNotFoundException | SecurityException | IllegalStateException failure) {
-            if (REQUESTS.containsKey(nonce)) finish(nonce, state("failed", "Termux could not accept startup request"));
-            else callback.onState(state("failed", "Termux could not accept startup request"));
+            String errorMsg = failure instanceof SecurityException
+                    ? "Termux RUN_COMMAND permission denied; enable in App Settings"
+                    : "Termux could not accept startup request";
+            if (REQUESTS.containsKey(nonce)) finish(nonce, state("failed", errorMsg));
+            else callback.onState(state("failed", errorMsg));
         }
     }
     public static void stopServer(Context context, LaunchCallback callback) {
@@ -74,13 +77,16 @@ public final class TermuxBridge {
                     .putExtra("com.termux.RUN_COMMAND_WORKDIR", TermuxLaunchContract.workingDirectory(applicationDataDir))
                     .putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
                     .putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pending);
-            if (context.startService(stopIntent) == null) {
+            if (!startCommandService(context, stopIntent)) {
                 throw new IllegalStateException("Termux command service is unavailable");
             }
             if (callback != null) callback.onState(state("accepted", ""));
         } catch (PackageManager.NameNotFoundException | SecurityException | IllegalStateException failure) {
-            if (REQUESTS.containsKey(nonce)) finish(nonce, state("failed", "Termux could not accept stop request"));
-            else if (callback != null) callback.onState(state("failed", "Termux could not accept stop request"));
+            String errorMsg = failure instanceof SecurityException
+                    ? "Termux RUN_COMMAND permission denied; enable in App Settings"
+                    : "Termux could not accept stop request";
+            if (REQUESTS.containsKey(nonce)) finish(nonce, state("failed", errorMsg));
+            else if (callback != null) callback.onState(state("failed", errorMsg));
         }
     }
     public static JsonObject startInteractive(Context context, String purpose, String workingDirectory) {
@@ -93,7 +99,7 @@ public final class TermuxBridge {
                     .putExtra("com.termux.RUN_COMMAND_ARGUMENTS", TermuxLaunchContract.interactiveArguments(purpose))
                     .putExtra("com.termux.RUN_COMMAND_WORKDIR", TermuxLaunchContract.interactiveWorkingDirectory(applicationDataDir, workingDirectory))
                     .putExtra("com.termux.RUN_COMMAND_BACKGROUND", false);
-            if (context.startService(command) == null) throw new IllegalStateException("Termux command service unavailable");
+            if (!startCommandService(context, command)) throw new IllegalStateException("Termux command service unavailable");
             Intent terminal = context.getPackageManager().getLaunchIntentForPackage(TERMUX_PACKAGE);
             if (terminal != null) context.startActivity(terminal.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             JsonObject result = state("accepted", null);
@@ -103,6 +109,19 @@ public final class TermuxBridge {
         } catch (PackageManager.NameNotFoundException unavailable) {
             throw new IllegalStateException("Install Termux and allow RUN_COMMAND", unavailable);
         }
+    }
+
+    private static boolean startCommandService(Context context, Intent intent) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                return context.startForegroundService(intent) != null;
+            } else {
+                return context.startService(intent) != null;
+            }
+        } catch (SecurityException | IllegalStateException e) {
+            return false;
+        }
+    }
     }
 
     private static Intent launcherIntent(Context context, String applicationDataDir, PendingIntent pending) {

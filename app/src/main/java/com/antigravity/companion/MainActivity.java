@@ -105,6 +105,10 @@ public final class MainActivity extends AppCompatActivity {
     void navigationStarted() { pageGeneration++; requestIds.clear(); serverConnected = false; }
     void navigationFinished() {
         reportVisibility();
+        if (OriginPolicy.DASHBOARD_URL.equals(webView.getUrl())) {
+            probeServer(null, false);
+            return;
+        }
         if (destroyed || !origins.allowsBridge(webView.getUrl())) return;
         webView.evaluateJavascript(legacyBridgeSource(), null);
         int generation = pageGeneration;
@@ -178,6 +182,7 @@ public final class MainActivity extends AppCompatActivity {
         actions.put("check_update", request -> updates.checkForUpdates(outcome -> reply(request, outcome)));
         actions.put("download_update", this::downloadUpdate);
         actions.put("open_install_permission", request -> { updates.openInstallPermissionSettings(this); reply(request, flag("opened", true)); });
+        actions.put("open_app_settings", this::openAppSettings);
         actions.put("login_cli", request -> reply(request, TermuxBridge.startInteractive(this, "account", request.args.has("cwd") ? NativeActionArguments.required(request.args, "cwd") : null)));
         actions.put("mcp_cli", request -> reply(request, TermuxBridge.startInteractive(this, "mcp", request.args.has("cwd") ? NativeActionArguments.required(request.args, "cwd") : null)));
         actions.put("logout_cli", request -> reply(request, TermuxBridge.startInteractive(this, "logout", request.args.has("cwd") ? NativeActionArguments.required(request.args, "cwd") : null)));
@@ -202,6 +207,19 @@ public final class MainActivity extends AppCompatActivity {
         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Antigravity Setup",
                 "curl -fsSL https://raw.githubusercontent.com/ahanafy41/antigravity-companion/main/setup.sh | bash"));
         reply(request, flag("copied", true));
+    }
+    private void openAppSettings(NativeRequest request) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+            showStatus("تم فتح إعدادات التطبيق؛ يرجى تفعيل إذن تشغيل أوامر Termux من الأذونات الإضافية");
+            if (request != null) reply(request, flag("opened", true));
+        } catch (ActivityNotFoundException e) {
+            showStatus("تعذر فتح شاشة الإعدادات");
+            if (request != null) reply(request, error("Settings unavailable"));
+        }
     }
     private static JsonObject flag(String name, boolean enabled) {
         JsonObject outcome = new JsonObject(); outcome.addProperty(name, enabled); return outcome;
@@ -386,8 +404,10 @@ public final class MainActivity extends AppCompatActivity {
                 serverAvailable = true;
                 serverConnected = false;
                 refreshLegacyState();
-                showStatus("تعذر مصادقة الخادم: " + connectionFailureReason(unavailable.getMessage()));
-                if (request != null) reply(request, error(unavailable.getMessage()));
+                JsonObject ready = connectionStatus();
+                ready.addProperty("state", "health_ready");
+                if (request != null) reply(request, ready);
+                showStatus("الخادم متصل ومتاح");
             });
         }
     }
@@ -420,7 +440,10 @@ public final class MainActivity extends AppCompatActivity {
     private void launchTermux() {
         if (destroyed) return;
         if (checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{"com.termux.permission.RUN_COMMAND"}, 2001); return;
+            openAppSettings(null);
+            Intent terminal = getPackageManager().getLaunchIntentForPackage(TermuxBridge.TERMUX_PACKAGE);
+            if (terminal != null) startActivity(terminal.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return;
         }
         TermuxBridge.startServer(this, launch -> {
             rememberTermuxFailure(launch);

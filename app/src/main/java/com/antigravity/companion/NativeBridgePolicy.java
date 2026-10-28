@@ -9,7 +9,7 @@ final class NativeBridgePolicy {
             "get_app_version", "get_connection_status",
             "run_diagnostics", "start_server", "bootstrap", "probe_server", "stop_server",
             "open_chat", "open_dashboard", "open_settings", "open_termux_app",
-            "copy_setup_command", "check_update", "download_update", "open_install_permission"));
+            "copy_setup_command", "check_update", "download_update", "open_install_permission", "open_app_settings"));
     private static final Set<String> AUTHENTICATED_CONTROLS = new HashSet<>(Arrays.asList(
             "login_cli", "mcp_cli", "logout_cli"));
 
