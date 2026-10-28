@@ -60,6 +60,14 @@ final class ServerConnection implements AutoCloseable {
             return response.code() == 200 ? Availability.LEGACY : Availability.OFFLINE;
         } catch (IOException offline) { return Availability.OFFLINE; }
     }
+    void stopServerDirect() throws IOException {
+        Request request = new Request.Builder().url(origin + "/api/shutdown")
+                .header("Origin", origin)
+                .post(oneShotJson()).build();
+        try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful() && response.code() != 202) throw new IOException("Shutdown rejected: " + response.code());
+        }
+    }
     void stopLegacy() throws IOException {
         Request request = new Request.Builder().url(origin + "/api/shutdown")
                 .post(oneShotJson()).build();

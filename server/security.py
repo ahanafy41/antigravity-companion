@@ -112,6 +112,15 @@ async def isolation(request, handler):
             return error("unauthorized", "Local connection required", 403)
         return await handler(request)
 
+    if request.path == "/api/shutdown" and request.method == "POST":
+        try:
+            local_peer = ip_address(request.remote or "").is_loopback
+        except ValueError:
+            local_peer = False
+        if not local_peer:
+            return error("unauthorized", "Local connection required", 403)
+        return await handler(request)
+
     if request.path == "/api/v1/android/bootstrap":
         request.app["android"].reload_configuration()
         token = request.app["android"].configuration.get("android_token", "")

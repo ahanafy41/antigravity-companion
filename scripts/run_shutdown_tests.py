@@ -88,6 +88,15 @@ class ShutdownTests(unittest.IsolatedAsyncioTestCase):
         )
 
 
+    async def test_loopback_direct_shutdown(self):
+        root_url = f'http://127.0.0.1:{self.app["port"]}'
+        response = await self.client.post(root_url + "/api/shutdown")
+        self.assertEqual(response.status, 202)
+        self.assertEqual((await response.json())["status"], "stopping")
+        await asyncio.sleep(0.3)
+        self.callback.assert_called_once_with()
+
+
 class OwnedProcessTests(unittest.IsolatedAsyncioTestCase):
     async def test_shutdown_exits_only_the_owned_server_cleanly(self):
         with tempfile.TemporaryDirectory() as folder:

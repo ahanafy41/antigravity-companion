@@ -184,6 +184,7 @@ def register_routes(application):
         web.post("/api/v1/device/actions", device_action),
         web.get("/api/v1/device/epoch", device_epoch),
         web.post("/api/v1/system/shutdown", shutdown_server),
+        web.post("/api/shutdown", shutdown_server),
         web.get("/api/v1/system/usage", local_usage),
         web.get("/api/v1/quota", account_quota),
         web.get("/api/v1/system/cli-version", cli_version),

@@ -329,18 +329,18 @@ public final class MainActivity extends AppCompatActivity {
     private void stopServer(NativeRequest request) {
         connectionExecutor.execute(() -> {
             try {
-                ServerConnection.Availability availability = server.probe();
-                if (availability == ServerConnection.Availability.LEGACY) {
-                    server.stopLegacy();
-                } else if (availability == ServerConnection.Availability.MODERN) {
-                    try {
+                server.stopServerDirect();
+            } catch (IOException directFailed) {
+                try {
+                    ServerConnection.Availability availability = server.probe();
+                    if (availability == ServerConnection.Availability.LEGACY) {
+                        server.stopLegacy();
+                    } else if (availability == ServerConnection.Availability.MODERN) {
                         server.stopModern();
-                    } catch (IOException ignored) {
-                        // Server token may be unauthenticated or shutting down; fallback to Termux stop
                     }
+                } catch (IOException ignored) {
+                    // Server token may be unauthenticated or shutting down; fallback to Termux stop
                 }
-            } catch (IOException ignored) {
-                // If probe or HTTP fails, proceed to OS-level Termux stop
             }
             if (checkSelfPermission("com.termux.permission.RUN_COMMAND") == PackageManager.PERMISSION_GRANTED) {
                 runOnUiThread(() -> TermuxBridge.stopServer(this, null));
