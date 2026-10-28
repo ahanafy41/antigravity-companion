@@ -14,6 +14,7 @@
       canInstallUnknownApps: async () => (await native('get_app_version')).can_install,
       isTermuxServerReady: async () => (await native('probe_server')).server_available === true,
       openSettings: () => native('open_settings'), openTermuxApp: () => native('open_termux_app'),
+      openAppSettings: () => native('open_app_settings'),
       copySetupCommand: () => native('copy_setup_command'),
       triggerServerWakeup: () => native('start_server'),
       startServer: () => native('start_server'), stopServer: () => native('stop_server'),
