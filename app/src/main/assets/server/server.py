@@ -61,6 +61,8 @@ def configured_port(root):
 
 def bootstrap_configuration():
     raw = sys.stdin.buffer.read(1024 * 1024 + 1)
+    if not raw or not raw.strip():
+        return {}
     if len(raw) > 1024 * 1024:
         raise ValueError("Android bootstrap exceeds the input limit")
     configuration = json.loads(raw.decode("utf-8-sig"))
@@ -97,7 +99,9 @@ def main():
                 app = create_app(options.data_dir, options.port)
                 app["shutdown_callback"] = request_shutdown
                 if options.android_token_stdin:
-                    app["android"].configure(bootstrap_configuration())
+                    cfg = bootstrap_configuration()
+                    if cfg:
+                        app["android"].configure(cfg)
                 print(
                     "Local URL: http://127.0.0.1:" + str(options.port), flush=True
                 )

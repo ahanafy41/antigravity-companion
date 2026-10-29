@@ -73,9 +73,11 @@ function reportError(error) {
                     await window.AntigravityBridge.triggerServerWakeup();
                 } else if (window.AntigravityBridge?.stopServer) {
                     await window.AntigravityBridge.stopServer();
+                    showServerStatus(false);
                 } else {
                     const stopped = await window.mainV1Fetch('/api/shutdown', {method: 'POST'});
                     if (!stopped.ok) throw new Error((await stopped.json()).error || 'تعذر إيقاف الخادم');
+                    showServerStatus(false);
                 }
                 for (let attempt = 0; attempt < (start ? 15 : 8); attempt++) {
                     await pause(start ? 800 : 500);

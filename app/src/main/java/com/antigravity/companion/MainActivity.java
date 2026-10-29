@@ -52,6 +52,7 @@ public final class MainActivity extends AppCompatActivity {
     private volatile String lastTermuxFailure = "";
     private volatile int reportedServerPort;
     private interface NativeAction { void execute(NativeRequest request); }
+    private static final int REQUEST_TERMUX_RUN_COMMAND = 2001;
     private static final class NativeRequest {
         final String id;
         final JsonObject args;
@@ -64,6 +65,10 @@ public final class MainActivity extends AppCompatActivity {
         updates = new AppUpdateManager(this); server = new ServerConnection(this);
         buildViews(); configureWebView(); registerActions();
         installBackHandler();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{"com.termux.permission.RUN_COMMAND"}, REQUEST_TERMUX_RUN_COMMAND);
+        }
         webView.loadUrl(OriginPolicy.DASHBOARD_URL); probeServer(null, false);
     }
     private void buildViews() {
@@ -440,9 +445,13 @@ public final class MainActivity extends AppCompatActivity {
     private void launchTermux() {
         if (destroyed) return;
         if (checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) {
-            openAppSettings(null);
-            Intent terminal = getPackageManager().getLaunchIntentForPackage(TermuxBridge.TERMUX_PACKAGE);
-            if (terminal != null) startActivity(terminal.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                requestPermissions(new String[]{"com.termux.permission.RUN_COMMAND"}, REQUEST_TERMUX_RUN_COMMAND);
+            } else {
+                openAppSettings(null);
+                Intent terminal = getPackageManager().getLaunchIntentForPackage(TermuxBridge.TERMUX_PACKAGE);
+                if (terminal != null) startActivity(terminal.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            }
             return;
         }
         TermuxBridge.startServer(this, launch -> {
@@ -452,6 +461,18 @@ public final class MainActivity extends AppCompatActivity {
                         + TermuxLaunchContract.summary(launch));
             });
         });
+    }
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_TERMUX_RUN_COMMAND) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                showStatus("تم منح إذن تشغيل أوامر Termux بنجاح");
+                launchTermux();
+            } else {
+                showStatus("يلزم تفعيل إذن تشغيل أوامر Termux من الإعدادات للتحكم بالخادم");
+            }
+        }
     }
     private void rememberTermuxFailure(JsonObject launch) {
         String state = launch.get("state").getAsString();

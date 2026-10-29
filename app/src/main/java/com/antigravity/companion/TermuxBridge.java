@@ -113,12 +113,13 @@ public final class TermuxBridge {
 
     private static boolean startCommandService(Context context, Intent intent) {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                return context.startForegroundService(intent) != null;
-            } else {
-                return context.startService(intent) != null;
-            }
+            return context.startService(intent) != null;
         } catch (SecurityException | IllegalStateException e) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    return context.startForegroundService(intent) != null;
+                }
+            } catch (Throwable ignored) {}
             return false;
         }
     }

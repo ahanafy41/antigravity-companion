@@ -17,12 +17,12 @@ pkill -9 -f "\.antigravity-server/server\.py" 2>/dev/null || true
 fuser -k 7681/tcp 2>/dev/null || true
 sleep 0.3
 
-setsid -f python3 -B "$SERVER_DIR/server.py" --data-dir "$SERVER_DIR" --port 7681 "$@" </dev/null > "$SERVER_DIR/server.log" 2>&1
+setsid -f python3 -B "$SERVER_DIR/server.py" --data-dir "$SERVER_DIR" --port 7681 ${1+"$@"} </dev/null > "$SERVER_DIR/server.log" 2>&1
 sleep 1.0
 
 if pgrep -f "\.antigravity-server/server\.py" >/dev/null; then
     echo "COMPANION_SERVER_PORT=7681"
-    echo "✓ Antigravity Server successfully running on port 7681."
+    echo "[OK] Antigravity Server successfully running on port 7681."
 else
-    echo "✗ Failed to start Antigravity Server."
+    echo "[ERROR] Failed to start Antigravity Server."
 fi

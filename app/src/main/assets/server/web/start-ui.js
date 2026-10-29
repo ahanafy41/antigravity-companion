@@ -73,9 +73,11 @@ function reportError(error) {
                     await window.AntigravityBridge.triggerServerWakeup();
                 } else if (window.AntigravityBridge?.stopServer) {
                     await window.AntigravityBridge.stopServer();
+                    showServerStatus(false);
                 } else {
                     const stopped = await window.mainV1Fetch('/api/shutdown', {method: 'POST'});
                     if (!stopped.ok) throw new Error((await stopped.json()).error || 'تعذر إيقاف الخادم');
+                    showServerStatus(false);
                 }
                 for (let attempt = 0; attempt < (start ? 15 : 8); attempt++) {
                     await pause(start ? 800 : 500);
@@ -84,7 +86,7 @@ function reportError(error) {
                         return true;
                     }
                 }
-                announce(start ? 'لم يتأكد تشغيل الخادم؛ افحص Termux وأعد المحاولة.' : 'لم يتأكد إيقاف الخادم؛ أعد فتح الصفحة لفحص الحالة.');
+                announce(start ? 'تعذر تشغيل الخادم تلقائياً. تأكد من تفعيل إذن تشغيل أوامر Termux من إعدادات التطبيق أو شغّله يدوياً من Termux.' : 'لم يتأكد إيقاف الخادم؛ أعد فتح الصفحة لفحص الحالة.');
                 return false;
             } catch (error) {
                 announce(error.message || 'حدث خطأ أثناء تنفيذ الأمر.');
@@ -212,7 +214,11 @@ function reportError(error) {
         async function downloadUpdate(url) {
             announce('بدء تنزيل التحديث...');
             if (window.AntigravityBridge && typeof window.AntigravityBridge.startUpdateDownload === 'function') {
-                await window.AntigravityBridge.startUpdateDownload(url);
+                try {
+                    await window.AntigravityBridge.startUpdateDownload(url || '');
+                } catch(e) {
+                    await window.AntigravityBridge.startUpdateDownload();
+                }
             }
         }
 
@@ -220,6 +226,29 @@ function reportError(error) {
             const statusEl = document.getElementById('update-status');
             if (statusEl) statusEl.textContent = 'جاري تنزيل التحديث: ' + percent + '%';
         };
+
+        async function openAppSettings() {
+            if (window.AntigravityBridge && typeof window.AntigravityBridge.openAppSettings === 'function') {
+                await window.AntigravityBridge.openAppSettings();
+            } else if (window.AntigravityBridge && typeof window.AntigravityBridge.openSettings === 'function') {
+                await window.AntigravityBridge.openSettings();
+            } else {
+                announce('إعدادات التطبيق متاحة فقط داخل تطبيق Android.');
+            }
+        }
+
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) checkStatus().catch(reportError);
+        });
+        window.addEventListener('focus', () => {
+            checkStatus().catch(reportError);
+        });
+
+        setInterval(() => {
+            if (!document.hidden && !serverBusy) {
+                checkStatus().catch(reportError);
+            }
+        }, 4000);
 
         async function initializeDashboard() {
             if (window.AntigravityBridge && typeof window.AntigravityBridge.getAppVersion === 'function') {
@@ -237,6 +266,7 @@ function reportError(error) {
 
 function bindSingleAction(id, action) {
     const button = document.getElementById(id);
+    if (!button) return;
     let busy = false;
     button.addEventListener('click', async () => {
         if (busy) return;
@@ -254,6 +284,7 @@ function bindSingleAction(id, action) {
 document.getElementById("btn-go-chat").addEventListener("click", () => goToChat().catch(reportError));
 serverButton.addEventListener("click", () => changeServerState(!serverReady).catch(reportError));
 bindSingleAction("btn-setup-termux", setupTermux);
+bindSingleAction("btn-app-settings", openAppSettings);
 document.getElementById("btn-run-diag").addEventListener("click", () => runDiagnostics().catch(reportError));
 bindSingleAction("btn-check-update", checkAppUpdate);
 

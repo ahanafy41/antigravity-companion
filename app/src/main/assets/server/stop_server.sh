@@ -24,4 +24,4 @@ fi
 
 pkill -9 -f "\.antigravity-server/server\.py" 2>/dev/null || true
 fuser -k 7681/tcp 2>/dev/null || true
-echo "✓ Antigravity Server stopped successfully."
+echo "[OK] Antigravity Server stopped successfully."
