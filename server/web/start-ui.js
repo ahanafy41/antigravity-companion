@@ -59,7 +59,6 @@ function reportError(error) {
 
         async function changeServerState(start) {
             if (serverBusy) return false;
-            if (!start && !confirm('هل تريد إيقاف خادم تيرمكس نهائياً؟')) return false;
             if (start && !window.AntigravityBridge?.triggerServerWakeup) {
                 announce('تشغيل الخادم متاح داخل التطبيق؛ شغّله عبر Termux ثم أعد فتح الصفحة.');
                 return false;

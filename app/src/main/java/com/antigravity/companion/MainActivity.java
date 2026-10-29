@@ -10,6 +10,8 @@ import android.os.Bundle;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.webkit.CookieManager;
+import android.webkit.JsResult;
+import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -94,6 +96,20 @@ public final class MainActivity extends AppCompatActivity {
                 .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
                 .addPathHandler("/", path -> new WebViewAssetLoader.AssetsPathHandler(this).handle("web/" + path)).build();
         webView.setWebViewClient(new CompanionWebViewClient(this, origins, assets));
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onJsAlert(WebView view, String url, String message, JsResult result) {
+                showStatus(message);
+                result.confirm();
+                return true;
+            }
+
+            @Override
+            public boolean onJsConfirm(WebView view, String url, String message, JsResult result) {
+                result.confirm();
+                return true;
+            }
+        });
         bridgeSupported = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER);
         if (!bridgeSupported) { showStatus("حدّث Android System WebView لتفعيل جسر التطبيق"); return; }
         WebViewCompat.addWebMessageListener(webView, "CompanionNative",

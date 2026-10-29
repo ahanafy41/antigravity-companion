@@ -6474,19 +6474,26 @@ await window.mainV1.ready;
     const btnStopServer = document.getElementById('btn-stop-server');
     if (btnStopServer) {
       btnStopServer.addEventListener('click', async () => {
-        if (confirm('هل أنت متأكد من إيقاف خادم تيرمكس نهائياً؟ ستنتقل إلى شاشة البدء.')) {
-          toggleAppDrawer(false);
-          announce('جاري إيقاف خادم تيرمكس نهائياً...');
-          const stopped = await window.mainV1Fetch('/api/shutdown', {method: 'POST'});
-          if (!stopped.ok) { announce((await stopped.json()).error); return; }
-          setTimeout(() => {
-            if (window.AntigravityBridge && typeof window.AntigravityBridge.loadDashboardUrl === 'function') {
-              window.AntigravityBridge.loadDashboardUrl();
-            } else {
-              window.location.href = '/start';
-            }
-          }, 450);
+        toggleAppDrawer(false);
+        announce('جاري إيقاف خادم تيرمكس نهائياً...');
+        try {
+          if (window.AntigravityBridge && typeof window.AntigravityBridge.stopServer === 'function') {
+            await window.AntigravityBridge.stopServer();
+          } else {
+            const stopped = await window.mainV1Fetch('/api/shutdown', {method: 'POST'});
+            if (!stopped.ok) { announce((await stopped.json()).error); return; }
+          }
+        } catch (err) {
+          announce('تعذر إيقاف الخادم: ' + (err?.message || err));
+          return;
         }
+        setTimeout(() => {
+          if (window.AntigravityBridge && typeof window.AntigravityBridge.loadDashboardUrl === 'function') {
+            window.AntigravityBridge.loadDashboardUrl();
+          } else {
+            window.location.href = '/start';
+          }
+        }, 450);
       });
     }
 

@@ -4,7 +4,7 @@
   "status_note": "Original contents below preserve prior planning evidence; retired native automation/voice contracts are not current requirements.",
   "$schema": "https://json-schema.org/draft-07/schema#",
   "project_name": "Antigravity Companion & Bridge",
-  "version": "1.3.9",
+  "version": "1.4.0",
   "track": "Track C: Systems & Backend",
   "language": "Kotlin / Java",
   "frameworks": [
