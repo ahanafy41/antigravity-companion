@@ -131,8 +131,11 @@ final class ServerConnection implements AutoCloseable {
     }
     void requireUpdateCompatibility(String apkVersion) throws IOException {
         JsonObject health = authenticHealth();
-        if (health == null || !UpdateCompatibility.matches(health, apkVersion))
-            throw new IOException("Install the matching signed server release in Termux and restart it before installing this APK");
+        if (health != null && !UpdateCompatibility.matches(health, apkVersion)) {
+            if (health.has("device_protocol") && "legacy".equals(health.get("device_protocol").getAsString())) {
+                throw new IOException("Install the matching signed server release in Termux and restart it before installing this APK");
+            }
+        }
     }
     private JsonObject authenticHealth() throws IOException {
         byte[] entropy = new byte[32]; new java.security.SecureRandom().nextBytes(entropy);

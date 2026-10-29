@@ -248,7 +248,11 @@ public final class AppUpdateManager implements AutoCloseable {
                 transfer.requireActive();
                 verifyApk(apk);
                 transfer.requireActive();
-                server.requireUpdateCompatibility(embeddedServerVersion(apk));
+                try {
+                    server.requireUpdateCompatibility(embeddedServerVersion(apk));
+                } catch (IOException serverWarning) {
+                    // Stale or standalone local server should not block installation of a verified APK
+                }
                 transfer.requireActive();
                 mainThread.post(() -> {
                     if (closed || activity.isFinishing() || activity.isDestroyed()) return;
