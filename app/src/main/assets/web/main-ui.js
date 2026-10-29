@@ -6564,7 +6564,7 @@ await window.mainV1.ready;
           } else {
             window.location.href = '/start';
           }
-        }, 450);
+        }, 750);
       });
     }
 

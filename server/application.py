@@ -1441,7 +1441,7 @@ async def shutdown_server(request):
         return error("shutdown_unavailable", "Host owns server shutdown", 503)
     if not request.app["shutdown_requested"]:
         request.app["shutdown_requested"] = True
-        asyncio.get_running_loop().call_later(0.2, callback)
+        asyncio.get_running_loop().call_later(0.05, callback)
     return web.json_response({"status": "stopping"}, status=202)
 
 
@@ -1533,11 +1533,22 @@ def instance_identity(store):
 
 def api_path(request, requested):
     path = workspaces(request).resolve(requested)
+    if path.name in (
+        "antigravity-oauth-token",
+        ".companion-oauth-token",
+        "antigravity-release-key.jks",
+        "instance.json",
+        "release-cert.der",
+    ):
+        raise PermissionError("Sensitive secret file is protected")
     if path.parent.name == ".agents" and path.name.startswith(
         ("mcp_config.json", ".companion-oauth-")
     ):
         raise PermissionError("Private MCP configuration is outside file API")
     home = request.app["legacy"].root.parents[2]
+    scratch_root = (home / ".gemini" / "antigravity-cli" / "scratch").resolve()
+    if path == scratch_root or scratch_root in path.parents:
+        return path
     private_roots = (
         request.app["store"].root,
         home / ".gemini",

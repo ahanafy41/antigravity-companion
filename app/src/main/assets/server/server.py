@@ -73,7 +73,7 @@ def bootstrap_configuration():
 
 def request_shutdown():
     def hard_exit():
-        time.sleep(1.0)
+        time.sleep(0.15)
         os._exit(0)
 
     thread = threading.Thread(target=hard_exit, daemon=True)

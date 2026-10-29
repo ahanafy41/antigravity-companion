@@ -369,7 +369,7 @@ public final class MainActivity extends AppCompatActivity {
             }
             boolean confirmedOffline = false;
             for (int attempt = 0; attempt < 8; attempt++) {
-                try { Thread.sleep(250); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+                try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
                 if (server.probe() == ServerConnection.Availability.OFFLINE) {
                     confirmedOffline = true;
                     break;

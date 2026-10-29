@@ -76,17 +76,19 @@ function reportError(error) {
                             await window.AntigravityBridge.stopServer();
                         } catch (bridgeErr) {
                             console.warn('AntigravityBridge.stopServer failed, continuing with direct shutdown:', bridgeErr);
+                            try {
+                                await window.mainV1Fetch('/api/shutdown', {method: 'POST'});
+                            } catch (fetchErr) {}
                         }
-                    }
-                    try {
-                        await window.mainV1Fetch('/api/shutdown', {method: 'POST'});
-                    } catch (fetchErr) {
-                        // Server might already be stopped or unreachable
+                    } else {
+                        try {
+                            await window.mainV1Fetch('/api/shutdown', {method: 'POST'});
+                        } catch (fetchErr) {}
                     }
                     showServerStatus(false);
                 }
                 for (let attempt = 0; attempt < (start ? 15 : 8); attempt++) {
-                    await pause(start ? 800 : 500);
+                    await pause(start ? 800 : 300);
                     if (await checkStatus() === start) {
                         announce(start ? 'خادم تيرمكس نشط ومتصل.' : 'خادم تيرمكس متوقف الآن.');
                         return true;
