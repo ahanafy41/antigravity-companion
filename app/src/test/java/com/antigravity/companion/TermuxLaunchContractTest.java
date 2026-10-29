@@ -9,8 +9,8 @@ public class TermuxLaunchContractTest {
         String dataDir = "/fixture/app";
         assertEquals("/fixture/app/files/usr/bin/bash", TermuxLaunchContract.executable(dataDir));
         assertEquals("/fixture/app/files/home", TermuxLaunchContract.workingDirectory(dataDir));
-        assertArrayEquals(new String[]{"/fixture/app/files/home/.antigravity-server/launch_server.sh",
-                "--android-token-stdin"}, TermuxLaunchContract.arguments(dataDir));
+        assertArrayEquals(new String[]{"/fixture/app/files/home/.antigravity-server/launch_server.sh"},
+                TermuxLaunchContract.arguments(dataDir));
     }
 
     @Test public void optionalResultFieldsPreserveFailureAndUncertainty() {
