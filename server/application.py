@@ -683,6 +683,58 @@ async def save_settings(request):
     return settings_response(document)
 
 
+def available_storage_roots():
+    roots = [Path.home()]
+    internal = Path("/storage/emulated/0")
+    if internal.is_dir():
+        roots.append(internal)
+    sdcard = Path("/sdcard")
+    if sdcard.is_dir() and sdcard.resolve() not in [r.resolve() for r in roots]:
+        roots.append(sdcard)
+    try:
+        with open("/proc/mounts", "r") as mounts_file:
+            for line in mounts_file:
+                parts = line.split()
+                if len(parts) >= 2:
+                    mount = parts[1]
+                    if mount.startswith("/storage/"):
+                        sub = mount[len("/storage/"):].split("/")[0]
+                        if sub and sub not in ("emulated", "self"):
+                            target = Path("/storage/" + sub)
+                            if target.is_dir() and target not in roots:
+                                roots.append(target)
+    except Exception:
+        pass
+    return roots
+
+
+def available_storage_items():
+    items = [
+        {"name": "تيرماكس", "path": str(Path.home()), "icon": "🏠", "id": "termux"},
+    ]
+    internal = Path("/storage/emulated/0")
+    if internal.is_dir():
+        items.append({"name": "الذاكرة الداخلية", "path": str(internal), "icon": "📱", "id": "internal"})
+        downloads = internal / "Download"
+        if downloads.is_dir():
+            items.append({"name": "التنزيلات", "path": str(downloads), "icon": "📥", "id": "downloads"})
+    try:
+        with open("/proc/mounts", "r") as mounts_file:
+            for line in mounts_file:
+                parts = line.split()
+                if len(parts) >= 2:
+                    mount = parts[1]
+                    if mount.startswith("/storage/"):
+                        sub = mount[len("/storage/"):].split("/")[0]
+                        if sub and sub not in ("emulated", "self"):
+                            target = Path("/storage/" + sub)
+                            if target.is_dir() and not any(it["path"] == str(target) for it in items):
+                                items.append({"name": f"كارت الميموري ({sub})", "path": str(target), "icon": "💾", "id": "sdcard"})
+    except Exception:
+        pass
+    return items
+
+
 def workspaces(request):
     settings = request.app["store"].read("settings")
     roots = settings.get(
@@ -690,7 +742,15 @@ def workspaces(request):
     )
     if not isinstance(roots, list):
         raise ValueError("Workspace roots must be a list")
-    return WorkspacePaths(roots or [Path.home()])
+    combined = list(roots)
+    cwd = settings.get("cwd")
+    if cwd and Path(cwd).is_dir() and cwd not in combined:
+        combined.append(cwd)
+    for storage_root in available_storage_roots():
+        str_root = str(storage_root)
+        if str_root not in combined:
+            combined.append(str_root)
+    return WorkspacePaths(combined or [Path.home()])
 
 
 async def list_sessions(request):
@@ -1076,13 +1136,17 @@ async def read_artifact(request):
 async def list_files(request):
     path = api_path(request, request.query.get("path", str(Path.home())))
     entries = []
-    for child in sorted(
-        path.iterdir(), key=lambda entry: entry.name.casefold()
-    ):
+    try:
+        children = sorted(
+            path.iterdir(), key=lambda entry: entry.name.casefold()
+        )
+    except (PermissionError, FileNotFoundError, OSError):
+        children = []
+    for child in children:
         try:
             resolved = api_path(request, str(child))
             stat = resolved.stat()
-        except (PermissionError, FileNotFoundError):
+        except (PermissionError, FileNotFoundError, OSError):
             continue
         entries.append(
             {
@@ -1094,15 +1158,21 @@ async def list_files(request):
         )
         if len(entries) >= 1000:
             break
-    return web.json_response({"path": str(path), "entries": entries})
+    return web.json_response(
+        {"path": str(path), "entries": entries, "storages": available_storage_items()}
+    )
 
 
 async def read_file(request):
     path = api_path(request, request.query["path"])
     if path.stat().st_size > 1024 * 1024:
         return error("file_too_large", "File exceeds the 1 MiB limit", 413)
+    try:
+        content = path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError:
+        return error("binary_file", "File is binary and cannot be displayed as text", 415)
     return web.json_response(
-        {"path": str(path), "content": path.read_text(encoding="utf-8-sig")}
+        {"path": str(path), "content": content}
     )
 
 

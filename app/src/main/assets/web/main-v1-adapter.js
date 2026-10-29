@@ -784,10 +784,38 @@
         const path = query.get('path') || cwd();
         const listing = await request('/files' + (path ? '?path=' + encode(path) : ''));
         const parent = listing.path.replace(/[\\/][^\\/]+[\\/]?$/, '') || listing.path;
-        return {current_dir: listing.path, parent_dir: parent, items: listing.entries};
+        return {
+          current_dir: listing.path,
+          parent_dir: parent,
+          items: listing.entries,
+          storages: listing.storages || []
+        };
       }
-      case 'fs/select': await closeCurrent(); return saveSettings({cwd: body.path});
-      case 'fs/read': return request('/file?path=' + encode(query.get('path')));
+      case 'fs/select': {
+        await closeCurrent();
+        const dirPath = body.path;
+        const currentSettings = await settings();
+        const trusted = Array.isArray(currentSettings.settings?.trustedWorkspaces)
+          ? [...currentSettings.settings.trustedWorkspaces]
+          : [];
+        if (dirPath && !trusted.includes(dirPath)) {
+          trusted.push(dirPath);
+        }
+        return saveSettings({cwd: dirPath, trustedWorkspaces: trusted});
+      }
+      case 'fs/read': {
+        try {
+          return await request('/file?path=' + encode(query.get('path')));
+        } catch (error) {
+          return {
+            path: query.get('path'),
+            name: (query.get('path') || '').split('/').pop(),
+            error: error.message,
+            is_error: true,
+            status: error.status || 500
+          };
+        }
+      }
       case 'fs/mkdir': return request('/directories', {method: 'POST', body: {path: body.parent_dir.replace(/[\\/]$/, '') + '/' + body.name}});
       case 'skills/list': return request(scoped('/skills'));
       case 'plugins/list': return request(scoped('/plugins'));

@@ -672,6 +672,18 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
             ) as response:
                 self.assertEqual(response.status, 201)
 
+    async def test_available_storage_roots_and_dynamic_listing(self):
+        headers = await self.authenticated()
+        async with self.client.get(
+            self.url + "/api/v1/files", headers=headers
+        ) as response:
+            self.assertEqual(response.status, 200)
+            data = await response.json()
+            self.assertIn("storages", data)
+            self.assertTrue(isinstance(data["storages"], list))
+            storage_names = [s["name"] for s in data["storages"]]
+            self.assertIn("تيرماكس", storage_names)
+
     async def test_file_symlink_alias_cannot_expose_private_store(self):
         await self.authenticated()
         with tempfile.TemporaryDirectory() as folder:

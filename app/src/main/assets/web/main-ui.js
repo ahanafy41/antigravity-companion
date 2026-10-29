@@ -1960,35 +1960,75 @@ await window.mainV1.ready;
     }
 
     // ==========================================================================
-    // File Explorer Modal
+    // File Explorer Modal & Storage Navigator
     // ==========================================================================
+    let showHiddenFiles = localStorage.getItem('companion_show_hidden_files') === '1';
+    let lastKnownStorages = [];
+    let currentExplorerDir = '';
+
+    function updateActiveProjectLabel(dirPath) {
+      if (!dirPath) return;
+      const folderName = dirPath.split('/').filter(Boolean).pop() || dirPath;
+      if (aiInput) {
+        aiInput.setAttribute('data-active-project', dirPath);
+        aiInput.placeholder = 'اكتب رسالتك هنا... [مجلد العمل: ' + folderName + ']';
+      }
+      const filesTitle = document.getElementById('files-title');
+      if (filesTitle) {
+        filesTitle.textContent = 'ملفات: ' + folderName;
+      }
+    }
+
     async function loadDirectory(path) {
       try {
         const url = '/api/fs/list' + (path ? '?path=' + encodeURIComponent(path) : '');
         const res = await window.mainV1Fetch(url);
         if (res.ok) {
           const data = await res.json();
-          renderFilesList(data.current_dir, data.items || [], data.parent_dir);
+          currentExplorerDir = data.current_dir || path || '';
+          if (data.storages && data.storages.length) {
+            lastKnownStorages = data.storages;
+          }
+          renderFilesList(data.current_dir, data.items || [], data.parent_dir, lastKnownStorages);
+        } else {
+          const err = await res.json();
+          announce('تعذر تحميل الملفات: ' + (err.error || err.message || 'المسار غير متاح'));
         }
       } catch(e) {
-        announce('تعذر تحميل الملفات');
+        announce('تعذر تحميل الملفات: ' + (e.message || 'خطأ اتصال'));
       }
     }
 
-    function renderFilesList(currentDir, items, parentDir) {
+    function renderFilesList(currentDir, items, parentDir, storages) {
       if (!filesListContainer) return;
       fileViewerContainer.style.display = 'none';
       filesListContainer.style.display = 'block';
+      currentExplorerDir = currentDir;
 
-      let html = '<div class="files-nav-bar main-style-154">';
-      html += '<button type="button" class="btn btn-sm btn-quick-nav" data-nav="/data/data/com.termux/files/home" aria-label="الانتقال إلى مجلد تيرماكس الرئيسي">🏠 تيرماكس</button>';
-      html += '<button type="button" class="btn btn-sm btn-quick-nav" data-nav="/storage/emulated/0" aria-label="الانتقال إلى ذاكرة الهاتف الداخلية">📱 الذاكرة</button>';
-      html += '<button type="button" class="btn btn-sm btn-quick-nav" data-nav="/storage/emulated/0/Download" aria-label="الانتقال إلى التنزيلات">📥 التنزيلات</button>';
-      if (parentDir) {
+      let html = '<div class="files-nav-bar main-style-154" role="toolbar" aria-label="أشرطة التنقل ومسارات التخزين">';
+
+      // Dynamic storage buttons
+      const navStorages = (storages && storages.length) ? storages : [
+        {name: "تيرماكس", path: "/data/data/com.termux/files/home", icon: "🏠"},
+        {name: "الذاكرة الداخلية", path: "/storage/emulated/0", icon: "📱"},
+        {name: "التنزيلات", path: "/storage/emulated/0/Download", icon: "📥"}
+      ];
+
+      navStorages.forEach(st => {
+        html += '<button type="button" class="btn btn-sm btn-quick-nav" data-nav="' + escapeHtml(st.path) + '" aria-label="الانتقال إلى ' + escapeHtml(st.name) + '">' +
+          (st.icon || '📁') + ' ' + escapeHtml(st.name) + '</button>';
+      });
+
+      if (parentDir && parentDir !== currentDir) {
         html += '<button type="button" class="btn btn-sm btn-quick-nav" data-nav="' + escapeHtml(parentDir) + '" aria-label="الصعود للمجلد الأعلى">⬆️ لأعلى</button>';
       }
-      html += '<button type="button" id="btn-create-new-project" class="btn btn-sm btn-primary" aria-label="إنشاء مشروع أو مجلد جديد هنا">➕ مشروع جديد</button>';
+
+      // Hidden files toggle button
+      html += '<button type="button" id="btn-toggle-hidden" class="btn btn-sm" aria-pressed="' + (showHiddenFiles ? 'true' : 'false') + '" aria-label="' + (showHiddenFiles ? 'إخفاء الملفات المخفية' : 'إظهار الملفات المخفية') + '">' +
+        (showHiddenFiles ? '👁️ إخفاء المخفي' : '👁️ إظهار المخفي') + '</button>';
+
       html += '<button type="button" id="btn-set-active-project" class="btn btn-sm main-style-155" aria-label="تعيين هذا المجلد كمشروع العمل النشط للوكيل">🎯 تعيين كمشروع نشط</button>';
+      html += '<button type="button" id="btn-create-new-project" class="btn btn-sm btn-primary" aria-label="إنشاء مشروع أو مجلد جديد هنا">➕ مشروع جديد</button>';
       html += '</div>';
 
       html += '<div id="new-project-panel" role="region" aria-label="نموذج إنشاء مشروع جديد" class="main-style-156">' +
@@ -2000,22 +2040,49 @@ await window.mainV1.ready;
         '</div>' +
       '</div>';
 
-      html += '<div class="files-header-path main-style-160">المسار: <code>' + escapeHtml(currentDir) + '</code></div>';
-      html += '<ul class="files-list" role="list">';
+      html += '<div class="files-header-path main-style-160" role="region" aria-label="المسار الحالي">' +
+        '<span>المسار الحالي: </span><code>' + escapeHtml(currentDir) + '</code>' +
+      '</div>';
 
-      if (items.length === 0) {
-        html += '<li class="main-style-161">المجلد فارغ</li>';
+      // Filtering hidden files and sorting: folders first, then files
+      const visibleItems = showHiddenFiles ? items : items.filter(it => !it.name.startsWith('.'));
+      const dirs = visibleItems.filter(it => it.is_dir).sort((a, b) => a.name.localeCompare(b.name, undefined, {sensitivity: 'base'}));
+      const files = visibleItems.filter(it => !it.is_dir).sort((a, b) => a.name.localeCompare(b.name, undefined, {sensitivity: 'base'}));
+
+      html += '<ul class="files-list" role="list" aria-label="قائمة المجلدات والملفات">';
+
+      if (dirs.length === 0 && files.length === 0) {
+        html += '<li class="main-style-161" role="listitem">' +
+          (items.length > 0 && !showHiddenFiles ? 'المجلد لا يحتوي إلا على ملفات مخفية (اضغط إظهار المخفي لعرضها)' : 'المجلد فارغ') +
+        '</li>';
       }
 
-      items.forEach(item => {
-        const icon = item.is_dir ? '📁' : '📄';
-        html += '<li class="file-item" role="listitem">' +
-          '<button type="button" class="btn-file-open" data-path="' + escapeHtml(item.path) + '" data-isdir="' + (item.is_dir ? '1' : '0') + '" aria-label="' + (item.is_dir ? 'مجلد ' : 'ملف ') + escapeHtml(item.name) + '">' +
-            '<span>' + icon + ' ' + escapeHtml(item.name) + '</span>' +
-            '<span class="file-meta">' + (item.is_dir ? 'مجلد' : Math.round(item.size / 1024) + ' KB') + '</span>' +
+      // Render Folders first
+      dirs.forEach(item => {
+        const isHidden = item.name.startsWith('.');
+        html += '<li class="file-item file-item-dir" role="listitem">' +
+          '<button type="button" class="btn-file-open btn-dir-open" data-path="' + escapeHtml(item.path) + '" aria-label="مجلد ' + (isHidden ? 'مخفي ' : '') + escapeHtml(item.name) + '">' +
+            '<span>📁 ' + escapeHtml(item.name) + (isHidden ? ' <small style="color:var(--text-muted);">(مخفي)</small>' : '') + '</span>' +
+            '<span class="file-meta">مجلد</span>' +
           '</button>' +
         '</li>';
       });
+
+      // Render Files next with direct send-to-agent action
+      files.forEach(item => {
+        const isHidden = item.name.startsWith('.');
+        const sizeStr = item.size > 1048576 ? (item.size / 1048576).toFixed(1) + ' MB' : Math.round(item.size / 1024) + ' KB';
+        html += '<li class="file-item file-item-file" role="listitem">' +
+          '<div class="file-item-row" style="display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; background:var(--bg-card-header); padding:8px 12px; border-radius:8px; border:1px solid var(--border-main);">' +
+            '<button type="button" class="btn-file-open btn-file-inspect" data-path="' + escapeHtml(item.path) + '" style="flex:1; display:flex; justify-content:space-between; align-items:center; background:none; border:none; color:var(--text-main); font-family:inherit; font-size:0.95rem; text-align:right; cursor:pointer;" aria-label="معاينة ملف ' + (isHidden ? 'مخفي ' : '') + escapeHtml(item.name) + ' بحجم ' + sizeStr + '">' +
+              '<span>📄 ' + escapeHtml(item.name) + (isHidden ? ' <small style="color:var(--text-muted);">(مخفي)</small>' : '') + '</span>' +
+              '<span class="file-meta">' + sizeStr + '</span>' +
+            '</button>' +
+            '<button type="button" class="btn btn-sm btn-primary btn-send-file-direct" data-path="' + escapeHtml(item.path) + '" data-name="' + escapeHtml(item.name) + '" aria-label="إرسال ملف ' + escapeHtml(item.name) + ' للوكيل">⚡ للوكيل</button>' +
+          '</div>' +
+        '</li>';
+      });
+
       html += '</ul>';
       filesListContainer.innerHTML = html;
 
@@ -2027,6 +2094,49 @@ await window.mainV1.ready;
         });
       });
 
+      // Attach toggle hidden files listener
+      const btnToggleHidden = document.getElementById('btn-toggle-hidden');
+      if (btnToggleHidden) {
+        btnToggleHidden.addEventListener('click', () => {
+          showHiddenFiles = !showHiddenFiles;
+          localStorage.setItem('companion_show_hidden_files', showHiddenFiles ? '1' : '0');
+          announce(showHiddenFiles ? 'تم إظهار الملفات المخفية' : 'تم إخفاء الملفات المخفية');
+          renderFilesList(currentDir, items, parentDir, storages);
+        });
+      }
+
+      // Attach direct send to agent listener
+      filesListContainer.querySelectorAll('.btn-send-file-direct').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const filePath = btn.getAttribute('data-path');
+          const fileName = btn.getAttribute('data-name') || filePath.split('/').pop();
+          if (filesDialog) filesDialog.close();
+          if (aiInput) {
+            aiInput.value = 'يرجى قراءة وفحص الملف التالي والتعامل معه: ' + filePath;
+            aiInput.focus();
+          }
+          announce('تم إدراج الملف ' + fileName + ' في طلب الوكيل');
+          playSuccessChime();
+        });
+      });
+
+      // Attach inspect / open listeners
+      filesListContainer.querySelectorAll('.btn-dir-open').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const path = btn.getAttribute('data-path');
+          if (path) loadDirectory(path);
+        });
+      });
+
+      filesListContainer.querySelectorAll('.btn-file-inspect').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const path = btn.getAttribute('data-path');
+          if (path) openFileContent(path);
+        });
+      });
+
+      // Project creation handlers
       const btnCreateProj = document.getElementById('btn-create-new-project');
       const newProjPanel = document.getElementById('new-project-panel');
       const inputNewProjName = document.getElementById('input-new-project-name');
@@ -2065,15 +2175,29 @@ await window.mainV1.ready;
               body: JSON.stringify({ parent_dir: currentDir, name: cleanName })
             });
             let targetPath = currentDir + (currentDir.endsWith('/') ? '' : '/') + cleanName;
-            if (!res.ok) { announce((await res.json()).error); return; }
+            if (!res.ok) {
+              const err = await res.json();
+              announce('تعذر إنشاء المجلد: ' + (err.error || err.message));
+              return;
+            }
             const resData = await res.json();
             if (resData && resData.path) targetPath = resData.path;
+
+            // Set newly created project as active workspace
+            await window.mainV1Fetch('/api/fs/select', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({path: targetPath})
+            });
+
             if (filesDialog) filesDialog.close();
+            currentActiveConversationId = null; forceNewSession = true;
+            updateActiveProjectLabel(targetPath);
             if (aiInput) {
-              aiInput.value = 'اعتبر المجلد ' + targetPath + ' هو مجلد المشروع النشط للعمل.';
+              aiInput.value = 'أنا أعمل الآن في مجلد المشروع الجديد: ' + targetPath;
               aiInput.focus();
             }
-            announce('أُنشئ المجلد وأُضيف طلب اختياره إلى المسودة: ' + cleanName);
+            announce('أُنشئ المجلد وعُين كمشروع نشط للعمل: ' + cleanName);
             playSuccessChime();
           } catch(err) {
             announce('حدث خطأ أثناء إنشاء المشروع');
@@ -2095,15 +2219,31 @@ await window.mainV1.ready;
         });
       }
 
+      // Set active project handler
       const btnSetActiveProj = document.getElementById('btn-set-active-project');
       if (btnSetActiveProj) {
         btnSetActiveProj.addEventListener('click', async () => {
-          const selected = await window.mainV1Fetch('/api/fs/select', {method: 'POST', body: JSON.stringify({path: currentDir})});
-          if (!selected.ok) { announce((await selected.json()).error); return; }
-          if (filesDialog) filesDialog.close();
-          currentActiveConversationId = null; forceNewSession = true;
-          announce('اختير مجلد العمل للدور التالي: ' + currentDir);
-          aiInput?.focus();
+          announce('جارٍ تعيين ' + currentDir + ' كمشروع نشط...');
+          try {
+            const selected = await window.mainV1Fetch('/api/fs/select', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({path: currentDir})
+            });
+            if (!selected.ok) {
+              const err = await selected.json();
+              announce('تعذر تعيين المشروع: ' + (err.error || err.message));
+              return;
+            }
+            if (filesDialog) filesDialog.close();
+            currentActiveConversationId = null; forceNewSession = true;
+            updateActiveProjectLabel(currentDir);
+            announce('تم تعيين مجلد العمل النشط بنجاح: ' + currentDir);
+            playSuccessChime();
+            if (aiInput) aiInput.focus();
+          } catch(err) {
+            announce('حدث خطأ أثناء تعيين المشروع');
+          }
         });
       }
     }
@@ -2111,20 +2251,29 @@ await window.mainV1.ready;
     let currentActiveFilePath = '';
 
     async function openFileContent(filePath) {
+      currentActiveFilePath = filePath;
+      const fileName = filePath.split('/').pop() || filePath;
+      filesListContainer.style.display = 'none';
+      fileViewerContainer.style.display = 'block';
+      fileViewerTitle.textContent = '📄 ' + fileName;
+      fileViewerContent.textContent = 'جارٍ تحميل محتوى الملف...';
+      announce('جارٍ فتح ملف ' + fileName);
+
       try {
         const res = await window.mainV1Fetch('/api/fs/read?path=' + encodeURIComponent(filePath));
-        if (res.ok) {
-          const data = await res.json();
-          currentActiveFilePath = data.path || filePath;
-          filesListContainer.style.display = 'none';
-          fileViewerContainer.style.display = 'block';
-          fileViewerTitle.textContent = '📄 ' + data.name;
+        const data = await res.json();
+        currentActiveFilePath = data.path || filePath;
+        fileViewerTitle.textContent = '📄 ' + (data.name || fileName);
+        if (data.is_error || !res.ok) {
+          fileViewerContent.textContent = '⚠️ ' + (data.error || 'الملف ثنائي أو كبير أو لا يمكن عرضه كنص مباشر.\nيمكنك نسخ مساره أو الضغط على (أرسل للمحادثة) للتعامل معه برمجياً.') + '\n\nالمسار الكامل:\n' + currentActiveFilePath;
+        } else {
           fileViewerContent.textContent = data.content || '(الملف فارغ)';
-          announce('تم فتح محتوى الملف: ' + data.name);
-          playBeep(700, 0.08);
         }
+        announce('تم عرض الملف: ' + fileName);
+        playBeep(700, 0.08);
       } catch(e) {
-        announce('تعذر قراءة محتوى الملف');
+        fileViewerContent.textContent = 'المسار الكامل:\n' + filePath + '\n\n(تعذر قراءة النص المباشر؛ يمكنك استخدام زر أرسل للمحادثة لإرسال المسار للوكيل)';
+        announce('تم عرض مسار الملف: ' + fileName);
       }
     }
 
@@ -2137,7 +2286,7 @@ await window.mainV1.ready;
         if (filesDialog) filesDialog.close();
         if (aiInput) {
           const fileName = currentActiveFilePath.split('/').pop() || currentActiveFilePath;
-          aiInput.value = (aiInput.value ? aiInput.value + ' ' : '') + currentActiveFilePath;
+          aiInput.value = 'يرجى قراءة وفحص الملف التالي والتعامل معه: ' + currentActiveFilePath;
           aiInput.focus();
           announce('تم إدراج مسار الملف ' + fileName + ' في حقل طلب الوكيل');
           playSuccessChime();
@@ -2155,21 +2304,6 @@ await window.mainV1.ready;
             btnCopyFilePath.textContent = '✓ تم النسخ';
             setTimeout(() => { btnCopyFilePath.textContent = '📋 نسخ المسار'; }, 2000);
           });
-        }
-      });
-    }
-
-    if (filesListContainer) {
-      filesListContainer.addEventListener('click', (e) => {
-        const btn = e.target.closest('.btn-file-open');
-        if (btn) {
-          const path = btn.getAttribute('data-path');
-          const isDir = btn.getAttribute('data-isdir') === '1';
-          if (isDir) {
-            loadDirectory(path);
-          } else {
-            openFileContent(path);
-          }
         }
       });
     }

@@ -963,6 +963,28 @@ button:focus-visible, input:focus-visible, a:focus-visible {
   font-size: 0.8rem;
   color: var(--text-muted);
 }
+.file-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background-color: var(--bg-card-header);
+  border: 1px solid var(--border-main);
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+.file-item-row:hover {
+  border-color: var(--accent-cyan);
+}
+.btn-send-file-direct {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
 .file-viewer-content {
   background-color: #070a0f;
   border: 1px solid var(--border-main);
