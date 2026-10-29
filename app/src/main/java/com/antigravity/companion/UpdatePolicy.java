@@ -28,8 +28,8 @@ final class UpdatePolicy {
         if (!installed.packageName.equals(archive.packageName)) {
             return "Package mismatch: installed " + installed.packageName + " vs " + archive.packageName;
         }
-        if (archive.versionCode < installed.versionCode) {
-            return "Downgrade not allowed: installed " + installed.versionCode + " vs " + archive.versionCode;
+        if (archive.versionCode <= installed.versionCode) {
+            return "Version code not newer: installed " + installed.versionCode + " vs " + archive.versionCode;
         }
         String[] installedSigners = installed.signers.clone();
         String[] archiveSigners = archive.signers.clone();
