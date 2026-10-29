@@ -248,6 +248,7 @@ class Sessions:
         self.logs = {}
         self.pending_permissions = {}
         self.restore_missing_runs()
+        self.prune_runs()
         for run in self.runs.values():
             if run["state"] == "running":
                 self.finish(
@@ -256,8 +257,24 @@ class Sessions:
                     "interrupted",
                     "Server restarted; this turn was not retried",
                 )
+        self.prune_runs()
         self.persist()
         self.prune_events()
+
+    def prune_runs(self, max_runs=60):
+        if len(self.runs) <= max_runs:
+            return
+        active = {rid: r for rid, r in self.runs.items() if r.get("state") not in TERMINAL}
+        completed = sorted(
+            [r for r in self.runs.values() if r.get("state") in TERMINAL],
+            key=lambda r: r.get("completed_at", 0),
+            reverse=True,
+        )
+        keep_completed = {r["run_id"]: r for r in completed[:max_runs]}
+        self.runs = {**active, **keep_completed}
+        valid_run_ids = set(self.runs.keys())
+        for session in self.sessions.values():
+            session["runs"] = [rid for rid in session.get("runs", []) if rid in valid_run_ids]
 
     def persist(self):
         session_document = self.store.read("sessions")
@@ -667,7 +684,7 @@ class Sessions:
         except CLIUnavailable:
             await terminate_process(process)
 
-    def _drain_transcript(self, session, run, brain_dir, last_line, pending_tools, sent_thinking):
+    def _drain_transcript(self, session, run, brain_dir, last_line, sent_thinking):
         conv_id = session.get("conversation_id")
         if not conv_id:
             return last_line
@@ -685,7 +702,6 @@ class Sessions:
                 try:
                     entry = json.loads(raw)
                     etype = entry.get("type")
-                    sindex = entry.get("step_index", idx)
                     if etype == "PLANNER_RESPONSE":
                         th = entry.get("thinking", "")
                         if th and th not in sent_thinking:
@@ -693,14 +709,13 @@ class Sessions:
                             self.emit(run, "thought", {"text": th})
                         for tc in (entry.get("tool_calls") or []):
                             t_name = tc.get("name") or ""
-                            t_args = tc.get("args") or {}
-                            if isinstance(t_args, str):
-                                try:
-                                    t_args = json.loads(t_args)
-                                except Exception:
-                                    pass
-                            pending_tools.append({"name": t_name, "args": t_args, "step_index": sindex})
                             if t_name in ("write_to_file", "write", "write_file", "edit_file"):
+                                t_args = tc.get("args") or {}
+                                if isinstance(t_args, str):
+                                    try:
+                                        t_args = json.loads(t_args)
+                                    except Exception:
+                                        pass
                                 t_file_path = str(
                                     t_args.get("TargetFile")
                                     or t_args.get("target_file")
@@ -728,48 +743,6 @@ class Sessions:
                                         "requestFeedback": bool(meta.get("RequestFeedback") or meta.get("requestFeedback", False)),
                                         "userFacing": bool(meta.get("UserFacing", True) if "UserFacing" in meta else meta.get("userFacing", True)),
                                     })
-                            self.emit(run, "tool", {
-                                "step_type": "tool",
-                                "tool_name": t_name,
-                                "tool": t_name,
-                                "parameters": t_args,
-                                "params": t_args,
-                                "state": "ACTIVE",
-                                "step_index": sindex,
-                            })
-                    elif etype in ("GENERIC", "TOOL_RESULT"):
-                        status = entry.get("status", "DONE")
-                        content = entry.get("content", "")
-                        trunc = entry.get("truncated_fields") or []
-                        if "content" in trunc:
-                            full_file = t_file.parent / "transcript_full.jsonl"
-                            if full_file.exists():
-                                try:
-                                    with open(full_file, "r", encoding="utf-8", errors="ignore") as f_full:
-                                        for f_idx, f_line in enumerate(f_full):
-                                            if f_idx == idx:
-                                                f_entry = json.loads(f_line.strip())
-                                                content = f_entry.get("content", content)
-                                                break
-                                except Exception:
-                                    pass
-                        if pending_tools:
-                            curr_tool = pending_tools.pop(0)
-                            t_name = curr_tool["name"]
-                            t_args = curr_tool["args"]
-                        else:
-                            t_name = "tool"
-                            t_args = {}
-                        self.emit(run, "tool", {
-                            "step_type": "tool",
-                            "tool_name": t_name,
-                            "tool": t_name,
-                            "parameters": t_args,
-                            "params": t_args,
-                            "state": status,
-                            "output": content,
-                            "step_index": sindex,
-                        })
                 except Exception:
                     pass
             return len(lines)
@@ -778,13 +751,12 @@ class Sessions:
 
     async def poll_transcript(self, session, run):
         sent_thinking = set()
-        pending_tools = []
         last_line = 0
         brain_dir = Path.home() / ".gemini" / "antigravity-cli" / "brain"
         try:
             while run["state"] == "running":
                 last_line = self._drain_transcript(
-                    session, run, brain_dir, last_line, pending_tools, sent_thinking
+                    session, run, brain_dir, last_line, sent_thinking
                 )
                 await asyncio.sleep(0.5)
         except asyncio.CancelledError:
@@ -792,7 +764,7 @@ class Sessions:
         finally:
             try:
                 self._drain_transcript(
-                    session, run, brain_dir, last_line, pending_tools, sent_thinking
+                    session, run, brain_dir, last_line, sent_thinking
                 )
             except Exception:
                 pass
@@ -899,7 +871,18 @@ class Sessions:
             self.emit(run, "delta", {"text_delta": delta})
             return
         elif stype == "tool":
-            self.emit(run, "tool", redact(step))
+            safe_step = dict(step)
+            # Bound tool output preview to prevent EventLog buffer overflow, SSE disconnects, and WebView freezes
+            MAX_TOOL_OUTPUT = 16384  # 16 KB preview
+            if "output" in safe_step and isinstance(safe_step["output"], str) and len(safe_step["output"]) > MAX_TOOL_OUTPUT:
+                safe_step["output"] = safe_step["output"][:MAX_TOOL_OUTPUT] + "\n... [تم اختصار العرض المباشر لحماية سرعة وأداء التطبيق]"
+            if "tool_info" in safe_step and isinstance(safe_step["tool_info"], dict):
+                t_info = dict(safe_step["tool_info"])
+                if "output" in t_info and isinstance(t_info["output"], str) and len(t_info["output"]) > MAX_TOOL_OUTPUT:
+                    t_info["output"] = t_info["output"][:MAX_TOOL_OUTPUT] + "\n... [تم اختصار العرض المباشر لحماية سرعة وأداء التطبيق]"
+                safe_step["tool_info"] = t_info
+
+            self.emit(run, "tool", redact(safe_step))
             tool_info = step.get("tool_info") or {}
             tool_name = step.get("tool_name") or step.get("tool") or tool_info.get("name") or ""
             args = step.get("parameters") or step.get("args") or tool_info.get("parameters") or {}
@@ -914,14 +897,13 @@ class Sessions:
                     "requestFeedback": bool(meta.get("RequestFeedback") or meta.get("requestFeedback", False)),
                     "userFacing": bool(meta.get("UserFacing", True) if "UserFacing" in meta else meta.get("userFacing", True)),
                 })
-            self.persist()
             if state != "DONE" and self.needs_permission(session, tool_name, args):
+                self.persist()
                 return self.prompt_permission(session, run, tool_name, args)
             return None
         elif stype == "thought":
             self.emit(run, "thought", {"text": step.get("thought") or step.get("text") or ""})
             return
-        self.persist()
 
     def consume_result(self, session, run, result):
         if result.get("conversation_id"):
@@ -993,6 +975,7 @@ class Sessions:
         )
         if failure:
             run["error"] = failure
+        self.prune_runs()
         try:
             self.persist()
         except OSError:

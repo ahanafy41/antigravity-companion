@@ -892,8 +892,11 @@ await window.mainV1.ready;
 
     function renderToolResultCard(toolName, params, rawOutput) {
       if (!rawOutput && rawOutput !== 0) return '';
-      const strOutput = String(rawOutput).trim();
+      let strOutput = String(rawOutput).trim();
       if (!strOutput) return '';
+      if (strOutput.length > 16384) {
+        strOutput = strOutput.slice(0, 16384) + '\n... [تم اختصار العرض المباشر لحماية أداء الهاتف]';
+      }
       params = params || {};
 
       let cardHtml = '<div class="tool-result-card" role="region" aria-label="نتيجة تنفيذ الأداة">';
