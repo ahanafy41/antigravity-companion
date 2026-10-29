@@ -122,7 +122,6 @@ public final class TermuxBridge {
             return false;
         }
     }
-    }
 
     private static Intent launcherIntent(Context context, String applicationDataDir, PendingIntent pending) {
         JsonObject credentials = new JsonObject();
