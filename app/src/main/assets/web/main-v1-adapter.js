@@ -564,7 +564,8 @@
         tool: toolName,
         params: params,
         state: state,
-        output: out
+        output: out,
+        step_index: payload.step_index !== undefined ? payload.step_index : toolInfo.step_index
       };
     }
     if (event.event === 'permission_request') return {

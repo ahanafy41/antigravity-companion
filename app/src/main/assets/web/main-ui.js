@@ -1731,63 +1731,86 @@ await window.mainV1.ready;
                   const stateIcon = data.state === 'ACTIVE' ? '⚙️' : (isError ? '❌' : '✓');
                   const stateLabel = data.state === 'ACTIVE' ? 'جارٍ التنفيذ...' : (isError ? 'تعثر' : 'اكتمل');
 
-                  let headerDiv = stepLi.querySelector('.step-item-header');
-                  if (!headerDiv) {
-                    headerDiv = document.createElement('div');
-                    headerDiv.className = 'step-item-header';
-                    stepLi.insertBefore(headerDiv, stepLi.firstChild);
+                  let toolTile = stepLi.querySelector('.step-tool-tile');
+                  if (!toolTile) {
+                    toolTile = document.createElement('details');
+                    toolTile.className = 'step-tool-tile';
+                    toolTile.open = false;
+                    stepLi.appendChild(toolTile);
                   }
+
+                  let summary = toolTile.querySelector('.step-tool-summary');
+                  if (!summary) {
+                    summary = document.createElement('summary');
+                    summary.className = 'step-item-header step-tool-summary';
+                    summary.setAttribute('role', 'button');
+                    toolTile.insertBefore(summary, toolTile.firstChild);
+                  }
+
+                  let cardWrapper = toolTile.querySelector('.step-output-card-wrapper');
+                  if (!cardWrapper) {
+                    cardWrapper = document.createElement('div');
+                    cardWrapper.className = 'step-output-card-wrapper';
+                    toolTile.appendChild(cardWrapper);
+                  }
+
+                  const prevLabel = summary.querySelector('.step-label') ? summary.querySelector('.step-label').textContent : 'تنفيذ أداة';
+                  const finalDesc = toolDesc || prevLabel;
+                  summary.setAttribute('aria-expanded', toolTile.open ? 'true' : 'false');
+
+                  let accessibleLabel = '';
+                  if (data.state === 'ACTIVE') {
+                    accessibleLabel = 'أداة: ' + finalDesc + '، جارٍ التنفيذ، اضغط لعرض التفاصيل';
+                  } else if (isDone) {
+                    accessibleLabel = 'أداة: ' + finalDesc + '، اكتملت بنجاح، اضغط لعرض مخرجات الأداة ونسخ المحتوى';
+                  } else if (isError) {
+                    accessibleLabel = 'أداة: ' + finalDesc + '، تعثرت، اضغط لعرض تفاصيل الخطأ';
+                  }
+                  summary.setAttribute('aria-label', accessibleLabel);
 
                   if (data.tool === 'invoke_subagent') {
                     stepLi.style.background = 'rgba(57, 197, 187, 0.12)';
                     stepLi.style.border = '1px solid var(--accent-cyan)';
-                    headerDiv.innerHTML = '<span class="step-icon">👥</span> ' +
-                      '<span><strong class="main-style-12">' + escapeHtml(toolDesc) + '</strong></span>';
+                    summary.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex:1;"><span class="step-icon">👥</span> ' +
+                      '<span><strong class="main-style-12">' + escapeHtml(toolDesc) + '</strong></span></div>' +
+                      '<span class="step-expand-indicator" aria-hidden="true">▼</span>';
                   } else if (data.tool === 'send_message') {
                     stepLi.style.background = 'rgba(163, 113, 247, 0.12)';
-                    headerDiv.innerHTML = '<span class="step-icon">💬</span> ' +
-                      '<span><strong class="main-style-144">' + escapeHtml(toolDesc) + '</strong></span>';
+                    summary.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex:1;"><span class="step-icon">💬</span> ' +
+                      '<span><strong class="main-style-144">' + escapeHtml(toolDesc) + '</strong></span></div>' +
+                      '<span class="step-expand-indicator" aria-hidden="true">▼</span>';
                   } else {
-                    const prevLabel = headerDiv.querySelector('.step-label') ? headerDiv.querySelector('.step-label').textContent : 'تنفيذ أداة';
-                    const finalDesc = toolDesc || prevLabel;
-                    headerDiv.innerHTML = '<span class="step-icon">' + stateIcon + '</span> ' +
-                      '<span class="step-label">' + escapeHtml(finalDesc) + ' <small class="step-state-badge">(' + stateLabel + ')</small></span>';
+                    summary.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex:1;"><span class="step-icon">' + stateIcon + '</span> ' +
+                      '<span class="step-label">' + escapeHtml(finalDesc) + ' <small class="step-state-badge">(' + stateLabel + ')</small></span></div>' +
+                      '<span class="step-expand-indicator" aria-hidden="true">▼</span>';
+                  }
+
+                  if (!toolTile._toggleBound) {
+                    toolTile._toggleBound = true;
+                    toolTile.addEventListener('toggle', () => {
+                      summary.setAttribute('aria-expanded', toolTile.open ? 'true' : 'false');
+                    });
                   }
 
                   // Render Real Tool Output & Execution Results with Humanized Cards
                   if (data.output && String(data.output).trim()) {
-                    let outDetails = stepLi.querySelector('.step-output-details');
-                    if (!outDetails) {
-                      outDetails = document.createElement('details');
-                      outDetails.className = 'step-output-details';
-                      outDetails.open = false;
-                      const summary = document.createElement('summary');
-                      summary.className = 'step-output-summary';
-                      summary.textContent = '📄 مخرجات الأداة ونتيجة التنفيذ الكاملة (اضغط للعرض)';
-                      summary.setAttribute('aria-label', 'مخرجات أداة ' + escapeHtml(toolDesc || 'التنفيذ') + ' (مطوية، اضغط للعرض أو الإخفاء)');
-                      const cardContainer = document.createElement('div');
-                      cardContainer.className = 'step-output-card-wrapper';
-                      outDetails.append(summary, cardContainer);
-                      stepLi.appendChild(outDetails);
-                    }
-                    const cardWrapper = outDetails.querySelector('.step-output-card-wrapper');
-                    if (cardWrapper) {
-                      cardWrapper.innerHTML = renderToolResultCard(data.tool, data.params || {}, data.output);
-                      cardWrapper.querySelectorAll('.btn-copy-inline').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                          e.stopPropagation();
-                          const toCopy = btn.getAttribute('data-copy');
-                          if (toCopy && navigator.clipboard) {
-                            navigator.clipboard.writeText(toCopy).then(() => {
-                              playBeep(880, 0.08);
-                              announce('تم النسخ في الحافظة بنجاح');
-                              btn.textContent = '✓ تم';
-                              setTimeout(() => { btn.textContent = '📋 نسخ'; }, 2000);
-                            });
-                          }
-                        });
+                    cardWrapper.innerHTML = renderToolResultCard(data.tool, data.params || {}, data.output);
+                    cardWrapper.querySelectorAll('.btn-copy-inline').forEach(btn => {
+                      btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const toCopy = btn.getAttribute('data-copy');
+                        if (toCopy && navigator.clipboard) {
+                          navigator.clipboard.writeText(toCopy).then(() => {
+                            playBeep(880, 0.08);
+                            announce('تم النسخ في الحافظة بنجاح');
+                            btn.textContent = '✓ تم';
+                            setTimeout(() => { btn.textContent = '📋 نسخ'; }, 2000);
+                          });
+                        }
                       });
-                    }
+                    });
+                  } else if (data.state === 'ACTIVE' && !cardWrapper.innerHTML.trim()) {
+                    cardWrapper.innerHTML = '<div class="tool-result-pending" style="padding:8px;color:var(--text-muted);font-size:0.85rem;">جارٍ تنفيذ الأداة واستقبال المخرجات...</div>';
                   }
 
                   if (data.state === 'ACTIVE') {

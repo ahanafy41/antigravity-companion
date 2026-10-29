@@ -709,13 +709,18 @@ class Sessions:
                             self.emit(run, "thought", {"text": th})
                         for tc in (entry.get("tool_calls") or []):
                             t_name = tc.get("name") or ""
+                            t_args = tc.get("args") or {}
+                            if isinstance(t_args, str):
+                                try:
+                                    t_args = json.loads(t_args)
+                                except Exception:
+                                    pass
+                            run.setdefault("pending_tools", []).append({
+                                "tool_name": t_name,
+                                "parameters": t_args,
+                                "step_index": entry.get("step_index"),
+                            })
                             if t_name in ("write_to_file", "write", "write_file", "edit_file"):
-                                t_args = tc.get("args") or {}
-                                if isinstance(t_args, str):
-                                    try:
-                                        t_args = json.loads(t_args)
-                                    except Exception:
-                                        pass
                                 t_file_path = str(
                                     t_args.get("TargetFile")
                                     or t_args.get("target_file")
@@ -743,6 +748,25 @@ class Sessions:
                                         "requestFeedback": bool(meta.get("RequestFeedback") or meta.get("requestFeedback", False)),
                                         "userFacing": bool(meta.get("UserFacing", True) if "UserFacing" in meta else meta.get("userFacing", True)),
                                     })
+                    elif etype in ("GENERIC", "TOOL_RESULT", "TOOL_OUTPUT"):
+                        raw_content = entry.get("content") or ""
+                        if isinstance(raw_content, (dict, list)):
+                            raw_content = json.dumps(raw_content, ensure_ascii=False)
+                        content = str(raw_content).strip()
+                        if content:
+                            MAX_TOOL_OUTPUT = 16384
+                            if len(content) > MAX_TOOL_OUTPUT:
+                                content = content[:MAX_TOOL_OUTPUT] + "\n... [تم اختصار العرض المباشر لحماية سرعة وأداء التطبيق]"
+                            pending = run.get("pending_tools", [])
+                            if pending:
+                                matched_tool = pending.pop(0)
+                                self.emit(run, "tool", {
+                                    "step_index": matched_tool.get("step_index"),
+                                    "tool_name": matched_tool.get("tool_name", ""),
+                                    "parameters": matched_tool.get("parameters", {}),
+                                    "state": "DONE",
+                                    "output": content,
+                                })
                 except Exception:
                     pass
             return len(lines)

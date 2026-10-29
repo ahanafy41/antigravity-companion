@@ -650,7 +650,7 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
                     for entry in (await response.json())["entries"]
                 }
                 self.assertIn("notes.txt", names)
-                self.assertNotIn(".gemini", names)
+                self.assertIn(".gemini", names)
                 self.assertNotIn(".agy", names)
             async with self.client.get(
                 self.url + "/api/v1/files",

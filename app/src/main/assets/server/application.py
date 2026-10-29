@@ -1539,7 +1539,8 @@ def api_path(request, requested):
         "antigravity-release-key.jks",
         "instance.json",
         "release-cert.der",
-    ):
+        "credential.json",
+    ) or path.name.endswith((".jks", ".keystore", ".token")):
         raise PermissionError("Sensitive secret file is protected")
     if path.parent.name == ".agents" and path.name.startswith(
         ("mcp_config.json", ".companion-oauth-")
@@ -1551,7 +1552,6 @@ def api_path(request, requested):
         return path
     private_roots = (
         request.app["store"].root,
-        home / ".gemini",
         home / ".agy",
         home / ".config" / "agy",
     )

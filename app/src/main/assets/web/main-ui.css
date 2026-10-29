@@ -797,6 +797,41 @@ button:focus-visible, input:focus-visible, a:focus-visible {
   gap: 8px;
   width: 100%;
 }
+.step-tool-tile {
+  width: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+.step-tool-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  cursor: pointer;
+  user-select: none;
+  background: transparent;
+  border-radius: 6px;
+  list-style: none;
+  box-sizing: border-box;
+}
+.step-tool-summary::-webkit-details-marker {
+  display: none;
+}
+.step-tool-summary:focus-visible, .step-tool-summary:hover {
+  background: rgba(255, 255, 255, 0.08);
+  outline: 2px solid var(--accent-cyan);
+}
+.step-expand-indicator {
+  font-size: 0.75rem;
+  transition: transform 0.2s ease;
+  opacity: 0.7;
+}
+.step-tool-tile[open] .step-expand-indicator {
+  transform: rotate(180deg);
+}
 .step-item.active {
   color: var(--accent-cyan);
   border-right: 3px solid var(--accent-cyan);
