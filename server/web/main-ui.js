@@ -902,32 +902,50 @@ await window.mainV1.ready;
         const query = params.query || params.Query || '';
         cardHtml += '<div class="tool-card-header search-header"><span>🌐 نتائج البحث في الويب: <strong>' + escapeHtml(query) + '</strong></span></div>';
 
-        const lines = strOutput.split('\n');
-        let parsedAny = false;
-        let linksList = '<div class="search-results-list" role="list" aria-label="قائمة نتائج البحث">';
-        const urlRegex = /(https?:\/\/[^\s"'<>\)]+)/g;
+        // Extract both markdown links [title](url) and raw http(s) URLs
+        const foundLinks = [];
+        const seenUrls = new Set();
 
+        const mdLinkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g;
+        let match;
+        while ((match = mdLinkRegex.exec(strOutput)) !== null) {
+          const title = match[1].trim();
+          const url = match[2].trim();
+          if (!seenUrls.has(url)) {
+            seenUrls.add(url);
+            foundLinks.push({ title, url });
+          }
+        }
+
+        const rawUrlRegex = /(https?:\/\/[^\s"'<>\)]+)/g;
+        const lines = strOutput.split('\n');
         lines.forEach(line => {
           const trimmed = line.trim();
           if (!trimmed) return;
-          const match = trimmed.match(urlRegex);
-          if (match) {
-            parsedAny = true;
-            const url = match[0];
-            const cleanTitle = trimmed.replace(urlRegex, '').replace(/^[-*#\d\.\s]+/, '').trim() || url;
-            linksList += '<div class="search-result-item" role="listitem">' +
-              '<div class="search-result-row">' +
-                '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer" class="search-result-link">🔗 ' + escapeHtml(cleanTitle) + '</a>' +
-                '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(url) + '" aria-label="نسخ رابط ' + escapeHtml(cleanTitle) + '">📋 نسخ الرابط</button>' +
-              '</div>' +
-              '<div class="search-result-url">' + escapeHtml(url) + '</div>' +
-            '</div>';
+          let rMatch;
+          while ((rMatch = rawUrlRegex.exec(trimmed)) !== null) {
+            const url = rMatch[1];
+            if (!seenUrls.has(url)) {
+              seenUrls.add(url);
+              const cleanTitle = trimmed.replace(rawUrlRegex, '').replace(/^[-*#\d\.\s]+/, '').trim() || url;
+              foundLinks.push({ title: cleanTitle, url });
+            }
           }
         });
-        linksList += '</div>';
 
-        if (parsedAny) {
-          cardHtml += linksList;
+        if (foundLinks.length > 0) {
+          cardHtml += '<div class="search-results-list" role="list" aria-label="قائمة نتائج البحث">';
+          foundLinks.forEach(link => {
+            cardHtml += '<div class="search-result-item" role="listitem">' +
+              '<div class="search-result-row">' +
+                '<a href="' + escapeHtml(link.url) + '" target="_blank" rel="noopener noreferrer" class="search-result-link">🔗 ' + escapeHtml(link.title) + '</a>' +
+                '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(link.url) + '" aria-label="نسخ رابط ' + escapeHtml(link.title) + '">📋 نسخ الرابط</button>' +
+              '</div>' +
+              '<div class="search-result-url">' + escapeHtml(link.url) + '</div>' +
+            '</div>';
+          });
+          cardHtml += '</div>';
+
           cardHtml += '<details class="step-raw-details"><summary class="step-raw-summary">📄 تفاصيل نص مخرجات البحث الكاملة</summary>' +
             '<pre class="step-output-content" tabindex="0">' + escapeHtml(strOutput) + '</pre></details>';
         } else {
@@ -942,19 +960,57 @@ await window.mainV1.ready;
         cardHtml += '<pre class="step-output-content" tabindex="0">' + escapeHtml(strOutput) + '</pre>';
       } else if (toolName === 'read_file' || toolName === 'view_file' || toolName === 'read_resource') {
         const p = params.Path || params.path || params.AbsolutePath || params.TargetFile || params.Uri || params.uri || '';
+        const lines = strOutput.split('\n');
         cardHtml += '<div class="tool-card-header file-header">' +
-          '<span>📄 الملف: <code>' + escapeHtml(p || 'ملف') + '</code></span>' +
-          (p ? '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(p) + '" aria-label="نسخ مسار الملف">📋 نسخ المسار</button>' : '') +
+          '<span>📄 الملف: <code>' + escapeHtml(p || 'ملف') + '</code> <small class="step-state-badge">(' + lines.length + ' سطر)</small></span>' +
+          '<div style="display:flex;gap:4px;">' +
+            (p ? '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(p) + '" aria-label="نسخ مسار الملف">📋 نسخ المسار</button>' : '') +
+            '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(strOutput) + '" aria-label="نسخ محتوى الملف">📋 نسخ المحتوى</button>' +
+          '</div>' +
         '</div>';
         cardHtml += '<pre class="step-output-content" tabindex="0">' + escapeHtml(strOutput) + '</pre>';
       } else if (toolName === 'run_command' || toolName === 'command') {
         const cmd = params.CommandLine || params.command || params.cmd || '';
+        let cleanOutput = strOutput;
+        let exitBadge = '';
+        const exitMatch = strOutput.match(/Command exited with code (\d+)\./);
+        if (exitMatch) {
+          const code = exitMatch[1];
+          if (code === '0') {
+            exitBadge = ' <small class="step-state-badge" style="color:var(--accent-green);font-weight:bold;">(كود 0: نجاح)</small>';
+          } else {
+            exitBadge = ' <small class="step-state-badge" style="color:#f87171;font-weight:bold;">(كود ' + escapeHtml(code) + ': تعثر)</small>';
+          }
+        }
+        const outMarker = 'Command output:\n';
+        const outIdx = strOutput.indexOf(outMarker);
+        if (outIdx !== -1) {
+          cleanOutput = strOutput.substring(outIdx + outMarker.length);
+        }
         cardHtml += '<div class="tool-card-header cmd-header">' +
-          '<span>💻 الأمر: <code>' + escapeHtml(cmd) + '</code></span>' +
-          (cmd ? '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(cmd) + '" aria-label="نسخ الأمر المنفذ">📋 نسخ</button>' : '') +
+          '<span>💻 الأمر: <code>' + escapeHtml(cmd) + '</code>' + exitBadge + '</span>' +
+          '<div style="display:flex;gap:4px;">' +
+            (cmd ? '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(cmd) + '" aria-label="نسخ الأمر المنفذ">📋 نسخ الأمر</button>' : '') +
+            '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(cleanOutput) + '" aria-label="نسخ مخرجات الأمر">📋 نسخ النتيجة</button>' +
+          '</div>' +
+        '</div>';
+        cardHtml += '<pre class="step-output-content" tabindex="0">' + escapeHtml(cleanOutput) + '</pre>';
+      } else if (toolName === 'write_file' || toolName === 'edit_file' || toolName === 'write_to_file' || toolName === 'write') {
+        const p = params.Path || params.path || params.TargetFile || params.target_file || '';
+        const isEdit = toolName === 'edit_file';
+        cardHtml += '<div class="tool-card-header file-header">' +
+          '<span>' + (isEdit ? '✏️ تعديل ملف:' : '📝 إنشاء/كتابة ملف:') + ' <code>' + escapeHtml(p || 'ملف') + '</code></span>' +
+          '<div style="display:flex;gap:4px;">' +
+            (p ? '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(p) + '" aria-label="نسخ مسار الملف">📋 نسخ المسار</button>' : '') +
+            '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(strOutput) + '" aria-label="نسخ التفاصيل">📋 نسخ التفاصيل</button>' +
+          '</div>' +
         '</div>';
         cardHtml += '<pre class="step-output-content" tabindex="0">' + escapeHtml(strOutput) + '</pre>';
       } else {
+        cardHtml += '<div class="tool-card-header tool-generic-header">' +
+          '<span>⚙️ أداة: <code>' + escapeHtml(toolName) + '</code></span>' +
+          '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(strOutput) + '" aria-label="نسخ مخرجات الأداة">📋 نسخ المخرجات</button>' +
+        '</div>';
         cardHtml += '<pre class="step-output-content" tabindex="0">' + escapeHtml(strOutput) + '</pre>';
       }
 
@@ -1672,19 +1728,27 @@ await window.mainV1.ready;
                   const stateIcon = data.state === 'ACTIVE' ? '⚙️' : (isError ? '❌' : '✓');
                   const stateLabel = data.state === 'ACTIVE' ? 'جارٍ التنفيذ...' : (isError ? 'تعثر' : 'اكتمل');
 
+                  let headerDiv = stepLi.querySelector('.step-item-header');
+                  if (!headerDiv) {
+                    headerDiv = document.createElement('div');
+                    headerDiv.className = 'step-item-header';
+                    stepLi.insertBefore(headerDiv, stepLi.firstChild);
+                  }
+
                   if (data.tool === 'invoke_subagent') {
                     stepLi.style.background = 'rgba(57, 197, 187, 0.12)';
                     stepLi.style.border = '1px solid var(--accent-cyan)';
-                    stepLi.innerHTML = '<span class="step-icon">👥</span> ' +
+                    headerDiv.innerHTML = '<span class="step-icon">👥</span> ' +
                       '<span><strong class="main-style-12">' + escapeHtml(toolDesc) + '</strong></span>';
                   } else if (data.tool === 'send_message') {
                     stepLi.style.background = 'rgba(163, 113, 247, 0.12)';
-                    stepLi.innerHTML = '<span class="step-icon">💬</span> ' +
+                    headerDiv.innerHTML = '<span class="step-icon">💬</span> ' +
                       '<span><strong class="main-style-144">' + escapeHtml(toolDesc) + '</strong></span>';
                   } else {
-                    const finalDesc = toolDesc || (stepLi.querySelector('.step-label') ? stepLi.querySelector('.step-label').textContent : 'تنفيذ أداة');
-                    stepLi.innerHTML = '<span class="step-icon">' + stateIcon + '</span> ' +
-                      '<span class="step-label">' + escapeHtml(finalDesc) + ' <small style="opacity:0.8;">(' + stateLabel + ')</small></span>';
+                    const prevLabel = headerDiv.querySelector('.step-label') ? headerDiv.querySelector('.step-label').textContent : 'تنفيذ أداة';
+                    const finalDesc = toolDesc || prevLabel;
+                    headerDiv.innerHTML = '<span class="step-icon">' + stateIcon + '</span> ' +
+                      '<span class="step-label">' + escapeHtml(finalDesc) + ' <small class="step-state-badge">(' + stateLabel + ')</small></span>';
                   }
 
                   // Render Real Tool Output & Execution Results with Humanized Cards
@@ -1697,7 +1761,7 @@ await window.mainV1.ready;
                       const summary = document.createElement('summary');
                       summary.className = 'step-output-summary';
                       summary.textContent = '📄 مخرجات الأداة ونتيجة التنفيذ الكاملة (اضغط للعرض)';
-                      summary.setAttribute('aria-label', 'مخرجات الأداة ونتيجة التنفيذ الكاملة (مطوية، اضغط للعرض أو الإخفاء)');
+                      summary.setAttribute('aria-label', 'مخرجات أداة ' + escapeHtml(toolDesc || 'التنفيذ') + ' (مطوية، اضغط للعرض أو الإخفاء)');
                       const cardContainer = document.createElement('div');
                       cardContainer.className = 'step-output-card-wrapper';
                       outDetails.append(summary, cardContainer);
@@ -1741,22 +1805,28 @@ await window.mainV1.ready;
                   }
                   if (thinkingAccordion) {
                     thinkingAccordion.style.display = 'block';
-                    thinkingBody.removeAttribute('hidden');
-                    if (thinkingFooter) thinkingFooter.removeAttribute('hidden');
-                    thinkingHeader.setAttribute('aria-expanded', 'true');
-                    thinkingHeader.setAttribute('aria-label', 'تفكير واستدلال الوكيل (جارٍ التفكير المباشر...)');
-                    if (thinkingIcon) thinkingIcon.textContent = '▲';
+                    // Keep thinking body collapsed by default so TalkBack can skip past it with one swipe!
+                    const isUserOpened = thinkingHeader.getAttribute('aria-expanded') === 'true';
+                    if (!isUserOpened) {
+                      thinkingBody.setAttribute('hidden', '');
+                      if (thinkingFooter) thinkingFooter.setAttribute('hidden', '');
+                      thinkingHeader.setAttribute('aria-expanded', 'false');
+                      thinkingHeader.setAttribute('aria-label', 'تفكير واستدلال الوكيل (' + accumulatedThinking.length + ' حرف، مغلق، اضغط للعرض)');
+                      if (thinkingIcon) thinkingIcon.textContent = '▼';
+                    }
                   }
                   if (thinkingBody) thinkingBody.innerHTML = renderMarkdown(accumulatedThinking);
-                  if (thinkingBadge) thinkingBadge.textContent = accumulatedThinking.length + ' حرف تفكير حي';
-                  if (wasEmpty) announce('بدأ الوكيل في التفكير والتحليل المنطقي المباشر');
+                  if (thinkingBadge) thinkingBadge.textContent = accumulatedThinking.length + ' حرف تفكير';
+                  if (wasEmpty) announce('بدأ الوكيل في التفكير والتحليل الداخلي');
                 }
                 // C) Content chunk event
                 else if (data.type === 'chunk' && data.text) {
                   if (accumulatedThinking && thinkingBadge && !thinkingBadge.dataset.finished) {
                     thinkingBadge.dataset.finished = 'true';
                     thinkingBadge.textContent = 'اكتمل التفكير (' + accumulatedThinking.length + ' حرف)';
-                    if (thinkingHeader) thinkingHeader.setAttribute('aria-label', 'تفكير واستدلال الوكيل (مكتمل، اضغط للإخفاء أو العرض)');
+                    if (thinkingHeader && thinkingHeader.getAttribute('aria-expanded') !== 'true') {
+                      thinkingHeader.setAttribute('aria-label', 'تفكير واستدلال الوكيل (اكتمل ' + accumulatedThinking.length + ' حرف، مغلق، اضغط للعرض)');
+                    }
                   }
                   accumulatedText += data.text;
                   scheduleAiRender();

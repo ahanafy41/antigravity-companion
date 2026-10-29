@@ -782,11 +782,20 @@ button:focus-visible, input:focus-visible, a:focus-visible {
 }
 .step-item {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 6px 10px;
   border-radius: 6px;
   background-color: rgba(255, 255, 255, 0.04);
+  width: 100%;
+  box-sizing: border-box;
+}
+.step-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
 }
 .step-item.active {
   color: var(--accent-cyan);
@@ -795,6 +804,16 @@ button:focus-visible, input:focus-visible, a:focus-visible {
 }
 .step-item.done {
   color: var(--accent-green);
+}
+.step-item.error {
+  color: #f87171;
+  border-right: 3px solid #f87171;
+}
+.step-state-badge {
+  opacity: 0.85;
+  font-size: 0.82em;
+  font-weight: normal;
+  margin-right: 4px;
 }
 @keyframes stepPulse {
   from { opacity: 0.7; }
@@ -882,23 +901,39 @@ button:focus-visible, input:focus-visible, a:focus-visible {
 
 /* Tool Execution Output Styles */
 .step-output-details {
-  margin-top: 8px;
+  margin-top: 6px;
   background: #090d13;
   border: 1px solid #30363d;
   border-radius: 6px;
   overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
 }
 .step-output-summary {
-  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
   cursor: pointer;
-  font-size: 0.8rem;
-  font-weight: 600;
+  font-size: 0.82rem;
+  font-weight: 700;
   color: var(--accent-cyan);
   background: rgba(56, 189, 248, 0.08);
   user-select: none;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: right;
 }
-.step-output-summary:focus-visible {
+.step-output-summary:focus-visible, .step-output-summary:hover {
+  background: rgba(56, 189, 248, 0.16);
   outline: 2px solid var(--accent-cyan);
+}
+.step-output-card-wrapper {
+  padding: 8px 10px;
+  background: #06090e;
+  border-top: 1px solid #21262d;
+  width: 100%;
+  box-sizing: border-box;
 }
 .step-output-content {
   margin: 0;

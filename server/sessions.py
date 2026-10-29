@@ -667,66 +667,135 @@ class Sessions:
         except CLIUnavailable:
             await terminate_process(process)
 
-    async def poll_transcript(self, session, run):
-        sent_thinking = set()
-        last_line = 0
-        brain_dir = Path.home() / ".gemini" / "antigravity-cli" / "brain"
-        while run["state"] == "running":
-            conv_id = session.get("conversation_id")
-            if conv_id:
-                t_file = brain_dir / conv_id / ".system_generated" / "logs" / "transcript.jsonl"
-                if t_file.exists():
-                    try:
-                        lines = t_file.read_text(encoding="utf-8", errors="ignore").splitlines()
-                        if len(lines) > last_line:
-                            for idx in range(last_line, len(lines)):
-                                raw = lines[idx].strip()
-                                if not raw:
-                                    continue
+    def _drain_transcript(self, session, run, brain_dir, last_line, pending_tools, sent_thinking):
+        conv_id = session.get("conversation_id")
+        if not conv_id:
+            return last_line
+        t_file = brain_dir / conv_id / ".system_generated" / "logs" / "transcript.jsonl"
+        if not t_file.exists():
+            return last_line
+        try:
+            lines = t_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+            if len(lines) <= last_line:
+                return last_line
+            for idx in range(last_line, len(lines)):
+                raw = lines[idx].strip()
+                if not raw:
+                    continue
+                try:
+                    entry = json.loads(raw)
+                    etype = entry.get("type")
+                    sindex = entry.get("step_index", idx)
+                    if etype == "PLANNER_RESPONSE":
+                        th = entry.get("thinking", "")
+                        if th and th not in sent_thinking:
+                            sent_thinking.add(th)
+                            self.emit(run, "thought", {"text": th})
+                        for tc in (entry.get("tool_calls") or []):
+                            t_name = tc.get("name") or ""
+                            t_args = tc.get("args") or {}
+                            if isinstance(t_args, str):
                                 try:
-                                    entry = json.loads(raw)
-                                    etype = entry.get("type")
-                                    if etype == "PLANNER_RESPONSE":
-                                        th = entry.get("thinking", "")
-                                        if th and th not in sent_thinking:
-                                            sent_thinking.add(th)
-                                            self.emit(run, "thought", {"text": th})
-                                        for tc in (entry.get("tool_calls") or []):
-                                            t_name = tc.get("name") or ""
-                                            if t_name in ("write_to_file", "write"):
-                                                t_args = tc.get("args") or {}
-                                                if isinstance(t_args, str):
-                                                    try:
-                                                        t_args = json.loads(t_args)
-                                                    except Exception:
-                                                        pass
-                                                t_file_path = str(t_args.get("TargetFile") or t_args.get("target_file") or "").strip().strip('"').strip("'")
-                                                if "brain" in str(t_file_path):
-                                                    art_name = Path(t_file_path).name.strip().strip('"').strip("'")
-                                                    meta = t_args.get("ArtifactMetadata") or {}
-                                                    if isinstance(meta, str):
-                                                        try:
-                                                            meta = json.loads(meta)
-                                                        except Exception:
-                                                            pass
-                                                    art_summary = (
-                                                        meta.get("Summary")
-                                                        or meta.get("summary")
-                                                        or t_args.get("Description", "")
-                                                    )
-                                                    self.emit(run, "artifact", {
-                                                        "name": art_name,
-                                                        "path": str(t_file_path),
-                                                        "summary": art_summary,
-                                                        "requestFeedback": bool(meta.get("RequestFeedback") or meta.get("requestFeedback", False)),
-                                                        "userFacing": bool(meta.get("UserFacing", True) if "UserFacing" in meta else meta.get("userFacing", True)),
-                                                    })
+                                    t_args = json.loads(t_args)
                                 except Exception:
                                     pass
-                            last_line = len(lines)
-                    except Exception:
-                        pass
-            await asyncio.sleep(0.5)
+                            pending_tools.append({"name": t_name, "args": t_args, "step_index": sindex})
+                            if t_name in ("write_to_file", "write", "write_file", "edit_file"):
+                                t_file_path = str(
+                                    t_args.get("TargetFile")
+                                    or t_args.get("target_file")
+                                    or t_args.get("Path")
+                                    or t_args.get("path")
+                                    or ""
+                                ).strip().strip('"').strip("'")
+                                if "brain" in str(t_file_path):
+                                    art_name = Path(t_file_path).name.strip().strip('"').strip("'")
+                                    meta = t_args.get("ArtifactMetadata") or {}
+                                    if isinstance(meta, str):
+                                        try:
+                                            meta = json.loads(meta)
+                                        except Exception:
+                                            pass
+                                    art_summary = (
+                                        meta.get("Summary")
+                                        or meta.get("summary")
+                                        or t_args.get("Description", "")
+                                    )
+                                    self.emit(run, "artifact", {
+                                        "name": art_name,
+                                        "path": str(t_file_path),
+                                        "summary": art_summary,
+                                        "requestFeedback": bool(meta.get("RequestFeedback") or meta.get("requestFeedback", False)),
+                                        "userFacing": bool(meta.get("UserFacing", True) if "UserFacing" in meta else meta.get("userFacing", True)),
+                                    })
+                            self.emit(run, "tool", {
+                                "step_type": "tool",
+                                "tool_name": t_name,
+                                "tool": t_name,
+                                "parameters": t_args,
+                                "params": t_args,
+                                "state": "ACTIVE",
+                                "step_index": sindex,
+                            })
+                    elif etype in ("GENERIC", "TOOL_RESULT"):
+                        status = entry.get("status", "DONE")
+                        content = entry.get("content", "")
+                        trunc = entry.get("truncated_fields") or []
+                        if "content" in trunc:
+                            full_file = t_file.parent / "transcript_full.jsonl"
+                            if full_file.exists():
+                                try:
+                                    with open(full_file, "r", encoding="utf-8", errors="ignore") as f_full:
+                                        for f_idx, f_line in enumerate(f_full):
+                                            if f_idx == idx:
+                                                f_entry = json.loads(f_line.strip())
+                                                content = f_entry.get("content", content)
+                                                break
+                                except Exception:
+                                    pass
+                        if pending_tools:
+                            curr_tool = pending_tools.pop(0)
+                            t_name = curr_tool["name"]
+                            t_args = curr_tool["args"]
+                        else:
+                            t_name = "tool"
+                            t_args = {}
+                        self.emit(run, "tool", {
+                            "step_type": "tool",
+                            "tool_name": t_name,
+                            "tool": t_name,
+                            "parameters": t_args,
+                            "params": t_args,
+                            "state": status,
+                            "output": content,
+                            "step_index": sindex,
+                        })
+                except Exception:
+                    pass
+            return len(lines)
+        except Exception:
+            return last_line
+
+    async def poll_transcript(self, session, run):
+        sent_thinking = set()
+        pending_tools = []
+        last_line = 0
+        brain_dir = Path.home() / ".gemini" / "antigravity-cli" / "brain"
+        try:
+            while run["state"] == "running":
+                last_line = self._drain_transcript(
+                    session, run, brain_dir, last_line, pending_tools, sent_thinking
+                )
+                await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            try:
+                self._drain_transcript(
+                    session, run, brain_dir, last_line, pending_tools, sent_thinking
+                )
+            except Exception:
+                pass
 
     async def execute(self, session, run):
         process = None
