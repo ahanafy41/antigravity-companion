@@ -2143,7 +2143,7 @@ await window.mainV1.ready;
       dirs.forEach(item => {
         const isHidden = item.name.startsWith('.');
         html += '<li class="file-item file-item-dir" role="listitem">' +
-          '<button type="button" class="btn-file-open btn-dir-open" data-path="' + escapeHtml(item.path) + '" aria-label="مجلد ' + (isHidden ? 'مخفي ' : '') + escapeHtml(item.name) + '">' +
+          '<button type="button" class="btn-file-open btn-dir-open" data-path="' + escapeHtml(item.path) + '" aria-label="مجلد ' + (isHidden ? 'مخفي يبدأ بنقطة: ' : '') + escapeHtml(item.name) + '">' +
             '<span>📁 ' + escapeHtml(item.name) + (isHidden ? ' <small style="color:var(--text-muted);">(مخفي)</small>' : '') + '</span>' +
             '<span class="file-meta">مجلد</span>' +
           '</button>' +
@@ -2156,7 +2156,7 @@ await window.mainV1.ready;
         const sizeStr = item.size > 1048576 ? (item.size / 1048576).toFixed(1) + ' MB' : Math.round(item.size / 1024) + ' KB';
         html += '<li class="file-item file-item-file" role="listitem">' +
           '<div class="file-item-row" style="display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; background:var(--bg-card-header); padding:8px 12px; border-radius:8px; border:1px solid var(--border-main);">' +
-            '<button type="button" class="btn-file-open btn-file-inspect" data-path="' + escapeHtml(item.path) + '" style="flex:1; display:flex; justify-content:space-between; align-items:center; background:none; border:none; color:var(--text-main); font-family:inherit; font-size:0.95rem; text-align:right; cursor:pointer;" aria-label="معاينة ملف ' + (isHidden ? 'مخفي ' : '') + escapeHtml(item.name) + ' بحجم ' + sizeStr + '">' +
+            '<button type="button" class="btn-file-open btn-file-inspect" data-path="' + escapeHtml(item.path) + '" style="flex:1; display:flex; justify-content:space-between; align-items:center; background:none; border:none; color:var(--text-main); font-family:inherit; font-size:0.95rem; text-align:right; cursor:pointer;" aria-label="معاينة ملف ' + (isHidden ? 'مخفي يبدأ بنقطة: ' : '') + escapeHtml(item.name) + ' بحجم ' + sizeStr + '">' +
               '<span>📄 ' + escapeHtml(item.name) + (isHidden ? ' <small style="color:var(--text-muted);">(مخفي)</small>' : '') + '</span>' +
               '<span class="file-meta">' + sizeStr + '</span>' +
             '</button>' +
@@ -2182,8 +2182,11 @@ await window.mainV1.ready;
         btnToggleHidden.addEventListener('click', () => {
           showHiddenFiles = !showHiddenFiles;
           localStorage.setItem('companion_show_hidden_files', showHiddenFiles ? '1' : '0');
-          announce(showHiddenFiles ? 'تم إظهار الملفات المخفية' : 'تم إخفاء الملفات المخفية');
+          const hiddenCount = items.filter(it => it.name.startsWith('.')).length;
+          announce(showHiddenFiles ? ('تم إظهار ' + hiddenCount + ' من الملفات والمجلدات المخفية') : 'تم إخفاء الملفات المخفية');
           renderFilesList(currentDir, items, parentDir, storages);
+          const newBtn = document.getElementById('btn-toggle-hidden');
+          if (newBtn) newBtn.focus();
         });
       }
 
@@ -6478,11 +6481,9 @@ await window.mainV1.ready;
         announce('جاري إيقاف خادم تيرمكس نهائياً...');
         try {
           if (window.AntigravityBridge && typeof window.AntigravityBridge.stopServer === 'function') {
-            await window.AntigravityBridge.stopServer();
-          } else {
-            const stopped = await window.mainV1Fetch('/api/shutdown', {method: 'POST'});
-            if (!stopped.ok) { announce((await stopped.json()).error); return; }
+            try { await window.AntigravityBridge.stopServer(); } catch (bridgeErr) { console.warn('Bridge stopServer error:', bridgeErr); }
           }
+          try { await window.mainV1Fetch('/api/shutdown', {method: 'POST'}); } catch (fetchErr) {}
         } catch (err) {
           announce('تعذر إيقاف الخادم: ' + (err?.message || err));
           return;

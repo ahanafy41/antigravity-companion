@@ -2,6 +2,8 @@
 # ==============================================================================
 # Antigravity Server Stopper (Port 7681)
 # ==============================================================================
+export PATH="/data/data/com.termux/files/usr/bin:$PATH"
+export HOME="/data/data/com.termux/files/home"
 SERVER_DIR="${COMPANION_HOME:-$HOME/.antigravity-server}"
 PID_FILE="$SERVER_DIR/server.pid"
 

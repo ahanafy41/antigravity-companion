@@ -70,12 +70,19 @@ function reportError(error) {
             try {
                 if (start) {
                     await window.AntigravityBridge.triggerServerWakeup();
-                } else if (window.AntigravityBridge?.stopServer) {
-                    await window.AntigravityBridge.stopServer();
-                    showServerStatus(false);
                 } else {
-                    const stopped = await window.mainV1Fetch('/api/shutdown', {method: 'POST'});
-                    if (!stopped.ok) throw new Error((await stopped.json()).error || 'تعذر إيقاف الخادم');
+                    if (window.AntigravityBridge?.stopServer) {
+                        try {
+                            await window.AntigravityBridge.stopServer();
+                        } catch (bridgeErr) {
+                            console.warn('AntigravityBridge.stopServer failed, continuing with direct shutdown:', bridgeErr);
+                        }
+                    }
+                    try {
+                        await window.mainV1Fetch('/api/shutdown', {method: 'POST'});
+                    } catch (fetchErr) {
+                        // Server might already be stopped or unreachable
+                    }
                     showServerStatus(false);
                 }
                 for (let attempt = 0; attempt < (start ? 15 : 8); attempt++) {
