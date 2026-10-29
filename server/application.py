@@ -709,8 +709,10 @@ def available_storage_roots():
 
 
 def available_storage_items():
+    home = Path.home()
     items = [
-        {"name": "تيرماكس", "path": str(Path.home()), "icon": "🏠", "id": "termux"},
+        {"name": "تيرماكس", "path": str(home), "icon": "🏠", "id": "termux"},
+        {"name": "مجلد جيميني (.gemini)", "path": str(home / ".gemini"), "icon": "💎", "id": "gemini"},
     ]
     internal = Path("/storage/emulated/0")
     if internal.is_dir():

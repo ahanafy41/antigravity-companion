@@ -2188,6 +2188,7 @@ await window.mainV1.ready;
       // Dynamic storage buttons
       const navStorages = (storages && storages.length) ? storages : [
         {name: "تيرماكس", path: "/data/data/com.termux/files/home", icon: "🏠"},
+        {name: "مجلد جيميني (.gemini)", path: "/data/data/com.termux/files/home/.gemini", icon: "💎"},
         {name: "الذاكرة الداخلية", path: "/storage/emulated/0", icon: "📱"},
         {name: "التنزيلات", path: "/storage/emulated/0/Download", icon: "📥"}
       ];
@@ -2222,8 +2223,8 @@ await window.mainV1.ready;
         '<span>المسار الحالي: </span><code>' + escapeHtml(currentDir) + '</code>' +
       '</div>';
 
-      // Filtering hidden files and sorting: folders first, then files
-      const visibleItems = showHiddenFiles ? items : items.filter(it => !it.name.startsWith('.'));
+      // Filtering hidden files and sorting: folders first, then files (.gemini is always accessible)
+      const visibleItems = showHiddenFiles ? items : items.filter(it => !it.name.startsWith('.') || it.name === '.gemini');
       const dirs = visibleItems.filter(it => it.is_dir).sort((a, b) => a.name.localeCompare(b.name, undefined, {sensitivity: 'base'}));
       const files = visibleItems.filter(it => !it.is_dir).sort((a, b) => a.name.localeCompare(b.name, undefined, {sensitivity: 'base'}));
 
