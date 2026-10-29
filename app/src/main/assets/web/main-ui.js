@@ -890,6 +890,78 @@ await window.mainV1.ready;
       return intent || ('تنفيذ أداة: ' + toolName);
     }
 
+    function renderToolResultCard(toolName, params, rawOutput) {
+      if (!rawOutput && rawOutput !== 0) return '';
+      const strOutput = String(rawOutput).trim();
+      if (!strOutput) return '';
+      params = params || {};
+
+      let cardHtml = '<div class="tool-result-card" role="region" aria-label="نتيجة تنفيذ الأداة">';
+
+      if (toolName === 'search_web' || toolName === 'web_search') {
+        const query = params.query || params.Query || '';
+        cardHtml += '<div class="tool-card-header search-header"><span>🌐 نتائج البحث في الويب: <strong>' + escapeHtml(query) + '</strong></span></div>';
+
+        const lines = strOutput.split('\n');
+        let parsedAny = false;
+        let linksList = '<div class="search-results-list" role="list" aria-label="قائمة نتائج البحث">';
+        const urlRegex = /(https?:\/\/[^\s"'<>\)]+)/g;
+
+        lines.forEach(line => {
+          const trimmed = line.trim();
+          if (!trimmed) return;
+          const match = trimmed.match(urlRegex);
+          if (match) {
+            parsedAny = true;
+            const url = match[0];
+            const cleanTitle = trimmed.replace(urlRegex, '').replace(/^[-*#\d\.\s]+/, '').trim() || url;
+            linksList += '<div class="search-result-item" role="listitem">' +
+              '<div class="search-result-row">' +
+                '<a href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer" class="search-result-link">🔗 ' + escapeHtml(cleanTitle) + '</a>' +
+                '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(url) + '" aria-label="نسخ رابط ' + escapeHtml(cleanTitle) + '">📋 نسخ الرابط</button>' +
+              '</div>' +
+              '<div class="search-result-url">' + escapeHtml(url) + '</div>' +
+            '</div>';
+          }
+        });
+        linksList += '</div>';
+
+        if (parsedAny) {
+          cardHtml += linksList;
+          cardHtml += '<details class="step-raw-details"><summary class="step-raw-summary">📄 تفاصيل نص مخرجات البحث الكاملة</summary>' +
+            '<pre class="step-output-content" tabindex="0">' + escapeHtml(strOutput) + '</pre></details>';
+        } else {
+          cardHtml += '<pre class="step-output-content" tabindex="0">' + escapeHtml(strOutput) + '</pre>';
+        }
+      } else if (toolName === 'read_url_content' || toolName === 'fetch' || toolName === 'browser_read') {
+        const url = params.Url || params.url || params.url_content || '';
+        cardHtml += '<div class="tool-card-header fetch-header">' +
+          '<span>🌐 المصدر: <a href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer" class="search-result-link">' + escapeHtml(url || 'رابط خارجي') + '</a></span>' +
+          (url ? '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(url) + '" aria-label="نسخ رابط المصدر">📋 نسخ الرابط</button>' : '') +
+        '</div>';
+        cardHtml += '<pre class="step-output-content" tabindex="0">' + escapeHtml(strOutput) + '</pre>';
+      } else if (toolName === 'read_file' || toolName === 'view_file' || toolName === 'read_resource') {
+        const p = params.Path || params.path || params.AbsolutePath || params.TargetFile || params.Uri || params.uri || '';
+        cardHtml += '<div class="tool-card-header file-header">' +
+          '<span>📄 الملف: <code>' + escapeHtml(p || 'ملف') + '</code></span>' +
+          (p ? '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(p) + '" aria-label="نسخ مسار الملف">📋 نسخ المسار</button>' : '') +
+        '</div>';
+        cardHtml += '<pre class="step-output-content" tabindex="0">' + escapeHtml(strOutput) + '</pre>';
+      } else if (toolName === 'run_command' || toolName === 'command') {
+        const cmd = params.CommandLine || params.command || params.cmd || '';
+        cardHtml += '<div class="tool-card-header cmd-header">' +
+          '<span>💻 الأمر: <code>' + escapeHtml(cmd) + '</code></span>' +
+          (cmd ? '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(cmd) + '" aria-label="نسخ الأمر المنفذ">📋 نسخ</button>' : '') +
+        '</div>';
+        cardHtml += '<pre class="step-output-content" tabindex="0">' + escapeHtml(strOutput) + '</pre>';
+      } else {
+        cardHtml += '<pre class="step-output-content" tabindex="0">' + escapeHtml(strOutput) + '</pre>';
+      }
+
+      cardHtml += '</div>';
+      return cardHtml;
+    }
+
     // Robust Accessible GFM Markdown Parser with marked & DOMPurify support
     let cachedMarkedRenderer = null;
     function getMarkedRenderer() {
@@ -1615,7 +1687,7 @@ await window.mainV1.ready;
                       '<span class="step-label">' + escapeHtml(finalDesc) + ' <small style="opacity:0.8;">(' + stateLabel + ')</small></span>';
                   }
 
-                  // Render Real Tool Output & Execution Results (Complete Uncut Output)
+                  // Render Real Tool Output & Execution Results with Humanized Cards
                   if (data.output && String(data.output).trim()) {
                     let outDetails = stepLi.querySelector('.step-output-details');
                     if (!outDetails) {
@@ -1626,18 +1698,28 @@ await window.mainV1.ready;
                       summary.className = 'step-output-summary';
                       summary.textContent = '📄 مخرجات الأداة ونتيجة التنفيذ الكاملة (اضغط للعرض)';
                       summary.setAttribute('aria-label', 'مخرجات الأداة ونتيجة التنفيذ الكاملة (مطوية، اضغط للعرض أو الإخفاء)');
-                      const pre = document.createElement('pre');
-                      pre.className = 'step-output-content';
-                      pre.setAttribute('tabindex', '0');
-                      pre.setAttribute('role', 'region');
-                      pre.setAttribute('aria-label', 'مخرجات ونتائج الأداة الكاملة');
-                      outDetails.append(summary, pre);
+                      const cardContainer = document.createElement('div');
+                      cardContainer.className = 'step-output-card-wrapper';
+                      outDetails.append(summary, cardContainer);
                       stepLi.appendChild(outDetails);
                     }
-                    const pre = outDetails.querySelector('pre');
-                    if (pre) {
-                      const outStr = String(data.output).trim();
-                      pre.textContent = outStr;
+                    const cardWrapper = outDetails.querySelector('.step-output-card-wrapper');
+                    if (cardWrapper) {
+                      cardWrapper.innerHTML = renderToolResultCard(data.tool, data.params || {}, data.output);
+                      cardWrapper.querySelectorAll('.btn-copy-inline').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                          e.stopPropagation();
+                          const toCopy = btn.getAttribute('data-copy');
+                          if (toCopy && navigator.clipboard) {
+                            navigator.clipboard.writeText(toCopy).then(() => {
+                              playBeep(880, 0.08);
+                              announce('تم النسخ في الحافظة بنجاح');
+                              btn.textContent = '✓ تم';
+                              setTimeout(() => { btn.textContent = '📋 نسخ'; }, 2000);
+                            });
+                          }
+                        });
+                      });
                     }
                   }
 
