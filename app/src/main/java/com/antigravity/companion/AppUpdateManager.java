@@ -197,19 +197,32 @@ public final class AppUpdateManager implements AutoCloseable {
     }
     private void verifyApk(File apk) throws IOException {
         PackageManager packages = context.getPackageManager();
-        int flags = Build.VERSION.SDK_INT >= 28 ? PackageManager.GET_SIGNING_CERTIFICATES : PackageManager.GET_SIGNATURES;
+        int flags = PackageManager.GET_SIGNATURES;
+        if (Build.VERSION.SDK_INT >= 28) {
+            flags |= PackageManager.GET_SIGNING_CERTIFICATES;
+        }
         PackageInfo archive = packages.getPackageArchiveInfo(apk.getAbsolutePath(), flags);
         if (archive == null) throw new IOException("Downloaded APK cannot be verified");
         try {
             PackageInfo installed = packages.getPackageInfo(context.getPackageName(), flags);
-            if (!UpdatePolicy.validUpgrade(new UpdatePolicy.Release(installed.packageName, versionCode(installed), fingerprints(installed)),
-                    new UpdatePolicy.Release(archive.packageName, versionCode(archive), fingerprints(archive))))
-                throw new IOException("APK package, versionCode or signing certificate does not match upgrade policy");
+            String rejection = UpdatePolicy.upgradeRejectionReason(
+                    new UpdatePolicy.Release(installed.packageName, versionCode(installed), fingerprints(installed)),
+                    new UpdatePolicy.Release(archive.packageName, versionCode(archive), fingerprints(archive)));
+            if (rejection != null) {
+                throw new IOException("APK package, versionCode or signing certificate does not match upgrade policy: " + rejection);
+            }
         } catch (PackageManager.NameNotFoundException impossible) { throw new IOException("Installed package not found", impossible); }
     }
     private static String[] fingerprints(PackageInfo apk) throws IOException {
-        Signature[] signatures = Build.VERSION.SDK_INT >= 28 && apk.signingInfo != null
-                ? apk.signingInfo.getApkContentsSigners() : apk.signatures;
+        Signature[] signatures = null;
+        if (Build.VERSION.SDK_INT >= 28 && apk.signingInfo != null) {
+            signatures = apk.signingInfo.hasMultipleSigners()
+                    ? apk.signingInfo.getApkContentsSigners()
+                    : apk.signingInfo.getSigningCertificateHistory();
+        }
+        if (signatures == null || signatures.length == 0) {
+            signatures = apk.signatures;
+        }
         if (signatures == null || signatures.length == 0) throw new IOException("APK has no signing certificate");
         try {
             String[] digests = new String[signatures.length];

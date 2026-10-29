@@ -24,11 +24,26 @@ final class UpdatePolicy {
             this.packageName = packageName; this.versionCode = versionCode; this.signers = signers.clone();
         }
     }
-    static boolean validUpgrade(Release installed, Release archive) {
+    static String upgradeRejectionReason(Release installed, Release archive) {
+        if (!installed.packageName.equals(archive.packageName)) {
+            return "Package mismatch: installed " + installed.packageName + " vs " + archive.packageName;
+        }
+        if (archive.versionCode <= installed.versionCode) {
+            return "Version code not newer: installed " + installed.versionCode + " vs " + archive.versionCode;
+        }
         String[] installedSigners = installed.signers.clone();
         String[] archiveSigners = archive.signers.clone();
         Arrays.sort(installedSigners); Arrays.sort(archiveSigners);
-        return installed.packageName.equals(archive.packageName) && archive.versionCode > installed.versionCode
-                && installedSigners.length > 0 && Arrays.equals(installedSigners, archiveSigners);
+        if (installedSigners.length == 0 || archiveSigners.length == 0) {
+            return "Signing certificates missing";
+        }
+        if (!Arrays.equals(installedSigners, archiveSigners)) {
+            return "Signing certificate mismatch";
+        }
+        return null;
+    }
+
+    static boolean validUpgrade(Release installed, Release archive) {
+        return upgradeRejectionReason(installed, archive) == null;
     }
 }
