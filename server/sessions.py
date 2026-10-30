@@ -59,17 +59,28 @@ def format_human_permission_question(tool_name, params):
         return f"هل تريد الموافقة على جلب وقراءة محتوى الرابط التالي:\n{url}"
 
     elif tool_name == "invoke_subagent":
+        role = ""
+        prompt_snippet = ""
+        type_name = ""
         subagents = params.get("Subagents", [])
         if isinstance(subagents, list) and len(subagents) > 0 and isinstance(subagents[0], dict):
             first = subagents[0]
-            role = first.get("Role") or first.get("TypeName") or "وكيل فرعي"
-            prompt_snippet = str(first.get("Prompt", "")).strip()
+            role = str(first.get("Role") or first.get("TypeName") or "").strip().strip('"').strip("'")
+            type_name = str(first.get("TypeName") or "").strip().strip('"').strip("'")
+            prompt_snippet = str(first.get("Prompt", "")).strip().strip('"').strip("'")
+        if not role:
+            role = str(params.get("Role") or params.get("role") or params.get("TypeName") or params.get("type_name") or "وكيل فرعي").strip().strip('"').strip("'")
+        if not prompt_snippet:
+            prompt_snippet = str(params.get("Prompt") or params.get("prompt") or "").strip().strip('"').strip("'")
+        if not type_name:
+            type_name = str(params.get("TypeName") or params.get("type_name") or "").strip().strip('"').strip("'")
+
+        type_str = f" [النوع: {type_name}]" if type_name and type_name != role else ""
+        if prompt_snippet:
             if len(prompt_snippet) > 150:
                 prompt_snippet = prompt_snippet[:150] + "..."
-            return f"هل تريد الموافقة على استدعاء وتفويض الوكيل الفرعي ({role}):\nالمهمة: {prompt_snippet}"
-        else:
-            role = params.get("Role") or params.get("TypeName") or "وكيل فرعي"
-            return f"هل تريد الموافقة على استدعاء وتكليف الوكيل الفرعي ({role})؟"
+            return f"هل تريد الموافقة على استدعاء وتفويض الوكيل الفرعي ({role}){type_str}:\nالمهمة: {prompt_snippet}"
+        return f"هل تريد الموافقة على استدعاء وتكليف الوكيل الفرعي ({role}){type_str}؟"
 
     elif tool_name == "define_subagent":
         name = params.get("name") or params.get("Name") or "وكيل جديد"

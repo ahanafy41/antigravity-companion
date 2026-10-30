@@ -46,6 +46,18 @@ class TaskRuntime:
                 return
             information = step.get("subagent_info")
             if not isinstance(information, dict):
+                # Also capture subagent invocation directly from tool step
+                tool_name = step.get("tool_name") or step.get("tool") or ""
+                if tool_name == "invoke_subagent":
+                    args = step.get("parameters") or step.get("args") or {}
+                    cid = step.get("conversation_id") or args.get("conversation_id")
+                    if cid and isinstance(cid, str) and CONVERSATION_ID.fullmatch(cid):
+                        name = args.get("Role") or args.get("role") or args.get("TypeName") or args.get("type_name") or "subagent"
+                        name = "".join(c for c in str(name)[:128] if c.isprintable()).strip('"').strip("'")
+                        observed = run.setdefault("observed_subagents", [])
+                        known = {a["conversation_id"] for a in observed}
+                        if cid not in known and len(observed) < MAX_OBSERVED_SUBAGENTS:
+                            observed.append({"conversation_id": cid, "type_name": name})
                 return
             agents = information.get("subagents")
             if not isinstance(agents, list):

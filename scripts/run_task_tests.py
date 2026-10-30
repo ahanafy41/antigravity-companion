@@ -225,6 +225,37 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("private", json.dumps(listing))
         self.assertNotIn("role", listing["subagents"][0])
 
+    async def test_invoke_subagent_top_level_parameters_and_permissions(self):
+        from sessions import format_human_permission_question
+
+        params = {
+            "Role": "Design Reviewer",
+            "TypeName": "research",
+            "Prompt": "Inspect codebase architecture and verify consistency",
+            "Model": "inherit"
+        }
+        text = format_human_permission_question("invoke_subagent", params)
+        self.assertIn("Design Reviewer", text)
+        self.assertIn("Inspect codebase architecture", text)
+        self.assertIn("research", text)
+
+        run_id = self.start()
+        await self.wait_task(run_id)
+        cid = "b" * 32
+        event = {
+            "event": "step_update",
+            "step_update": {
+                "tool_name": "invoke_subagent",
+                "conversation_id": cid,
+                "parameters": params,
+            }
+        }
+        self.runtime.observe(self.sessions.runs[run_id], event)
+        listing = self.runtime.listing()
+        agents = [a for a in listing["subagents"] if a["conversation_id"] == cid]
+        self.assertEqual(len(agents), 1)
+        self.assertEqual(agents[0]["type_name"], "Design Reviewer")
+
     async def test_unknown_id_does_not_mutate_owned_runs(self):
         with self.assertRaises(KeyError):
             await self.runtime.cancel("unknown")
