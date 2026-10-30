@@ -219,9 +219,21 @@ class LegacyConversations:
                                 args = json.loads(args)
                             except Exception:
                                 pass
-                        role = str(args.get("Role") or args.get("role") or args.get("TypeName") or args.get("type_name") or "وكيل فرعي").strip().strip('"').strip("'")
-                        tname = str(args.get("TypeName") or args.get("type_name") or "subagent").strip().strip('"').strip("'")
-                        prompt = str(args.get("Prompt") or args.get("prompt") or "").strip().strip('"').strip("'")
+                        role = ""
+                        tname = ""
+                        prompt = ""
+                        sub_list = args.get("Subagents", [])
+                        if isinstance(sub_list, list) and len(sub_list) > 0 and isinstance(sub_list[0], dict):
+                            first = sub_list[0]
+                            role = str(first.get("Role") or first.get("role") or first.get("TypeName") or first.get("type_name") or "").strip().strip('"').strip("'")
+                            tname = str(first.get("TypeName") or first.get("type_name") or "").strip().strip('"').strip("'")
+                            prompt = str(first.get("Prompt") or first.get("prompt") or "").strip().strip('"').strip("'")
+                        if not role:
+                            role = str(args.get("Role") or args.get("role") or args.get("TypeName") or args.get("type_name") or "وكيل فرعي").strip().strip('"').strip("'")
+                        if not tname:
+                            tname = str(args.get("TypeName") or args.get("type_name") or "subagent").strip().strip('"').strip("'")
+                        if not prompt:
+                            prompt = str(args.get("Prompt") or args.get("prompt") or "").strip().strip('"').strip("'")
                         pending_invocations.append({"role": role, "type_name": tname, "prompt": prompt})
             elif rtype in ("GENERIC", "TOOL_RESULT", "TOOL_OUTPUT") and pending_invocations:
                 cnt = str(rec.get("content") or "")

@@ -790,9 +790,21 @@ class Sessions:
                                             child_id = cid_match_alt.group(1)
                                     if child_id:
                                         t_args = matched_tool.get("parameters") or {}
-                                        role = str(t_args.get("Role") or t_args.get("role") or t_args.get("TypeName") or t_args.get("type_name") or "وكيل فرعي").strip().strip('"').strip("'")
-                                        type_name = str(t_args.get("TypeName") or t_args.get("type_name") or "subagent").strip().strip('"').strip("'")
-                                        prompt = str(t_args.get("Prompt") or t_args.get("prompt") or "").strip().strip('"').strip("'")
+                                        role = ""
+                                        type_name = ""
+                                        prompt = ""
+                                        sub_list = t_args.get("Subagents", [])
+                                        if isinstance(sub_list, list) and len(sub_list) > 0 and isinstance(sub_list[0], dict):
+                                            first = sub_list[0]
+                                            role = str(first.get("Role") or first.get("role") or first.get("TypeName") or first.get("type_name") or "").strip().strip('"').strip("'")
+                                            type_name = str(first.get("TypeName") or first.get("type_name") or "").strip().strip('"').strip("'")
+                                            prompt = str(first.get("Prompt") or first.get("prompt") or "").strip().strip('"').strip("'")
+                                        if not role:
+                                            role = str(t_args.get("Role") or t_args.get("role") or t_args.get("TypeName") or t_args.get("type_name") or "وكيل فرعي").strip().strip('"').strip("'")
+                                        if not type_name:
+                                            type_name = str(t_args.get("TypeName") or t_args.get("type_name") or "subagent").strip().strip('"').strip("'")
+                                        if not prompt:
+                                            prompt = str(t_args.get("Prompt") or t_args.get("prompt") or "").strip().strip('"').strip("'")
                                         active_children = run.setdefault("active_children", {})
                                         if child_id not in active_children:
                                             active_children[child_id] = {

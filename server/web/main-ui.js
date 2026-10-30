@@ -1698,8 +1698,10 @@ await window.mainV1.ready;
                         timestamp: new Date().toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit', second:'2-digit'})
                       });
                     });
-                    const countStr = subList.length > 1 ? `(${subList.length} وكلاء)` : '';
-                    announce(`تنبيه فريق العمل: تم استدعاء ${subList.map(s => s.Role || s.TypeName).join(' و ')} ${countStr}`);
+                    if (data.state === 'ACTIVE') {
+                      const countStr = subList.length > 1 ? `(${subList.length} وكلاء)` : '';
+                      announce(`تنبيه فريق العمل: تم استدعاء ${subList.map(s => s.Role || s.TypeName).join(' و ')} ${countStr}`);
+                    }
                   } else if (data.tool === 'send_message') {
                     const recipient = (data.params && data.params.Recipient) ? data.params.Recipient : 'وكيل فرعي';
                     const msg = (data.params && data.params.Message) ? data.params.Message : '';
@@ -2099,6 +2101,13 @@ await window.mainV1.ready;
           cancelAnimationFrame(renderRafId);
           clearTimeout(renderRafId);
           renderRafId = null;
+        }
+        if (aiCard) {
+          aiCard.querySelectorAll('.subagent-thread-card .subagent-thread-badge.badge-active').forEach(badge => {
+            badge.classList.remove('badge-active');
+            badge.classList.add('badge-done');
+            badge.textContent = '✅ مكتمل';
+          });
         }
         scheduleAiRender(true);
         isAiGenerating = false;

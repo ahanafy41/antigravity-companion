@@ -1257,6 +1257,36 @@ class LegacyTests(unittest.TestCase):
             self.assertEqual(sub["tools"][0]["output"], "def test(): pass")
             self.assertIn("Code review is complete", sub["response"])
 
+    def test_legacy_conversation_subagents_array_fallback(self):
+        with tempfile.TemporaryDirectory() as folder:
+            home = Path(folder)
+            legacy = LegacyConversations(home)
+            parent_cid = "p" * 32
+            child_cid = "c" * 32
+            parent_logs = legacy.root / parent_cid / ".system_generated" / "logs"
+            parent_logs.mkdir(parents=True)
+            parent_t = parent_logs / "transcript.jsonl"
+            parent_t.write_text(
+                json.dumps({
+                    "step_index": 1,
+                    "type": "PLANNER_RESPONSE",
+                    "tool_calls": [{
+                        "name": "invoke_subagent",
+                        "args": {"Subagents": [{"Role": "Security Auditor", "TypeName": "security", "Prompt": "Audit auth"}]}
+                    }]
+                }) + "\n" +
+                json.dumps({
+                    "step_index": 2,
+                    "type": "GENERIC",
+                    "content": f'Created the following subagent:\n{{"conversationId": "{child_cid}"}}'
+                }) + "\n",
+                encoding="utf-8"
+            )
+            result = legacy.transcript(parent_cid)
+            self.assertEqual(len(result["subagents"]), 1)
+            self.assertEqual(result["subagents"][0]["role"], "Security Auditor")
+            self.assertEqual(result["subagents"][0]["type_name"], "security")
+
 
 class AndroidEpochTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

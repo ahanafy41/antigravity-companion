@@ -324,6 +324,45 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(child_done[0]["data"]["subagent_role"], "Research Analyst")
         self.assertIn("Found 3 architectural guides", child_done[0]["data"]["output"])
 
+    async def test_invoke_subagent_legacy_array_fallback_in_drain(self):
+        run_id = self.start()
+        await self.wait_task(run_id)
+        run = self.sessions.runs[run_id]
+        session = self.sessions.sessions[run["session_id"]]
+        parent_cid = "p" * 32
+        child_cid = "c" * 32
+        session["conversation_id"] = parent_cid
+
+        brain_dir = Path(self.folder.name) / "brain"
+        parent_logs = brain_dir / parent_cid / ".system_generated" / "logs"
+        parent_logs.mkdir(parents=True, exist_ok=True)
+        child_logs = brain_dir / child_cid / ".system_generated" / "logs"
+        child_logs.mkdir(parents=True, exist_ok=True)
+
+        parent_t = parent_logs / "transcript.jsonl"
+        parent_t.write_text(
+            json.dumps({
+                "type": "PLANNER_RESPONSE",
+                "step_index": 1,
+                "tool_calls": [{
+                    "name": "invoke_subagent",
+                    "args": {"Subagents": [{"Role": "Security Sentinel", "TypeName": "security", "Prompt": "Scan code"}]}
+                }]
+            }) + "\n" +
+            json.dumps({
+                "type": "GENERIC",
+                "step_index": 2,
+                "content": f'Created the following subagent:\n{{"conversationId": "{child_cid}"}}'
+            }) + "\n",
+            encoding="utf-8"
+        )
+        sent_thinking = set()
+        self.sessions._drain_transcript(session, run, brain_dir, 0, sent_thinking)
+        active = run.get("active_children", {})
+        self.assertIn(child_cid, active)
+        self.assertEqual(active[child_cid]["role"], "Security Sentinel")
+        self.assertEqual(active[child_cid]["type"], "security")
+
     async def test_unknown_id_does_not_mutate_owned_runs(self):
         with self.assertRaises(KeyError):
             await self.runtime.cancel("unknown")
