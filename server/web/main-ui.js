@@ -1629,6 +1629,7 @@ await window.mainV1.ready;
 
       aiAbortController = new AbortController();
       isUserExplicitAbort = false;
+      const promptStartTime = Date.now();
 
       const isForcedNew = forceNewSession || (checkContinue ? !checkContinue.checked : false);
       const shouldContinue = !isForcedNew;
@@ -1661,47 +1662,47 @@ await window.mainV1.ready;
         let buffer = '';
         let lastEventReceivedAt = Date.now();
 
-        // Resilient Stream Watchdog: Prevents infinite loading ("جاري التحميل / التفكير") if SSE hangs
+        // Resilient Stream Watchdog: Monitors if SSE connection is completely idle for >= 60 seconds
+        // Only recovers if the backend transcript actually finished a NEW turn created after promptStartTime
         streamWatchdog = setInterval(async () => {
           if (!isAiGenerating) {
             clearInterval(streamWatchdog);
             return;
           }
           const idleMs = Date.now() - lastEventReceivedAt;
-          if (idleMs >= 8000 && currentActiveConversationId) {
+          if (idleMs >= 60000 && currentActiveConversationId) {
             try {
               const res = await window.mainV1Fetch('/api/ai/conversation?id=' + encodeURIComponent(currentActiveConversationId));
               if (res.ok) {
                 const convData = await res.json();
-                const lastAgent = (convData.messages || []).filter(m => m.role === 'agent').pop();
+                const msgs = convData.messages || [];
+                const lastAgent = msgs.filter(m => m.role === 'agent').pop();
                 if (lastAgent) {
-                  let recovered = false;
-                  if (lastAgent.text && lastAgent.text.length >= accumulatedText.length) {
-                    accumulatedText = lastAgent.text;
-                    recovered = true;
-                  }
-                  if (lastAgent.thinking && !accumulatedThinking) {
-                    accumulatedThinking = lastAgent.thinking;
-                    if (thinkingBody) thinkingBody.innerHTML = renderMarkdown(accumulatedThinking);
-                  }
-                  if (lastAgent.terminal_status || (recovered && lastAgent.text.trim().length > 0)) {
+                  const msgTime = lastAgent.time ? new Date(lastAgent.time).getTime() : 0;
+                  const isCurrentTurn = msgTime >= (promptStartTime - 3000);
+                  if (isCurrentTurn && lastAgent.text && lastAgent.text.trim().length > 0) {
+                    if (lastAgent.text.length >= accumulatedText.length) {
+                      accumulatedText = lastAgent.text;
+                    }
+                    if (lastAgent.thinking && !accumulatedThinking) {
+                      accumulatedThinking = lastAgent.thinking;
+                      if (thinkingBody) thinkingBody.innerHTML = renderMarkdown(accumulatedThinking);
+                    }
                     clearInterval(streamWatchdog);
+                    streamWatchdog = null;
                     scheduleAiRender(true);
                     aiCard.classList.remove('generating');
                     if (aiTitle) aiTitle.textContent = 'إجابة الوكيل الذكي:';
                     isAiGenerating = false;
-                    if (aiAbortController) {
-                      try { aiAbortController.abort(); } catch(e) {}
-                      aiAbortController = null;
-                    }
                     announce('تم استرداد وإكمال رد الوكيل بنجاح من سجل الجلسة.');
                     playSuccessChime();
+                    try { reader.cancel(); } catch(e) {}
                   }
                 }
               }
             } catch (wErr) {}
           }
-        }, 4000);
+        }, 5000);
 
         while (true) {
           const { done, value } = await reader.read();
@@ -2159,7 +2160,9 @@ await window.mainV1.ready;
               if (res.ok) {
                 const convData = await res.json();
                 const lastAgent = (convData.messages || []).filter(m => m.role === 'agent').pop();
-                if (lastAgent && lastAgent.text && lastAgent.text.trim().length > 0) {
+                const msgTime = lastAgent && lastAgent.time ? new Date(lastAgent.time).getTime() : 0;
+                const isCurrentTurn = msgTime >= (promptStartTime - 3000);
+                if (isCurrentTurn && lastAgent && lastAgent.text && lastAgent.text.trim().length > 0) {
                   clearInterval(recoveryTimer);
                   accumulatedText = lastAgent.text;
                   scheduleAiRender(true);
@@ -6645,8 +6648,10 @@ await window.mainV1.ready;
           }
         }
 
-        const unrendered = textAgentMsgs.filter(msg => {
-          if (!msg.text || !msg.text.trim()) return false;
+        const unrendered = allMessages.filter(msg => {
+          if (msg.role !== 'agent') return false;
+          const hasContent = (msg.text && msg.text.trim()) || msg.thinking || (Array.isArray(msg.tools) && msg.tools.length > 0);
+          if (!hasContent) return false;
           if (msg.id && aiChatFeed.querySelector(`[data-msg-id="${msg.id}"]`)) return false;
           if (msg.time && aiChatFeed.querySelector(`[data-msg-time="${msg.time}"]`)) return false;
           return true;
@@ -6681,6 +6686,43 @@ await window.mainV1.ready;
               `;
             }
 
+            let toolsHtml = '';
+            if (Array.isArray(latestAgentMsg.tools) && latestAgentMsg.tools.length > 0) {
+              const toolsCount = latestAgentMsg.tools.length;
+              toolsHtml = `
+                <div class="thinking-accordion tools-accordion" role="region" aria-label="أدوات وعمليات الوكيل المنفذة" style="margin-top:8px;">
+                  <button type="button" class="thinking-header tools-header" aria-expanded="false" aria-label="الأدوات المنفذة (${toolsCount} أداة، اضغط للعرض)">
+                    <div class="thinking-title-wrapper">
+                      <span aria-hidden="true">🛠️</span>
+                      <span>الأدوات والعمليات المنفذة</span>
+                      <span class="thinking-badge">${toolsCount} أداة</span>
+                    </div>
+                    <span class="thinking-toggle-icon" aria-hidden="true">▼</span>
+                  </button>
+                  <div class="thinking-body tools-body" hidden dir="auto">
+                    ${latestAgentMsg.tools.map(t => `
+                      <div class="tool-result-card" style="margin-bottom:8px; border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:8px; background:rgba(0,0,0,0.2);">
+                        <div style="font-weight:bold; color:var(--accent-cyan); display:flex; justify-content:space-between;">
+                          <span>⚡ ${escapeHtml(t.name || 'أداة')}</span>
+                          <span style="font-size:0.8rem; color:var(--text-muted);">${escapeHtml(t.status || 'منفذة')}</span>
+                        </div>
+                        ${t.summary ? `<div style="font-size:0.85rem; color:var(--text-main); margin-top:3px;">${escapeHtml(t.summary)}</div>` : ''}
+                        ${t.preview ? `<pre style="font-size:0.78rem; background:rgba(0,0,0,0.3); padding:4px; border-radius:4px; overflow-x:auto; max-height:120px; margin-top:4px;">${escapeHtml(t.preview)}</pre>` : ''}
+                      </div>
+                    `).join('')}
+                  </div>
+                  <div class="thinking-footer tools-footer" hidden>
+                    <button type="button" class="btn-close-tools" aria-label="إغلاق صندوق الأدوات">✕ إغلاق صندوق الأدوات</button>
+                  </div>
+                </div>
+              `;
+            }
+
+            let statusBannerHtml = '';
+            if (latestAgentMsg.terminal_status === 'completed_tools' || (!latestAgentMsg.text && Array.isArray(latestAgentMsg.tools) && latestAgentMsg.tools.length > 0)) {
+              statusBannerHtml = `<div class="terminal-status-banner" style="background:rgba(0,240,255,0.08); border:1px solid rgba(0,240,255,0.3); border-radius:6px; padding:6px 10px; margin-top:8px; font-size:0.85rem; color:var(--accent-cyan);">⚡ نفذ الوكيل العمليات والأدوات بنجاح.</div>`;
+            }
+
             const timeStr = latestAgentMsg.time ? (latestAgentMsg.time.split('T')[1] || '').slice(0,5) : '';
             card.innerHTML = `
               <header class="msg-header">
@@ -6694,25 +6736,27 @@ await window.mainV1.ready;
                 </div>
               </header>
               ${thinkingHtml}
+              ${toolsHtml}
               <div class="msg-content markdown-body" dir="rtl">
-                ${renderMarkdown(latestAgentMsg.text)}
+                ${(latestAgentMsg.text && latestAgentMsg.text.trim()) ? renderMarkdown(latestAgentMsg.text) : '<p class="main-style-179">(لا يوجد نص إضافي في هذا الرد)</p>'}
               </div>
+              ${statusBannerHtml}
             `;
             aiChatFeed.appendChild(card);
 
             const copyBtn = card.querySelector('.btn-copy-msg');
             if (copyBtn) {
               copyBtn.addEventListener('click', () => {
-                navigator.clipboard.writeText(latestAgentMsg.text).then(() => announce('تم نسخ النص'));
+                navigator.clipboard.writeText(latestAgentMsg.text || '').then(() => announce('تم نسخ النص'));
               });
             }
 
             if (latestAgentMsg.thinking) {
-              const tHeader = card.querySelector('.thinking-header');
-              const tBody = card.querySelector('.thinking-body');
-              const tFooter = card.querySelector('.thinking-footer');
+              const tHeader = card.querySelector('.thinking-header:not(.tools-header)');
+              const tBody = card.querySelector('.thinking-body:not(.tools-body)');
+              const tFooter = card.querySelector('.thinking-footer:not(.tools-footer)');
               const tClose = card.querySelector('.btn-close-thinking');
-              const tIcon = card.querySelector('.thinking-toggle-icon');
+              const tIcon = tHeader?.querySelector('.thinking-toggle-icon');
               const doToggle = (open) => {
                 const willOpen = (typeof open === 'boolean') ? open : (tHeader.getAttribute('aria-expanded') !== 'true');
                 tHeader.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
@@ -6737,9 +6781,37 @@ await window.mainV1.ready;
               }
             }
 
+            if (Array.isArray(latestAgentMsg.tools) && latestAgentMsg.tools.length > 0) {
+              const tlHeader = card.querySelector('.tools-header');
+              const tlBody = card.querySelector('.tools-body');
+              const tlFooter = card.querySelector('.tools-footer');
+              const tlClose = card.querySelector('.btn-close-tools');
+              const tlIcon = tlHeader?.querySelector('.thinking-toggle-icon');
+              if (tlHeader && tlBody) {
+                const doToolsToggle = (open) => {
+                  const willOpen = (typeof open === 'boolean') ? open : (tlHeader.getAttribute('aria-expanded') !== 'true');
+                  tlHeader.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+                  tlHeader.setAttribute('aria-label', willOpen ? 'الأدوات المنفذة (مفتوح، اضغط للإخفاء)' : 'الأدوات المنفذة (مغلق، اضغط للعرض)');
+                  if (tlIcon) tlIcon.textContent = willOpen ? '▲' : '▼';
+                  if (willOpen) {
+                    tlBody.removeAttribute('hidden');
+                    if (tlFooter) tlFooter.removeAttribute('hidden');
+                    announce('تم فتح صندوق الأدوات المنفذة');
+                  } else {
+                    tlBody.setAttribute('hidden', '');
+                    if (tlFooter) tlFooter.setAttribute('hidden', '');
+                    announce('تم إغلاق صندوق الأدوات');
+                    tlHeader.focus();
+                  }
+                };
+                tlHeader.addEventListener('click', () => doToolsToggle());
+                if (tlClose) tlClose.addEventListener('click', () => doToolsToggle(false));
+              }
+            }
+
             playSuccessChime();
-            const cleanAnnounce = latestAgentMsg.text.replace(/[*#_\`]/g, '').trim().slice(0, 150);
-            announce('تنبيه: وصل رد جديد بعد اكتمال المؤقت: ' + cleanAnnounce);
+            const cleanAnnounce = (latestAgentMsg.text || 'اكتملت الأدوات والعمليات بنجاح').replace(/[*#_\`]/g, '').trim().slice(0, 150);
+            announce('تنبيه: وصل رد جديد: ' + cleanAnnounce);
           });
           const isNearBottom = (aiChatFeed.scrollHeight - aiChatFeed.scrollTop - aiChatFeed.clientHeight) < 180;
           if (isNearBottom) {

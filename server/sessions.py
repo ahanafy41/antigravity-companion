@@ -732,6 +732,12 @@ class Sessions:
                                 "parameters": t_args,
                                 "step_index": entry.get("step_index"),
                             })
+                            self.emit(run, "tool", {
+                                "step_index": entry.get("step_index"),
+                                "tool_name": t_name,
+                                "parameters": t_args,
+                                "state": "ACTIVE",
+                            })
                             if t_name in ("write_to_file", "write", "write_file", "edit_file"):
                                 t_file_path = str(
                                     t_args.get("TargetFile")

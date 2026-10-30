@@ -183,6 +183,7 @@ This matrix catalogs all production source files, their primary responsibilities
 | `voice_planner.py` | Natural language intent parser for voice commands (e.g. "open chat", "start diagnostic", "read screen"). Key symbols: `VoicePlanner`, `plan_action()`. | `re`, `json` | `voice_agent.py` |
 | `android_client.py` | Direct Termux-to-Android helper; executes `am start` and Android broadcast commands if Termux:API is present. Key symbols: `send_broadcast()`, `launch_activity()`. | `subprocess` | `application.py` |
 | `legacy_conversations.py` | Data migration adapter converting legacy JSON chat history into the modern session format. Key symbols: `import_legacy_chats()`, `adapt_history_schema()`. | `storage.py` | `sessions.py` |
+| `conversation_metadata.py` | Metadata persistence store for conversation titles, pinning state, and soft deletion. Key symbols: `ConversationMetadataStore`, `update()`, `mark_deleted()`. | `storage.py`, `json` | `legacy_conversations.py`, `application.py` |
 | `version.json` | JSON metadata defining current server release name, semantic version, build timestamp, and Git commit SHA. | Read by `application.py` | Diagnostic endpoints |
 | `launch_server.sh` | Shell script launching the daemonized Python server in Termux; redirects logs to `~/.antigravity-companion/server.log`. | Spawns `server.py` | Termux `RUN_COMMAND` |
 | `stop_server.sh` | Shell script stopping the running daemon by sending `SIGTERM` to the PID recorded in `.server.pid`. | Uses `kill` | Termux `RUN_COMMAND`, `MainActivity` |
@@ -257,6 +258,10 @@ This matrix catalogs all production source files, their primary responsibilities
 | `run_tts_tests.py` | Tests WebAudio synthesis and speech playback integrations. | Accessibility audio. |
 | `run_voice_tests.py` | End-to-end speech recognition and voice loop tests. | Voice agent suite. |
 | `test_code_map_integrity.py` | Automated integrity test for `CODE_MAP.md`; verifies sections, recipes, and 100% dynamic file indexing. | Self-referential test gate. |
+| `test_conversation_metadata.py` | Unit tests for conversation metadata persistence and pinning. | Metadata test suite. |
+| `test_conversation_resilience_and_management.py` | Integration tests for conversation management and tool telemetry resilience. | Resilience test suite. |
+| `test_legacy_conversations_tools.py` | Tests for tool parsing and status extraction from transcripts. | Transcript parsing suite. |
+| `test_streaming_resilience.py` | Unit tests for stream recovery and retry without error alerts. | Streaming resilience suite. |
 
 #### Android Native Unit Tests (`app/src/test/java/com/antigravity/companion/`)
 - `DoctorDiagnosticEngineTest.java`: Tests Termux detection and diagnostic rules.

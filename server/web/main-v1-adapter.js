@@ -683,7 +683,7 @@
             try {
               const conv = await request('/legacy/conversations/' + encode(current.conversationId));
               const lastAgent = (conv.messages || []).filter(m => m.role === 'agent').pop();
-              if (lastAgent && lastAgent.text) {
+              if (lastAgent && lastAgent.text && lastAgent.text.trim()) {
                 emit({type: 'final_result', response: lastAgent.text, state: 'completed'});
                 await saveHistory(sessionId);
                 output.close();

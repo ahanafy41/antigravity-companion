@@ -253,9 +253,10 @@ class LegacyConversations:
                 t_count = msg.get("tool_count", 0) or len(tools_list)
                 if t_count > 0:
                     msg["terminal_status"] = "completed_tools"
-                    msg["text"] = f"*(استدعى الوكيل {t_count} عملية/أداة في هذه الخطوة)*"
+                    msg["text"] = ""
                 elif msg.get("thinking"):
-                    msg["text"] = "*(خطوات تفكير وتحليل فقط)*"
+                    msg["terminal_status"] = "thinking_only"
+                    msg["text"] = ""
 
         artifacts = self.artifacts(conversation_id)
 
