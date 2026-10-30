@@ -205,12 +205,101 @@ class LegacyConversations:
 
         artifacts = self.artifacts(conversation_id)
 
+        # Discover and populate nested subagent runs and tools
+        subagents = []
+        pending_invocations = []
+        for rec in records:
+            rtype = rec.get("type")
+            if rtype == "PLANNER_RESPONSE":
+                for tc in (rec.get("tool_calls") or []):
+                    if tc.get("name") == "invoke_subagent":
+                        args = tc.get("args") or {}
+                        if isinstance(args, str):
+                            try:
+                                args = json.loads(args)
+                            except Exception:
+                                pass
+                        role = str(args.get("Role") or args.get("role") or args.get("TypeName") or args.get("type_name") or "وكيل فرعي").strip().strip('"').strip("'")
+                        tname = str(args.get("TypeName") or args.get("type_name") or "subagent").strip().strip('"').strip("'")
+                        prompt = str(args.get("Prompt") or args.get("prompt") or "").strip().strip('"').strip("'")
+                        pending_invocations.append({"role": role, "type_name": tname, "prompt": prompt})
+            elif rtype in ("GENERIC", "TOOL_RESULT", "TOOL_OUTPUT") and pending_invocations:
+                cnt = str(rec.get("content") or "")
+                cid_m = re.search(r'["\']?conversationId["\']?\s*:\s*["\']([a-fA-F0-9-]{32,36})["\']', cnt)
+                if not cid_m:
+                    cid_m = re.search(r'["\']?conversation_id["\']?\s*:\s*["\']([a-fA-F0-9-]{32,36})["\']', cnt)
+                if cid_m:
+                    inv = pending_invocations.pop(0)
+                    child_cid = cid_m.group(1)
+                    subagents.append({
+                        "conversation_id": child_cid,
+                        "role": inv["role"],
+                        "type_name": inv["type_name"],
+                        "prompt": inv["prompt"],
+                    })
+
+        for sub in subagents:
+            sub["tools"] = []
+            sub["thinking"] = ""
+            sub["response"] = ""
+            child_path = self.root / sub["conversation_id"] / ".system_generated" / "logs" / "transcript.jsonl"
+            if child_path.is_file():
+                try:
+                    c_pending_tools = []
+                    with child_path.open("r", encoding="utf-8-sig", errors="ignore") as c_stream:
+                        for c_line in c_stream:
+                            c_str = c_line.strip()
+                            if not c_str:
+                                continue
+                            try:
+                                c_data = json.loads(c_str)
+                            except Exception:
+                                continue
+                            if not isinstance(c_data, dict):
+                                continue
+                            c_type = c_data.get("type")
+                            if c_type == "PLANNER_RESPONSE":
+                                if c_data.get("thinking"):
+                                    th = c_data["thinking"]
+                                    sub["thinking"] = (sub["thinking"] + "\n\n" + th).strip() if sub["thinking"] else th
+                                if c_data.get("content"):
+                                    ct = c_data["content"]
+                                    sub["response"] = (sub["response"] + "\n\n" + ct).strip() if sub["response"] else ct
+                                for tc in (c_data.get("tool_calls") or []):
+                                    t_args = tc.get("args") or {}
+                                    if isinstance(t_args, str):
+                                        try:
+                                            t_args = json.loads(t_args)
+                                        except Exception:
+                                            pass
+                                    tool_item = {
+                                        "name": tc.get("name") or "",
+                                        "parameters": t_args,
+                                        "step_index": c_data.get("step_index"),
+                                        "output": "",
+                                    }
+                                    c_pending_tools.append(tool_item)
+                                    sub["tools"].append(tool_item)
+                            elif c_type in ("GENERIC", "TOOL_RESULT", "TOOL_OUTPUT") and c_pending_tools:
+                                out = c_data.get("content") or ""
+                                if isinstance(out, (dict, list)):
+                                    out = json.dumps(out, ensure_ascii=False)
+                                out_str = str(out).strip()
+                                MAX_TOOL_OUTPUT = 16384
+                                if len(out_str) > MAX_TOOL_OUTPUT:
+                                    out_str = out_str[:MAX_TOOL_OUTPUT] + "\n... [تم اختصار العرض المباشر]"
+                                matched = c_pending_tools.pop(0)
+                                matched["output"] = out_str
+                except Exception:
+                    pass
+
         return {
             "conversation_id": conversation_id,
             "id": conversation_id,
             "records": records,
             "messages": messages,
             "artifacts": artifacts,
+            "subagents": subagents,
             "total_tokens": total_tokens,
             "truncated": truncated,
             "invalid_records": skipped,

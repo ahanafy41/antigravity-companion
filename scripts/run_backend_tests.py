@@ -1188,6 +1188,75 @@ class LegacyTests(unittest.TestCase):
             with self.assertRaises(PermissionError):
                 legacy.transcript_path("escape")
 
+    def test_legacy_conversation_subagent_history_recovery(self):
+        with tempfile.TemporaryDirectory() as folder:
+            home = Path(folder)
+            legacy = LegacyConversations(home)
+            parent_cid = "p" * 32
+            child_cid = "c" * 32
+            parent_logs = legacy.root / parent_cid / ".system_generated" / "logs"
+            child_logs = legacy.root / child_cid / ".system_generated" / "logs"
+            parent_logs.mkdir(parents=True)
+            child_logs.mkdir(parents=True)
+
+            parent_t = parent_logs / "transcript.jsonl"
+            parent_t.write_text(
+                json.dumps({
+                    "step_index": 1,
+                    "type": "USER_INPUT",
+                    "content": "<USER_REQUEST>Help me review this code</USER_REQUEST>"
+                }) + "\n" +
+                json.dumps({
+                    "step_index": 2,
+                    "type": "PLANNER_RESPONSE",
+                    "tool_calls": [{
+                        "name": "invoke_subagent",
+                        "args": {"Role": "Code Reviewer", "TypeName": "research", "Prompt": "Review files"}
+                    }]
+                }) + "\n" +
+                json.dumps({
+                    "step_index": 3,
+                    "type": "GENERIC",
+                    "content": f'Created the following subagent:\n{{"conversationId": "{child_cid}"}}'
+                }) + "\n",
+                encoding="utf-8"
+            )
+
+            child_t = child_logs / "transcript.jsonl"
+            child_t.write_text(
+                json.dumps({
+                    "step_index": 1,
+                    "type": "PLANNER_RESPONSE",
+                    "tool_calls": [{
+                        "name": "read_file",
+                        "args": {"Path": "/data/test.py"}
+                    }]
+                }) + "\n" +
+                json.dumps({
+                    "step_index": 2,
+                    "type": "GENERIC",
+                    "content": "def test(): pass"
+                }) + "\n" +
+                json.dumps({
+                    "step_index": 3,
+                    "type": "PLANNER_RESPONSE",
+                    "content": "Code review is complete, all clean."
+                }) + "\n",
+                encoding="utf-8"
+            )
+
+            result = legacy.transcript(parent_cid)
+            self.assertIn("subagents", result)
+            self.assertEqual(len(result["subagents"]), 1)
+            sub = result["subagents"][0]
+            self.assertEqual(sub["conversation_id"], child_cid)
+            self.assertEqual(sub["role"], "Code Reviewer")
+            self.assertEqual(sub["type_name"], "research")
+            self.assertEqual(len(sub["tools"]), 1)
+            self.assertEqual(sub["tools"][0]["name"], "read_file")
+            self.assertEqual(sub["tools"][0]["output"], "def test(): pass")
+            self.assertIn("Code review is complete", sub["response"])
+
 
 class AndroidEpochTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
