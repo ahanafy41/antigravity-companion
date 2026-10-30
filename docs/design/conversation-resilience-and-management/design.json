@@ -1,0 +1,532 @@
+{
+  "version": 2,
+  "slug": "conversation-resilience-and-management",
+  "title": "Conversation Lifecycle, Transparent Tool Telemetry, and Resilient History Management",
+  "mode": "repo",
+  "status": "draft",
+  "decided": null,
+  "updatedAt": "2026-10-30",
+
+  "context": {
+    "problem": "The Antigravity Companion app currently exhibits three critical reliability, observability, and accessibility flaws: (1) Cold-start state desynchronization where the UI boots into a blank chat screen while the underlying adapter and server quietly retain and attach new prompts to the previous active conversation; (2) Opaque execution failure modes where interrupted, stalled, or tool-centric turns hide executed tools, terminal statuses, and intermediate steps—rendering blank messages or generic 'لا يوجد رد'; and (3) An inaccessible, fragmented conversation drawer where title, metadata, and resume triggers are split across separate DOM elements without primitives to rename, pin, or delete conversations.",
+    "constraints": [
+      "Android Termux Resource Bounds: Companion server memory ceiling strictly < 80 MB, single-threaded async event loop",
+      "Accessibility Invariants: WCAG 2.2 AAA compliance for TalkBack and Jieshuo (CSR). Unified focus targets, zero emoji noise in speech, explicit aria-live announcements for conversation switches and actions",
+      "Authoritative Transcript Immutability: CLI logs in ~/.gemini/antigravity-cli/brain/ are append-only. Custom titles and pinning must not corrupt raw transcript files",
+      "Zero Stealth Sessions: The UI chat feed and backend runtime must always agree on the active conversation ID. Cold start must visibly rehydrate or explicitly isolate a new session",
+      "Regression Safety: Existing unit and end-to-end suites (run_tests.py, run_main_ui_tests.cjs, run_backend_tests.py) must maintain 100% pass rate"
+    ],
+    "vocabulary": [
+      "Session Desynchronization",
+      "Cold-Start Hydration",
+      "Turn Telemetry",
+      "Tool Execution Card",
+      "Unified Conversation Card",
+      "Pinned Conversation",
+      "Conversation Metadata Ledger"
+    ],
+    "observed": {
+      "commit": "aa03a2c",
+      "uncommittedChanges": false
+    }
+  },
+
+  "requirements": {
+    "functional": [
+      {
+        "id": "fr-1",
+        "text": "Deterministic Cold-Start & Visible Hydration: On launch, if an active conversation is tracked, the UI must automatically fetch and visibly render all historical messages, tool cards, and title in the chat feed, vocalizing the loaded session via aria-live. If the user initiates a new chat, the backend session must be explicitly severed to guarantee zero context leakage.",
+        "priority": "core"
+      },
+      {
+        "id": "fr-2",
+        "text": "Transparent Tool Telemetry & Terminal Failure Reporting: Legacy transcript parsing and live streaming must extract complete tool call metadata (tool name, arguments summary, execution status, and preview output). Turns ending without text (due to crash, timeout, or tool completion) must render structured accessible Tool Cards and an explicit terminal status banner instead of 'لا يوجد رد'.",
+        "priority": "core"
+      },
+      {
+        "id": "fr-3",
+        "text": "Unified Accessible Conversation List Item: Replace fragmented card elements with a single cohesive interactive button (single-tap resume) that opens the conversation and closes the drawer with a single screen reader focus target.",
+        "priority": "core"
+      },
+      {
+        "id": "fr-4",
+        "text": "Contextual Conversation Options (Rename, Pin, Delete): Beside each conversation card, provide an accessible Options Menu button exposing: (a) Rename (prompt dialog saving custom title), (b) Pin/Unpin (toggles sticky top placement), and (c) Delete (confirmation modal permanently deleting brain folder and cache).",
+        "priority": "core"
+      },
+      {
+        "id": "fr-5",
+        "text": "Persistent Metadata Ledger: Maintain a lightweight JSON metadata ledger on the server and IndexedDB cache to store custom titles, pin timestamps, and soft-deleted records without touching read-only CLI transcript files.",
+        "priority": "core"
+      }
+    ],
+    "nonFunctional": [
+      {
+        "id": "nfr-1",
+        "text": "Accessibility & Screen Reader Navigation: Zero redundant focus stops in conversation items; context menus use native dialog / ARIA menu patterns with keyboard Esc support.",
+        "priority": "core"
+      },
+      {
+        "id": "nfr-2",
+        "text": "Hydration Latency: Cold-start conversation rehydration must complete within < 150 ms on Android Termux for transcripts under 100 turns.",
+        "priority": "core"
+      },
+      {
+        "id": "nfr-3",
+        "text": "Memory Footprint: Metadata ledger and expanded tool models must add less than 2.5 MB to server RSS memory.",
+        "priority": "core"
+      }
+    ],
+    "excluded": [
+      "Full-text fuzzy search across all historical transcripts (reserved for future desktop indexing)",
+      "Multi-user conversation sharing or cloud synchronization"
+    ],
+    "assumptions": [
+      "Antigravity CLI transcript files (~/.gemini/antigravity-cli/brain/{cid}/.system_generated/logs/transcript.jsonl) follow standard JSONL schema with PLANNER_RESPONSE and USER_INPUT types.",
+      "Companion WebUI is hosted either inside Android WebView or mobile Chromium browser on localhost:7681."
+    ]
+  },
+
+  "estimates": {
+    "units": [
+      {"name": "Conversation Rehydration Time", "target": "< 150 ms", "basis": "Reading local JSONL transcript on mobile flash storage"},
+      {"name": "Metadata Ledger Size", "target": "< 100 KB", "basis": "100 conversations * 1 KB metadata record"},
+      {"name": "Server Memory Delta", "target": "< 2.5 MB", "basis": "In-memory caching of metadata dict and parsed tool summaries"}
+    ],
+    "bounds": [
+      {"name": "Max Transcripts Scanned", "bound": "150 conversations", "rationale": "Prevents slow drawer opening on devices with extensive CLI history"},
+      {"name": "Max Tool Calls per Turn Hydrated", "bound": "25 tools", "rationale": "Truncates gigantic tool loops to prevent DOM thrashing"}
+    ]
+  },
+
+  "domain": {
+    "entities": [
+      {
+        "name": "ConversationMetadata",
+        "description": "User-defined attributes (custom title, pinned state, deletion flag, last accessed timestamp) mapped to conversation_id."
+      },
+      {
+        "name": "HydratedTurn",
+        "description": "Unified turn model representing user request, internal thinking, tool execution list (name, arguments, status, output preview), and final textual response or terminal failure state."
+      },
+      {
+        "name": "ToolExecutionRecord",
+        "description": "Detailed trace of an individual tool call within a turn (tool name, short params summary, execution duration, output preview, and exit status)."
+      }
+    ],
+    "invariants": [
+      "UI Active State Invariant: The UI must never display a blank conversation while silently sending prompts to an existing conversation ID.",
+      "Visual-Auditory Parity Invariant: Every message and tool card rendered visually must have a corresponding concise, screen-reader friendly accessible description.",
+      "Safe Deletion Invariant: Deleting a conversation must close active sessions for that ID before unlinking the brain storage directory."
+    ]
+  },
+
+  "dataModel": {
+    "stores": [
+      {
+        "name": "ConversationMetadataLedger",
+        "type": "JSON File on Termux Disk",
+        "location": "server/data/conversation_metadata.json (with fallback to IndexedDB)",
+        "sourceOfTruth": true,
+        "retention": "Permanent until deleted by user"
+      },
+      {
+        "name": "TranscriptsStore",
+        "type": "Append-Only JSONL",
+        "location": "~/.gemini/antigravity-cli/brain/{conversation_id}/.system_generated/logs/transcript.jsonl",
+        "sourceOfTruth": true,
+        "retention": "Managed by CLI lifecycle"
+      },
+      {
+        "name": "ClientHistoryCache",
+        "type": "IndexedDB ('antigravity-companion')",
+        "location": "Browser / WebView Sandbox",
+        "sourceOfTruth": false,
+        "retention": "Cache mirror for offline and fast drawer display"
+      }
+    ],
+    "schemas": [
+      {
+        "name": "ConversationMetadata",
+        "fields": "conversation_id (PK, string), custom_title (string|null), is_pinned (boolean), pinned_at (timestamp|null), is_deleted (boolean), updated_at (timestamp)"
+      },
+      {
+        "name": "HydratedMessage",
+        "fields": "id (PK, string), role ('user'|'agent'), text (string), thinking (string|null), tools (array of ToolExecutionRecord), terminal_status ('completed'|'interrupted'|'failed'|null), time (string)"
+      },
+      {
+        "name": "ToolExecutionRecord",
+        "fields": "call_id (string), name (string), args_summary (string), status ('success'|'error'|'running'), preview (string)"
+      }
+    ]
+  },
+
+  "interfaces": [
+    {
+      "name": "GET /api/v1/conversations",
+      "type": "REST API",
+      "description": "Lists all conversations merged with metadata ledger, sorted with pinned items first, then by mtime descending."
+    },
+    {
+      "name": "PATCH /api/v1/conversations/{conversation_id}",
+      "type": "REST API",
+      "description": "Updates conversation metadata (rename title, toggle pin status)."
+    },
+    {
+      "name": "DELETE /api/v1/conversations/{conversation_id}",
+      "type": "REST API",
+      "description": "Closes any active server session and removes conversation brain folder and metadata record."
+    },
+    {
+      "name": "GET /api/v1/conversations/{conversation_id}",
+      "type": "REST API",
+      "description": "Retrieves fully hydrated conversation turn records, including extracted tool calls, thinking accordions, and terminal statuses."
+    }
+  ],
+
+  "deepDives": [
+    {
+      "title": "Cold-Start Determinism & Session Race Prevention",
+      "pressure": "Prevent user prompts from accidentally polluting past conversations when opening the app.",
+      "decision": "On startup, main-ui.js calls GET /api/v1/conversations/active. If an active conversation exists and was not explicitly closed, it calls resumeConversation() to visibly populate messages and announce the title. If no active conversation exists, it explicitly sets currentActiveConversationId = null and forces a fresh session handshake on the first prompt.",
+      "rejectedAlternatives": [
+        "Silent background attachment: Kept existing bug where UI looked new but posted to old chat.",
+        "Always forcing a new conversation on startup: Disrupts user workflow when returning to an in-progress coding session."
+      ],
+      "failureMode": "Network error or slow disk on boot: UI falls back to showing an explicit 'استئناف آخر محادثة' banner with the title rather than silently binding."
+    },
+    {
+      "title": "Full Tool Telemetry Hydration from JSONL Transcripts",
+      "pressure": "Display what the agent actually did when a conversation stalls or fails during tool execution.",
+      "decision": "Enhance LegacyConversations.transcript() to correlate PLANNER_RESPONSE tool_calls with subsequent USER_INPUT tool results. Extract tool name, parameters, and output previews into a structured tools list for each turn. If content is empty and tools exist, mark status as completed_tools or interrupted_in_tools and render accessible Tool Result Accordions.",
+      "rejectedAlternatives": [
+        "Only showing integer tool_count: Left user blind to which tools were run and why no text was generated.",
+        "Full unparsed JSON dump: Crashed mobile WebView due to multi-megabyte string payloads."
+      ],
+      "failureMode": "Malformed tool call JSON in transcript: Safely fall back to displaying tool name and raw snippet with non-fatal logging."
+    },
+    {
+      "title": "Accessible Conversation Drawer Item & Actions Menu",
+      "pressure": "Screen reader clutter and lack of management primitives (rename, pin, delete).",
+      "decision": "Implement a unified 2-target layout per list item: Target 1 is the full card button (<button class='btn-conv-main'>) that resumes the chat on tap. Target 2 is a dedicated Options Menu button (<button class='btn-conv-options'>) opening an accessible popup dialog with 3 explicit action buttons: 'إعادة تسمية', 'تثبيت/إلغاء التثبيت', and 'حذف المحادثة'.",
+      "rejectedAlternatives": [
+        "Keeping separate title text and resume button: Caused multiple confusing tab stops on TalkBack/Jieshuo.",
+        "Swipe-to-delete gestures: Incompatible with screen reader touch exploration."
+      ],
+      "failureMode": "Accidental deletion: Protected by an accessible modal confirmation dialog with auto-focus on 'إلغاء'."
+    }
+  ],
+
+  "architectures": [
+    {
+      "id": "arch-1",
+      "name": "Unified Metadata Ledger & Deep Turn Telemetry (Recommended)",
+      "style": "Hybrid Server-Ledger + WebUI Hydration",
+      "thesis": "Introduce a server-side JSON metadata ledger for user overrides (pinning, custom titles, soft deletion) while enhancing legacy transcript parsing to emit rich tool cards, married to a streamlined two-button accessible conversation list item.",
+      "canvas": {
+        "primaryFlow": [
+          "web-ui",
+          "adapter",
+          "server-app",
+          "metadata-ledger",
+          "legacy-parser",
+          "transcripts"
+        ]
+      },
+      "components": [
+        {
+          "id": "web-ui",
+          "name": "Companion Web UI (Chat & Drawer)",
+          "type": "client",
+          "zone": "app",
+          "position": {"x": 160, "y": 180},
+          "note": "Renders unified accessible conversation items, options dialogs, and tool accordions",
+          "change": "modified"
+        },
+        {
+          "id": "adapter",
+          "name": "main-v1-adapter.js",
+          "type": "client",
+          "zone": "app",
+          "position": {"x": 360, "y": 180},
+          "note": "Enforces synchronous session agreement, manages cold-start handshake, routes CRUD",
+          "change": "modified"
+        },
+        {
+          "id": "server-app",
+          "name": "Companion Application Server",
+          "type": "service",
+          "zone": "termux",
+          "position": {"x": 560, "y": 180},
+          "note": "aiohttp server hosting CRUD endpoints for conversations, managing session lifecycle",
+          "change": "modified"
+        },
+        {
+          "id": "metadata-ledger",
+          "name": "Metadata Ledger (JSON)",
+          "type": "datastore",
+          "zone": "termux",
+          "position": {"x": 560, "y": 320},
+          "note": "Stores custom titles, pin status, and deletion marks at server/data/conversation_metadata.json",
+          "change": "new"
+        },
+        {
+          "id": "legacy-parser",
+          "name": "LegacyConversations Parser",
+          "type": "service",
+          "zone": "termux",
+          "position": {"x": 760, "y": 180},
+          "note": "Extracts tool calls, arguments summaries, thinking, and terminal states from transcripts",
+          "change": "modified"
+        },
+        {
+          "id": "transcripts",
+          "name": "CLI Brain Transcripts",
+          "type": "datastore",
+          "zone": "cli",
+          "position": {"x": 960, "y": 180},
+          "note": "Immutable append-only JSONL files in ~/.gemini/antigravity-cli/brain/",
+          "change": "unmodified"
+        }
+      ],
+      "edges": [
+        {"from": "web-ui", "to": "adapter", "kind": "call", "label": "CRUD & stream requests", "importance": "primary"},
+        {"from": "adapter", "to": "server-app", "kind": "call", "label": "REST API (/api/v1/conversations)", "importance": "primary"},
+        {"from": "server-app", "to": "metadata-ledger", "kind": "readwrite", "label": "Read/write pins & titles", "importance": "secondary"},
+        {"from": "server-app", "to": "legacy-parser", "kind": "call", "label": "Request hydrated transcript", "importance": "primary"},
+        {"from": "legacy-parser", "to": "transcripts", "kind": "read", "label": "Parse JSONL lines & tool calls", "importance": "primary"}
+      ],
+      "flows": [
+        {
+          "id": "cold-start-flow",
+          "name": "Cold-Start Deterministic Hydration",
+          "steps": [
+            {"seq": 1, "from": "web-ui", "to": "adapter", "label": "Init on DOMContentLoaded", "note": "Checks active conversation state"},
+            {"seq": 2, "from": "adapter", "to": "server-app", "label": "Fetch active conversation details", "note": "Returns hydrated messages or empty signal"},
+            {"seq": 3, "from": "server-app", "to": "legacy-parser", "label": "Read transcript & tools", "note": "Populates thinking, tool calls, and text"},
+            {"seq": 4, "from": "adapter", "to": "web-ui", "label": "Render chat feed & announce", "note": "Screen reader vocalizes active conversation title"}
+          ]
+        },
+        {
+          "id": "manage-conversation-flow",
+          "name": "Conversation Management (Pin / Rename / Delete)",
+          "steps": [
+            {"seq": 1, "from": "web-ui", "to": "web-ui", "label": "Open Options Dialog", "note": "Accessible modal with Rename, Pin, Delete"},
+            {"seq": 2, "from": "web-ui", "to": "adapter", "label": "Dispatch action (PATCH/DELETE)", "note": "Updates local UI optimistically"},
+            {"seq": 3, "from": "adapter", "to": "server-app", "label": "Persist metadata", "note": "Writes to conversation_metadata.json"},
+            {"seq": 4, "from": "server-app", "to": "metadata-ledger", "label": "Commit ledger update", "note": "Pins float to top on next render"}
+          ]
+        }
+      ],
+      "tradeoffs": {
+        "complexity": "Low-to-medium. Extends existing server and WebUI architecture without adding binary dependencies or databases.",
+        "durability": "High. Metadata is preserved across browser cache flushes on the server disk.",
+        "a11y": "Exceptional. Every action is exposed via semantic buttons and native dialog modals."
+      },
+      "ratings": {
+        "screen_reader_ergonomics": "high",
+        "implementation_safety": "high",
+        "performance_overhead": "low"
+      }
+    },
+    {
+      "id": "arch-2",
+      "name": "Client-Only IndexedDB Overlay",
+      "style": "Client-Centric Metadata Store",
+      "thesis": "Perform all renaming, pinning, and tool synthesis purely inside the browser's IndexedDB and JavaScript adapter without modifying the server or Python parsers.",
+      "canvas": {
+        "primaryFlow": [
+          "web-ui",
+          "adapter",
+          "client-db"
+        ]
+      },
+      "components": [
+        {
+          "id": "web-ui",
+          "name": "Companion Web UI",
+          "type": "client",
+          "zone": "app",
+          "position": {"x": 200, "y": 200},
+          "note": "Renders UI and handles actions",
+          "change": "modified"
+        },
+        {
+          "id": "adapter",
+          "name": "main-v1-adapter.js",
+          "type": "client",
+          "zone": "app",
+          "position": {"x": 450, "y": 200},
+          "note": "Parses tool strings on client and stores pins in IndexedDB",
+          "change": "modified"
+        },
+        {
+          "id": "client-db",
+          "name": "IndexedDB Store",
+          "type": "datastore",
+          "zone": "app",
+          "position": {"x": 700, "y": 200},
+          "note": "Stores custom titles and pins locally",
+          "change": "modified"
+        }
+      ],
+      "edges": [
+        {"from": "web-ui", "to": "adapter", "kind": "call", "label": "UI calls", "importance": "primary"},
+        {"from": "adapter", "to": "client-db", "kind": "readwrite", "label": "IndexedDB transactions", "importance": "primary"}
+      ],
+      "flows": [],
+      "tradeoffs": {
+        "complexity": "Low on backend, but high client-side DOM parsing burden.",
+        "durability": "Fragile. Any WebView cache clear or private browsing session wipes all custom titles and pins.",
+        "deletion": "Incomplete. Client cannot delete server brain directories."
+      },
+      "ratings": {
+        "screen_reader_ergonomics": "medium",
+        "implementation_safety": "medium",
+        "performance_overhead": "medium"
+      }
+    },
+    {
+      "id": "arch-3",
+      "name": "Full SQLite IPC & Database Engine",
+      "style": "Relational Central Store",
+      "thesis": "Migrate all conversation tracking, transcripts, and metadata into a centralized SQLite database in WAL mode on Termux.",
+      "canvas": {
+        "primaryFlow": [
+          "web-ui",
+          "server-app",
+          "sqlite-db"
+        ]
+      },
+      "components": [
+        {
+          "id": "web-ui",
+          "name": "Companion Web UI",
+          "type": "client",
+          "zone": "app",
+          "position": {"x": 200, "y": 200},
+          "note": "Renders UI",
+          "change": "modified"
+        },
+        {
+          "id": "server-app",
+          "name": "Companion Application Server",
+          "type": "service",
+          "zone": "termux",
+          "position": {"x": 480, "y": 200},
+          "note": "aiohttp server with SQLite DAO",
+          "change": "modified"
+        },
+        {
+          "id": "sqlite-db",
+          "name": "conversations.db (WAL)",
+          "type": "datastore",
+          "zone": "termux",
+          "position": {"x": 760, "y": 200},
+          "note": "Relational store for messages, tools, and pins",
+          "change": "new"
+        }
+      ],
+      "edges": [
+        {"from": "web-ui", "to": "server-app", "kind": "call", "label": "REST calls", "importance": "primary"},
+        {"from": "server-app", "to": "sqlite-db", "kind": "readwrite", "label": "SQL queries", "importance": "primary"}
+      ],
+      "flows": [],
+      "tradeoffs": {
+        "complexity": "High. Requires schema migrations, dual-write syncing with CLI JSONL logs, and lock management on Termux.",
+        "durability": "High.",
+        "performance": "Potential database lock bottlenecks under concurrent subagent runs."
+      },
+      "ratings": {
+        "screen_reader_ergonomics": "high",
+        "implementation_safety": "low",
+        "performance_overhead": "medium"
+      }
+    }
+  ],
+
+  "comparison": {
+    "recommended": "arch-1",
+    "rationale": "Architecture 1 provides the exact balance of durability and low operational overhead required for Android Termux. It introduces an atomic server-side JSON metadata ledger without introducing heavy relational database engines, fully preserves CLI raw logs while hydrating tool execution cards, and provides zero-stealth startup synchronisation with an accessible two-target conversation drawer item.",
+    "matrix": [
+      {"criterion": "Persistence Across Browser Clears", "arch1": "Yes (Server JSON)", "arch2": "No (Lost on clear)", "arch3": "Yes (SQLite)"},
+      {"criterion": "File Deletion Capability", "arch1": "Yes (Server removes brain dir)", "arch2": "No (Client cannot delete)", "arch3": "Yes (Server cleans DB & dir)"},
+      {"criterion": "Screen Reader Ergonomics", "arch1": "Optimal (2 focus stops)", "arch2": "Optimal", "arch3": "Optimal"},
+      {"criterion": "Termux Resource Footprint", "arch1": "< 1 MB RAM, 0 native deps", "arch2": "0 MB server, high client CPU", "arch3": "+8 MB RAM, SQLite locks"}
+    ]
+  },
+
+  "debt": {
+    "checked": [
+      "server/legacy_conversations.py",
+      "server/sessions.py",
+      "server/web/main-v1-adapter.js",
+      "server/web/main-ui.js",
+      "server/web/history.js"
+    ],
+    "findings": [
+      {
+        "id": "DEBT-01",
+        "severity": "high",
+        "category": "state-synchronization",
+        "description": "main-v1-adapter.js maintains session state in sessionStorage independently from main-ui.js active conversation tracking, allowing the UI to present a blank chat while the adapter routes prompts into a previous conversation."
+      },
+      {
+        "id": "DEBT-02",
+        "severity": "medium",
+        "category": "observability",
+        "description": "legacy_conversations.py transcript() discards tool_calls names and outputs, condensing them into an opaque integer tool_count, leaving resumed and failed runs completely unobservable."
+      },
+      {
+        "id": "DEBT-03",
+        "severity": "medium",
+        "category": "accessibility",
+        "description": "conv-card-item in main-ui.js splits the conversation title and resume button into separate elements, forcing screen readers through redundant non-interactive text nodes before reaching the action."
+      },
+      {
+        "id": "DEBT-04",
+        "severity": "low",
+        "category": "api-completeness",
+        "description": "No mutation endpoints exist for conversations: users cannot rename, pin, or delete conversation archives."
+      }
+    ]
+  },
+
+  "risks": [
+    {
+      "risk": "Accidental deletion of active conversation directory",
+      "mitigation": "Before unlinking brain folder, server verifies if session is active; if active, it gracefully terminates the session and unregisters the process."
+    },
+    {
+      "risk": "Large transcripts with 100+ tool calls slowing down drawer resume",
+      "mitigation": "Hydration bounds tool previews to 25 items and clamps string previews to 500 characters per tool."
+    }
+  ],
+
+  "nextSteps": [
+    "Step 1: Implement server/conversation_metadata.py and integrate with server/application.py (PATCH / DELETE / GET).",
+    "Step 2: Upgrade LegacyConversations.transcript() to hydrate tool_calls into structured message tools array.",
+    "Step 3: Update main-v1-adapter.js to handle deterministic cold-start hydration and conversation mutation API calls.",
+    "Step 4: Refactor conversations drawer in main-ui.js and main-ui.css to render unified card buttons with adjacent accessible 3-action options menu.",
+    "Step 5: Run full test verification suites (run_backend_tests.py, run_ui_tests.cjs, run_tests.py) to achieve 100% pass."
+  ],
+
+  "adr": {
+    "title": "ADR-002: Deterministic Session Startup, First-Class Tool Telemetry, and Accessible Conversation Management",
+    "status": "proposed",
+    "date": "2026-10-30",
+    "context": "Companion users suffered from silent session pollution on startup, lack of visibility into agent tool executions upon resuming failed runs, and a disjointed conversation drawer lacking rename, pin, and delete actions.",
+    "decision": "Adopt Architecture 1: Implement a server-side JSON metadata ledger, parse full tool calls in transcript hydration, enforce explicit cold-start synchronization, and introduce unified two-target accessible conversation cards with dedicated options menus.",
+    "consequences": {
+      "positive": [
+        "Eliminates silent prompt pollution into old conversations",
+        "Provides 100% transparent visibility into executed tools and terminal failure states",
+        "Enables renaming, pinning to top, and safe deletion of conversations",
+        "Significantly improves TalkBack and Jieshuo navigation with unified cards and ARIA dialogs"
+      ],
+      "negative": [
+        "Adds one JSON metadata ledger file to the server data directory",
+        "Requires syncing client IndexedDB cache on mutation operations"
+      ]
+    }
+  }
+}

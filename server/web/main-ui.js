@@ -762,6 +762,13 @@ await window.mainV1.ready;
     const btnCloseConversations = document.getElementById('btn-close-conversations');
     const btnCloseConversationsTop = document.getElementById('btn-close-conversations-top');
     const conversationsListContainer = document.getElementById('conversations-list-container');
+    const convOptionsDialog = document.getElementById('conv-options-dialog');
+    const btnCloseConvOptions = document.getElementById('btn-close-conv-options');
+    const btnCloseConvOptionsTop = document.getElementById('btn-close-conv-options-top');
+    const btnConvOptRename = document.getElementById('btn-conv-opt-rename');
+    const btnConvOptPin = document.getElementById('btn-conv-opt-pin');
+    const btnConvOptDelete = document.getElementById('btn-conv-opt-delete');
+    let selectedOptionConversation = null;
     const valSessionTitle = document.getElementById('val-session-title');
     const valRam = document.getElementById('val-ram');
     const fillRam = document.getElementById('fill-ram');
@@ -1625,6 +1632,8 @@ await window.mainV1.ready;
       const shouldContinue = !isForcedNew;
       forceNewSession = false;
 
+      let streamWatchdog = null;
+
       try {
         const payload = {
           prompt: finalPromptToSend,
@@ -1648,6 +1657,49 @@ await window.mainV1.ready;
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
         let buffer = '';
+        let lastEventReceivedAt = Date.now();
+
+        // Resilient Stream Watchdog: Prevents infinite loading ("جاري التحميل / التفكير") if SSE hangs
+        streamWatchdog = setInterval(async () => {
+          if (!isAiGenerating) {
+            clearInterval(streamWatchdog);
+            return;
+          }
+          const idleMs = Date.now() - lastEventReceivedAt;
+          if (idleMs >= 8000 && currentActiveConversationId) {
+            try {
+              const res = await window.mainV1Fetch('/api/ai/conversation?id=' + encodeURIComponent(currentActiveConversationId));
+              if (res.ok) {
+                const convData = await res.json();
+                const lastAgent = (convData.messages || []).filter(m => m.role === 'agent').pop();
+                if (lastAgent) {
+                  let recovered = false;
+                  if (lastAgent.text && lastAgent.text.length >= accumulatedText.length) {
+                    accumulatedText = lastAgent.text;
+                    recovered = true;
+                  }
+                  if (lastAgent.thinking && !accumulatedThinking) {
+                    accumulatedThinking = lastAgent.thinking;
+                    if (thinkingBody) thinkingBody.innerHTML = renderMarkdown(accumulatedThinking);
+                  }
+                  if (lastAgent.terminal_status || (recovered && lastAgent.text.trim().length > 0)) {
+                    clearInterval(streamWatchdog);
+                    scheduleAiRender(true);
+                    aiCard.classList.remove('generating');
+                    if (aiTitle) aiTitle.textContent = 'إجابة الوكيل الذكي:';
+                    isAiGenerating = false;
+                    if (aiAbortController) {
+                      try { aiAbortController.abort(); } catch(e) {}
+                      aiAbortController = null;
+                    }
+                    announce('تم استرداد وإكمال رد الوكيل بنجاح من سجل الجلسة.');
+                    playSuccessChime();
+                  }
+                }
+              }
+            } catch (wErr) {}
+          }
+        }, 4000);
 
         while (true) {
           const { done, value } = await reader.read();
@@ -1663,6 +1715,7 @@ await window.mainV1.ready;
               if (!jsonStr) continue;
               try {
                 const data = JSON.parse(jsonStr);
+                lastEventReceivedAt = Date.now();
 
                 // 0) Session Init event
                 if (data.type === 'init' && data.conversation_id) {
@@ -1920,10 +1973,23 @@ await window.mainV1.ready;
                 }
                 // D) Error event
                 else if (data.type === 'error') {
-                  const errorMsg = '[خطأ: ' + (data.message || '') + ']';
-                  if (!accumulatedText.includes(errorMsg)) {
-                    accumulatedText += (accumulatedText ? '\n' : '') + errorMsg;
-                    scheduleAiRender(true);
+                  const rawMsg = data.message || '';
+                  if (rawMsg.includes('تعذر استعادة البث') && currentActiveConversationId) {
+                    window.mainV1Fetch('/api/ai/conversation?id=' + encodeURIComponent(currentActiveConversationId))
+                      .then(r => r.json())
+                      .then(convData => {
+                        const lastAgent = (convData.messages || []).filter(m => m.role === 'agent').pop();
+                        if (lastAgent && lastAgent.text) {
+                          accumulatedText = lastAgent.text;
+                          scheduleAiRender(true);
+                        }
+                      }).catch(() => {});
+                  } else {
+                    const errorMsg = '[خطأ: ' + rawMsg + ']';
+                    if (!accumulatedText.includes(errorMsg)) {
+                      accumulatedText += (accumulatedText ? '\n' : '') + errorMsg;
+                      scheduleAiRender(true);
+                    }
                   }
                 }
                 // E) Artifact event
@@ -2068,35 +2134,42 @@ await window.mainV1.ready;
           scheduleAiRender(true);
           announce('تم إيقاف الرد');
         } else {
-          if (accumulatedText && accumulatedText.trim()) {
-            aiContentDiv.innerHTML = renderMarkdown(accumulatedText) +
-              '<div class="connection-notice main-style-152">' +
-                '⚠️ حدث انقطاع مؤقت في تدفق الشبكة (' + escapeHtml(err.message) + '). الإجابة المكتملة محفوظة في سجل الجلسة، وجارٍ استعادتها تلقائياً...' +
-              '</div>';
-            // Auto-recovery: query conversation transcript after 2.5s to fetch completed response
-            setTimeout(async () => {
-              if (currentActiveConversationId) {
-                try {
-                  const res = await window.mainV1Fetch('/api/ai/conversation?id=' + encodeURIComponent(currentActiveConversationId));
-                  if (res.ok) {
-                    const convData = await res.json();
-                    const lastAgent = (convData.messages || []).filter(m => m.role === 'agent').pop();
-                    if (lastAgent && lastAgent.text && lastAgent.text.length >= accumulatedText.length) {
-                      accumulatedText = lastAgent.text;
-                      scheduleAiRender(true);
-                      announce('تم استرداد وتحديث كامل إجابة الوكيل بنجاح من السيرفر');
-                    }
-                  }
-                } catch(e) {}
+          const noticeMsg = accumulatedText && accumulatedText.trim()
+            ? '⚠️ حدث انقطاع مؤقت في تدفق الشبكة (' + escapeHtml(err.message) + '). الإجابة المكتملة محفوظة في سجل الجلسة، وجارٍ استعادتها تلقائياً...'
+            : '⏳ جارٍ استرداد رد الوكيل من الخادم (' + escapeHtml(err.message) + ')...';
+          aiContentDiv.innerHTML = (accumulatedText && accumulatedText.trim() ? renderMarkdown(accumulatedText) : '') +
+            '<div class="connection-notice main-style-152">' + noticeMsg + '</div>';
+
+          // Resilient auto-recovery: poll conversation transcript up to 6 times (every 2s) to fetch completed response
+          let retryCount = 0;
+          const recoveryTimer = setInterval(async () => {
+            retryCount++;
+            if (retryCount > 6 || !currentActiveConversationId) {
+              clearInterval(recoveryTimer);
+              return;
+            }
+            try {
+              const res = await window.mainV1Fetch('/api/ai/conversation?id=' + encodeURIComponent(currentActiveConversationId));
+              if (res.ok) {
+                const convData = await res.json();
+                const lastAgent = (convData.messages || []).filter(m => m.role === 'agent').pop();
+                if (lastAgent && lastAgent.text && lastAgent.text.trim().length > 0) {
+                  clearInterval(recoveryTimer);
+                  accumulatedText = lastAgent.text;
+                  scheduleAiRender(true);
+                  announce('تم استرداد وتحديث كامل إجابة الوكيل بنجاح من السيرفر');
+                  playSuccessChime();
+                }
               }
-            }, 2500);
-          } else {
-            aiContentDiv.innerHTML = '<p class="main-style-153">⚠️ تعذر الاتصال بالوكيل: ' + escapeHtml(err.message) + '</p>';
-            announce('تعذر الاتصال بالوكيل');
-          }
+            } catch(e) {}
+          }, 2000);
         }
         aiCard.classList.remove('generating');
       } finally {
+        if (streamWatchdog) {
+          clearInterval(streamWatchdog);
+          streamWatchdog = null;
+        }
         if (renderRafId) {
           cancelAnimationFrame(renderRafId);
           clearTimeout(renderRafId);
@@ -3598,27 +3671,43 @@ await window.mainV1.ready;
           item.className = 'conv-card-item' + (isCurrent ? ' active' : '');
           item.setAttribute('role', 'listitem');
 
-          const ariaText = isCurrent
-            ? `المحادثة الحالية المفتوحة: ${c.title}`
-            : `استئناف المحادثة: ${c.title}${c.date ? '، تاريخ ' + c.date : ''}`;
+          const ariaText = (c.is_pinned ? 'محادثة مثبتة: ' : '') +
+            (isCurrent ? `المحادثة الحالية المفتوحة: ${c.title}` : `استئناف المحادثة: ${c.title}`) +
+            (c.date ? `، تاريخ ${c.date}` : '') + `، ${c.steps} رسالة وخطوة. اضغط لفتح المحادثة`;
 
           item.innerHTML = `
-            <div class="conv-card-info">
-              <div class="conv-card-title">${escapeHtml(c.title)}</div>
-              <div class="conv-card-meta">
-                <span>📅 ${escapeHtml(c.date || 'بدون تاريخ')}</span>
-                <span>🔢 ${c.steps} رسالة وخطوة</span>
-                ${isCurrent ? '<span class="main-style-177">● المحادثة المفتوحة حالياً</span>' : ''}
+            <button type="button" class="btn-conv-main" aria-label="${escapeHtml(ariaText)}">
+              <div class="conv-card-info">
+                <div class="conv-card-title">
+                  ${c.is_pinned ? '<span class="conv-pin-tag" aria-hidden="true">📌 </span>' : ''}${escapeHtml(c.title)}
+                </div>
+                <div class="conv-card-meta">
+                  ${c.is_pinned ? '<span class="conv-pin-tag">مثبتة</span>' : ''}
+                  <span>📅 ${escapeHtml(c.date || 'بدون تاريخ')}</span>
+                  <span>🔢 ${c.steps} خطوة</span>
+                  ${isCurrent ? '<span class="main-style-177">● المفتوحة حالياً</span>' : ''}
+                </div>
               </div>
-            </div>
-            <button type="button" class="btn-resume-conv" data-id="${escapeHtml(c.id)}" data-title="${escapeHtml(c.title)}" aria-label="${escapeHtml(ariaText)}">
-              ${isCurrent ? 'مفتوحة الآن' : 'استئناف 💬'}
+            </button>
+            <button type="button" class="btn-conv-options" aria-label="خيارات محادثة ${escapeHtml(c.title)}" aria-haspopup="dialog">
+              ⚙️ خيارات
             </button>
           `;
 
-          const resumeBtn = item.querySelector('.btn-resume-conv');
-          resumeBtn.addEventListener('click', async () => {
+          const mainBtn = item.querySelector('.btn-conv-main');
+          mainBtn.addEventListener('click', async () => {
             await resumeConversation(c.id, c.title);
+            if (conversationsDialog) conversationsDialog.close();
+          });
+
+          const optBtn = item.querySelector('.btn-conv-options');
+          optBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            selectedOptionConversation = c;
+            if (btnConvOptPin) {
+              btnConvOptPin.textContent = c.is_pinned ? '📌 إلغاء تثبيت المحادثة' : '📌 تثبيت المحادثة في الأعلى';
+            }
+            if (convOptionsDialog) convOptionsDialog.showModal();
           });
 
           conversationsListContainer.appendChild(item);
@@ -3681,6 +3770,43 @@ await window.mainV1.ready;
               `;
             }
 
+            let toolsHtml = '';
+            if (!isUser && Array.isArray(msg.tools) && msg.tools.length > 0) {
+              const toolsCount = msg.tools.length;
+              toolsHtml = `
+                <div class="thinking-accordion tools-accordion" role="region" aria-label="أدوات وعمليات الوكيل المنفذة" style="margin-top:8px;">
+                  <button type="button" class="thinking-header tools-header" aria-expanded="false" aria-label="الأدوات المنفذة (${toolsCount} أداة، اضغط للعرض)">
+                    <div class="thinking-title-wrapper">
+                      <span aria-hidden="true">🛠️</span>
+                      <span>الأدوات والعمليات المنفذة</span>
+                      <span class="thinking-badge">${toolsCount} أداة</span>
+                    </div>
+                    <span class="thinking-toggle-icon" aria-hidden="true">▼</span>
+                  </button>
+                  <div class="thinking-body tools-body" hidden dir="auto">
+                    ${msg.tools.map(t => `
+                      <div class="tool-result-card" style="margin-bottom:8px; border:1px solid rgba(255,255,255,0.1); border-radius:6px; padding:8px; background:rgba(0,0,0,0.2);">
+                        <div style="font-weight:bold; color:var(--accent-cyan); display:flex; justify-content:space-between;">
+                          <span>⚡ ${escapeHtml(t.name || 'أداة')}</span>
+                          <span style="font-size:0.8rem; color:var(--text-muted);">${escapeHtml(t.status || 'منفذة')}</span>
+                        </div>
+                        ${t.summary ? `<div style="font-size:0.85rem; color:var(--text-main); margin-top:3px;">${escapeHtml(t.summary)}</div>` : ''}
+                        ${t.preview ? `<pre style="font-size:0.78rem; background:rgba(0,0,0,0.3); padding:4px; border-radius:4px; overflow-x:auto; max-height:120px; margin-top:4px;">${escapeHtml(t.preview)}</pre>` : ''}
+                      </div>
+                    `).join('')}
+                  </div>
+                  <div class="thinking-footer tools-footer" hidden>
+                    <button type="button" class="btn-close-tools" aria-label="إغلاق صندوق الأدوات">✕ إغلاق صندوق الأدوات</button>
+                  </div>
+                </div>
+              `;
+            }
+
+            let statusBannerHtml = '';
+            if (!isUser && (msg.terminal_status === 'completed_tools' || (!msg.text && Array.isArray(msg.tools) && msg.tools.length > 0))) {
+              statusBannerHtml = `<div class="terminal-status-banner" style="background:rgba(0,240,255,0.08); border:1px solid rgba(0,240,255,0.3); border-radius:6px; padding:6px 10px; margin-top:8px; font-size:0.85rem; color:var(--accent-cyan);">⚡ نفذ الوكيل العمليات والأدوات بنجاح.</div>`;
+            }
+
             card.innerHTML = `
               <header class="msg-header">
                 <div class="msg-header-left">
@@ -3690,19 +3816,21 @@ await window.mainV1.ready;
                 ${msg.time ? `<span class="msg-timestamp">${escapeHtml((String(msg.time).split('T')[1] || '').slice(0,5))}</span>` : ''}
               </header>
               ${thinkingHtml}
+              ${toolsHtml}
               <div class="msg-content markdown-body" dir="rtl">
                 ${isUser ? escapeHtml(msg.text) : (renderMarkdown(msg.text) || '<p class="main-style-179">(لا يوجد نص إضافي في هذا الرد)</p>')}
               </div>
+              ${statusBannerHtml}
             `;
             aiChatFeed.appendChild(card);
 
             // Bind toggle events if thinking accordion exists
             if (!isUser && msg.thinking) {
-              const tHeader = card.querySelector('.thinking-header');
-              const tBody = card.querySelector('.thinking-body');
-              const tFooter = card.querySelector('.thinking-footer');
+              const tHeader = card.querySelector('.thinking-header:not(.tools-header)');
+              const tBody = card.querySelector('.thinking-body:not(.tools-body)');
+              const tFooter = card.querySelector('.thinking-footer:not(.tools-footer)');
               const tClose = card.querySelector('.btn-close-thinking');
-              const tIcon = card.querySelector('.thinking-toggle-icon');
+              const tIcon = tHeader?.querySelector('.thinking-toggle-icon');
               const doToggle = (open) => {
                 const willOpen = (typeof open === 'boolean') ? open : (tHeader.getAttribute('aria-expanded') !== 'true');
                 tHeader.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
@@ -3725,6 +3853,35 @@ await window.mainV1.ready;
               }
               if (tClose) {
                 tClose.addEventListener('click', () => doToggle(false));
+              }
+            }
+
+            // Bind toggle events if tools accordion exists
+            if (!isUser && Array.isArray(msg.tools) && msg.tools.length > 0) {
+              const tlHeader = card.querySelector('.tools-header');
+              const tlBody = card.querySelector('.tools-body');
+              const tlFooter = card.querySelector('.tools-footer');
+              const tlClose = card.querySelector('.btn-close-tools');
+              const tlIcon = tlHeader?.querySelector('.thinking-toggle-icon');
+              if (tlHeader && tlBody) {
+                const doToolsToggle = (open) => {
+                  const willOpen = (typeof open === 'boolean') ? open : (tlHeader.getAttribute('aria-expanded') !== 'true');
+                  tlHeader.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+                  tlHeader.setAttribute('aria-label', willOpen ? 'الأدوات المنفذة (مفتوح، اضغط للإخفاء)' : 'الأدوات المنفذة (مغلق، اضغط للعرض)');
+                  if (tlIcon) tlIcon.textContent = willOpen ? '▲' : '▼';
+                  if (willOpen) {
+                    tlBody.removeAttribute('hidden');
+                    if (tlFooter) tlFooter.removeAttribute('hidden');
+                    announce('تم فتح صندوق الأدوات المنفذة');
+                  } else {
+                    tlBody.setAttribute('hidden', '');
+                    if (tlFooter) tlFooter.setAttribute('hidden', '');
+                    announce('تم إغلاق صندوق الأدوات');
+                    tlHeader.focus();
+                  }
+                };
+                tlHeader.addEventListener('click', () => doToolsToggle());
+                if (tlClose) tlClose.addEventListener('click', () => doToolsToggle(false));
               }
             }
           });
@@ -3827,6 +3984,93 @@ await window.mainV1.ready;
     }
     if (btnCloseConversationsTop && conversationsDialog) {
       btnCloseConversationsTop.addEventListener('click', () => conversationsDialog.close());
+    }
+
+    if (btnCloseConvOptions && convOptionsDialog) {
+      btnCloseConvOptions.addEventListener('click', () => convOptionsDialog.close());
+    }
+    if (btnCloseConvOptionsTop && convOptionsDialog) {
+      btnCloseConvOptionsTop.addEventListener('click', () => convOptionsDialog.close());
+    }
+    if (btnConvOptRename && convOptionsDialog) {
+      btnConvOptRename.addEventListener('click', async () => {
+        if (!selectedOptionConversation) return;
+        convOptionsDialog.close();
+        const currentTitle = selectedOptionConversation.title || '';
+        const newTitle = window.prompt('إعادة تسمية المحادثة:', currentTitle);
+        if (newTitle && newTitle.trim() && newTitle.trim() !== currentTitle) {
+          const trimmed = newTitle.trim();
+          try {
+            const res = await window.mainV1Fetch('/api/ai/conversation/manage', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({action: 'rename', id: selectedOptionConversation.id, title: trimmed})
+            });
+            if (res.ok) {
+              if (currentActiveConversationId === selectedOptionConversation.id) {
+                if (valSessionTitle) valSessionTitle.textContent = trimmed.length > 25 ? trimmed.slice(0, 22) + '...' : trimmed;
+                if (settingsActiveConv) settingsActiveConv.textContent = trimmed;
+              }
+              announce('تمت إعادة تسمية المحادثة إلى: ' + trimmed);
+              await loadConversationsList();
+            } else {
+              announce('فشل تعديل عنوان المحادثة');
+            }
+          } catch(e) {
+            announce('خطأ أثناء إعادة التسمية');
+          }
+        }
+      });
+    }
+    if (btnConvOptPin && convOptionsDialog) {
+      btnConvOptPin.addEventListener('click', async () => {
+        if (!selectedOptionConversation) return;
+        convOptionsDialog.close();
+        const isPinned = Boolean(selectedOptionConversation.is_pinned);
+        const action = isPinned ? 'unpin' : 'pin';
+        try {
+          const res = await window.mainV1Fetch('/api/ai/conversation/manage', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action, id: selectedOptionConversation.id})
+          });
+          if (res.ok) {
+            announce(isPinned ? 'تم إلغاء تثبيت المحادثة' : 'تم تثبيت المحادثة في أعلى القائمة');
+            await loadConversationsList();
+          } else {
+            announce('تعذر تعديل حالة التثبيت');
+          }
+        } catch(e) {
+          announce('خطأ أثناء تعديل التثبيت');
+        }
+      });
+    }
+    if (btnConvOptDelete && convOptionsDialog) {
+      btnConvOptDelete.addEventListener('click', async () => {
+        if (!selectedOptionConversation) return;
+        convOptionsDialog.close();
+        const confirmed = window.confirm(`هل أنت متأكد من حذف محادثة "${selectedOptionConversation.title}" نهائياً؟`);
+        if (confirmed) {
+          try {
+            const res = await window.mainV1Fetch('/api/ai/conversation/manage', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({action: 'delete', id: selectedOptionConversation.id})
+            });
+            if (res.ok) {
+              announce('تم حذف المحادثة نهائياً');
+              if (currentActiveConversationId === selectedOptionConversation.id) {
+                if (btnNewAiChat) btnNewAiChat.click();
+              }
+              await loadConversationsList();
+            } else {
+              announce('تعذر حذف المحادثة');
+            }
+          } catch(e) {
+            announce('خطأ أثناء حذف المحادثة');
+          }
+        }
+      });
     }
 
     // ==========================================
@@ -6872,8 +7116,27 @@ await window.mainV1.ready;
 
     // Report immediately on load
     reportVisibility(document.visibilityState === 'visible');
-    const savedConversation = window.mainV1.currentConversation();
-    if (savedConversation) resumeConversation(savedConversation, 'المحادثة المحفوظة');
+    (async () => {
+      try {
+        const savedConversation = window.mainV1 ? window.mainV1.currentConversation() : null;
+        if (savedConversation) {
+          await resumeConversation(savedConversation, 'المحادثة المحفوظة');
+        } else {
+          // Cold-start auto-hydration: automatically open and render the most recent conversation
+          const res = await window.mainV1Fetch('/api/ai/conversations');
+          if (res.ok) {
+            const data = await res.json();
+            const first = (data.conversations || [])[0];
+            if (first && !forceNewSession) {
+              await resumeConversation(first.id, first.title);
+              announce('تم فتح آخر محادثة: ' + first.title);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Cold start auto-hydration error:', e);
+      }
+    })();
   }
 
   if (document.readyState === 'loading') {

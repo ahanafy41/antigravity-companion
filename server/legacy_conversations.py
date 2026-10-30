@@ -33,7 +33,7 @@ class LegacyConversations:
             raise FileNotFoundError("Legacy transcript does not exist")
         return path
 
-    def listing(self):
+    def listing(self, metadata_store=None):
         try:
             folders = list(self.root.iterdir())
         except FileNotFoundError:
@@ -50,9 +50,14 @@ class LegacyConversations:
         conversations = []
         import datetime
         for cid, tfile, mtime in candidates[:100]:
+            if metadata_store and metadata_store.is_deleted(cid):
+                continue
             try:
                 title = ""
                 step_count = 0
+                meta = metadata_store.get(cid) if metadata_store else {}
+                if meta and meta.get("title"):
+                    title = meta["title"]
                 with tfile.open("r", encoding="utf-8-sig", errors="ignore") as f:
                     for line in f:
                         step_count += 1
@@ -80,6 +85,8 @@ class LegacyConversations:
                 if not title:
                     title = "محادثة سابقة"
                 dt = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+                is_pinned = bool(meta.get("is_pinned", False)) if meta else False
+                pinned_at = meta.get("pinned_at") if meta else None
                 conversations.append(
                     {
                         "conversation_id": cid,
@@ -88,6 +95,8 @@ class LegacyConversations:
                         "date": dt,
                         "mtime": mtime,
                         "steps": step_count,
+                        "is_pinned": is_pinned,
+                        "pinned_at": pinned_at,
                     }
                 )
             except Exception as failure:
@@ -95,6 +104,10 @@ class LegacyConversations:
                     "Legacy transcript skipped: " + type(failure).__name__,
                     file=sys.stderr,
                 )
+        conversations.sort(
+            key=lambda c: (1 if c.get("is_pinned") else 0, c.get("pinned_at") or c.get("mtime") or 0),
+            reverse=True,
+        )
         return conversations
 
     def transcript(self, conversation_id):
@@ -145,24 +158,58 @@ class LegacyConversations:
                         pass
 
                 stype = data.get("type")
+                source = data.get("source", "")
                 if stype == "USER_INPUT":
-                    if current_agent_turn:
-                        messages.append(current_agent_turn)
-                        current_agent_turn = None
                     c = data.get("content", "")
-                    if "<USER_REQUEST>" in c:
-                        c = c.split("<USER_REQUEST>")[1].split("</USER_REQUEST>")[0].strip()
-                    if c:
-                        messages.append({
-                            "id": f"{conversation_id}_{idx}",
-                            "role": "user",
-                            "text": c,
-                            "time": data.get("created_at", ""),
-                        })
+                    is_explicit_user = "<USER_REQUEST>" in c or source == "USER_EXPLICIT" or not (current_agent_turn and current_agent_turn.get("tools"))
+                    if is_explicit_user:
+                        if current_agent_turn:
+                            messages.append(current_agent_turn)
+                            current_agent_turn = None
+                        user_req = c
+                        if "<USER_REQUEST>" in c:
+                            user_req = c.split("<USER_REQUEST>")[1].split("</USER_REQUEST>")[0].strip()
+                        if user_req:
+                            messages.append({
+                                "id": f"{conversation_id}_{idx}",
+                                "role": "user",
+                                "text": user_req,
+                                "time": data.get("created_at", ""),
+                            })
+                    else:
+                        # Tool execution output fed back as USER_INPUT
+                        if current_agent_turn and current_agent_turn.get("tools"):
+                            last_tool = current_agent_turn["tools"][-1]
+                            if not last_tool.get("preview") and c:
+                                last_tool["preview"] = c[:500]
+                elif stype == "GENERIC":
+                    # Tool stdout/stderr or command output
+                    c = data.get("content", "")
+                    if current_agent_turn and current_agent_turn.get("tools") and c:
+                        last_tool = current_agent_turn["tools"][-1]
+                        if not last_tool.get("preview"):
+                            last_tool["preview"] = c[:500]
                 elif stype == "PLANNER_RESPONSE":
                     c = data.get("content", "")
                     th = data.get("thinking", "")
                     tool_calls = data.get("tool_calls") or []
+                    extracted_tools = []
+                    for tc in tool_calls:
+                        t_name = tc.get("name") or "tool"
+                        t_args = tc.get("args") or {}
+                        if isinstance(t_args, str):
+                            try:
+                                t_args = json.loads(t_args)
+                            except Exception:
+                                t_args = {}
+                        summary = t_args.get("toolSummary") or t_args.get("description") or t_args.get("CommandLine") or t_args.get("Path") or t_name
+                        extracted_tools.append({
+                            "name": t_name,
+                            "args": t_args,
+                            "summary": str(summary).strip('"\''),
+                            "status": "completed",
+                        })
+
                     if current_agent_turn is None:
                         current_agent_turn = {
                             "id": f"{conversation_id}_{idx}",
@@ -170,6 +217,7 @@ class LegacyConversations:
                             "text": c,
                             "thinking": th,
                             "tool_count": len(tool_calls),
+                            "tools": extracted_tools,
                             "time": data.get("created_at", ""),
                         }
                     else:
@@ -186,6 +234,10 @@ class LegacyConversations:
                         current_agent_turn["tool_count"] = (
                             current_agent_turn.get("tool_count", 0) + len(tool_calls)
                         )
+                        if extracted_tools:
+                            prev_tools = current_agent_turn.get("tools", [])
+                            prev_tools.extend(extracted_tools)
+                            current_agent_turn["tools"] = prev_tools
                         current_agent_turn["time"] = data.get("created_at", "")
 
                 usage = data.get("usage")
@@ -197,8 +249,10 @@ class LegacyConversations:
 
         for msg in messages:
             if msg.get("role") == "agent" and not msg.get("text"):
-                t_count = msg.get("tool_count", 0)
+                tools_list = msg.get("tools") or []
+                t_count = msg.get("tool_count", 0) or len(tools_list)
                 if t_count > 0:
+                    msg["terminal_status"] = "completed_tools"
                     msg["text"] = f"*(استدعى الوكيل {t_count} عملية/أداة في هذه الخطوة)*"
                 elif msg.get("thinking"):
                     msg["text"] = "*(خطوات تفكير وتحليل فقط)*"
