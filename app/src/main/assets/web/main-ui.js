@@ -798,6 +798,7 @@ await window.mainV1.ready;
     let isAiGenerating = false;
     let forceNewSession = false;
     let aiAbortController = null;
+    let isUserExplicitAbort = false;
     let audioCtx = null;
 
     function playBeep(freq, dur) {
@@ -1627,6 +1628,7 @@ await window.mainV1.ready;
       }
 
       aiAbortController = new AbortController();
+      isUserExplicitAbort = false;
 
       const isForcedNew = forceNewSession || (checkContinue ? !checkContinue.checked : false);
       const shouldContinue = !isForcedNew;
@@ -2130,9 +2132,13 @@ await window.mainV1.ready;
 
       } catch (err) {
         if (err.name === 'AbortError') {
-          accumulatedText += '\n\n*(تم إيقاف الرد بواسطة المستخدم)*';
-          scheduleAiRender(true);
-          announce('تم إيقاف الرد');
+          if (isUserExplicitAbort) {
+            accumulatedText += '\n\n*(تم إيقاف الرد بواسطة المستخدم)*';
+            scheduleAiRender(true);
+            announce('تم إيقاف الرد');
+          } else {
+            scheduleAiRender(true);
+          }
         } else {
           const noticeMsg = accumulatedText && accumulatedText.trim()
             ? '⚠️ حدث انقطاع مؤقت في تدفق الشبكة (' + escapeHtml(err.message) + '). الإجابة المكتملة محفوظة في سجل الجلسة، وجارٍ استعادتها تلقائياً...'
@@ -2185,6 +2191,7 @@ await window.mainV1.ready;
         scheduleAiRender(true);
         isAiGenerating = false;
         aiAbortController = null;
+        isUserExplicitAbort = false;
         updateSystemUsage();
         if (currentActiveConversationId) {
           window.mainV1Fetch('/api/ai/conversation?id=' + encodeURIComponent(currentActiveConversationId))
@@ -2234,6 +2241,7 @@ await window.mainV1.ready;
         }
         playBeep(440, 0.15);
         announce('جارٍ إيقاف المهمة الجارية...');
+        isUserExplicitAbort = true;
         if (aiAbortController) {
           aiAbortController.abort();
           aiAbortController = null;
@@ -2250,7 +2258,10 @@ await window.mainV1.ready;
       btnNewAiChat.addEventListener('click', async () => {
         const closed = await window.mainV1Fetch('/api/ai/chat/reset', { method: 'POST' });
         if (!closed.ok) { announce((await closed.json()).error); return; }
-        if (aiAbortController) aiAbortController.abort();
+        if (aiAbortController) {
+          isUserExplicitAbort = true;
+          aiAbortController.abort();
+        }
         forceNewSession = true;
         currentActiveConversationId = null;
         knownArtifacts.clear();
