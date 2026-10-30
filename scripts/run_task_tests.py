@@ -256,6 +256,74 @@ class TaskTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(agents), 1)
         self.assertEqual(agents[0]["type_name"], "Design Reviewer")
 
+    async def test_hierarchical_child_transcript_polling(self):
+        run_id = self.start()
+        await self.wait_task(run_id)
+        run = self.sessions.runs[run_id]
+        session = self.sessions.sessions[run["session_id"]]
+        parent_cid = "p" * 32
+        child_cid = "c" * 32
+        session["conversation_id"] = parent_cid
+
+        brain_dir = Path(self.folder.name) / "brain"
+        parent_logs = brain_dir / parent_cid / ".system_generated" / "logs"
+        parent_logs.mkdir(parents=True, exist_ok=True)
+        child_logs = brain_dir / child_cid / ".system_generated" / "logs"
+        child_logs.mkdir(parents=True, exist_ok=True)
+
+        parent_t = parent_logs / "transcript.jsonl"
+        child_t = child_logs / "transcript.jsonl"
+
+        # Parent calls invoke_subagent
+        parent_t.write_text(
+            json.dumps({
+                "type": "PLANNER_RESPONSE",
+                "step_index": 1,
+                "tool_calls": [{
+                    "name": "invoke_subagent",
+                    "args": {"Role": "Research Analyst", "TypeName": "research", "Prompt": "Search web"}
+                }]
+            }) + "\n" +
+            json.dumps({
+                "type": "GENERIC",
+                "step_index": 2,
+                "content": f'Created the following subagent:\n{{"conversationId": "{child_cid}"}}'
+            }) + "\n",
+            encoding="utf-8"
+        )
+
+        # Child calls search_web and gets result
+        child_t.write_text(
+            json.dumps({
+                "type": "PLANNER_RESPONSE",
+                "step_index": 1,
+                "tool_calls": [{
+                    "name": "search_web",
+                    "args": {"query": "Antigravity companion architecture"}
+                }]
+            }) + "\n" +
+            json.dumps({
+                "type": "GENERIC",
+                "step_index": 2,
+                "content": "Found 3 architectural guides."
+            }) + "\n",
+            encoding="utf-8"
+        )
+
+        sent_thinking = set()
+        self.sessions._drain_transcript(session, run, brain_dir, 0, sent_thinking)
+
+        # Check emitted events for child tool step
+        events = list(self.sessions.log(run_id).events)
+        tool_events = [e for e in events if e.get("event") == "tool"]
+        child_tool_events = [e for e in tool_events if e.get("data", {}).get("subagent_id") == child_cid]
+        self.assertTrue(len(child_tool_events) >= 1)
+        child_done = [e for e in child_tool_events if e.get("data", {}).get("state") == "DONE"]
+        self.assertEqual(len(child_done), 1)
+        self.assertEqual(child_done[0]["data"]["tool_name"], "search_web")
+        self.assertEqual(child_done[0]["data"]["subagent_role"], "Research Analyst")
+        self.assertIn("Found 3 architectural guides", child_done[0]["data"]["output"])
+
     async def test_unknown_id_does_not_mutate_owned_runs(self):
         with self.assertRaises(KeyError):
             await self.runtime.cancel("unknown")

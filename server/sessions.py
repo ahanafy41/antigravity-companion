@@ -8,6 +8,7 @@ import itertools
 import json
 import os
 from pathlib import Path
+import re
 import signal
 import time
 import uuid
@@ -778,8 +779,114 @@ class Sessions:
                                     "state": "DONE",
                                     "output": content,
                                 })
+                                if matched_tool.get("tool_name") == "invoke_subagent":
+                                    child_id = None
+                                    cid_match = re.search(r'["\']?conversationId["\']?\s*:\s*["\']([a-fA-F0-9-]{32,36})["\']', content)
+                                    if cid_match:
+                                        child_id = cid_match.group(1)
+                                    else:
+                                        cid_match_alt = re.search(r'["\']?conversation_id["\']?\s*:\s*["\']([a-fA-F0-9-]{32,36})["\']', content)
+                                        if cid_match_alt:
+                                            child_id = cid_match_alt.group(1)
+                                    if child_id:
+                                        t_args = matched_tool.get("parameters") or {}
+                                        role = str(t_args.get("Role") or t_args.get("role") or t_args.get("TypeName") or t_args.get("type_name") or "وكيل فرعي").strip().strip('"').strip("'")
+                                        type_name = str(t_args.get("TypeName") or t_args.get("type_name") or "subagent").strip().strip('"').strip("'")
+                                        prompt = str(t_args.get("Prompt") or t_args.get("prompt") or "").strip().strip('"').strip("'")
+                                        active_children = run.setdefault("active_children", {})
+                                        if child_id not in active_children:
+                                            active_children[child_id] = {
+                                                "cursor": 0,
+                                                "role": role,
+                                                "type": type_name,
+                                                "prompt": prompt,
+                                                "pending_tools": [],
+                                                "sent_thinking": set(),
+                                            }
                 except Exception:
                     pass
+
+            # Concurrently drain registered child subagents
+            active_children = run.get("active_children", {})
+            for child_cid, child_state in list(active_children.items()):
+                child_t_file = brain_dir / child_cid / ".system_generated" / "logs" / "transcript.jsonl"
+                if not child_t_file.exists():
+                    continue
+                try:
+                    c_lines = child_t_file.read_text(encoding="utf-8", errors="ignore").splitlines()
+                    c_last = child_state.get("cursor", 0)
+                    if len(c_lines) > c_last:
+                        for c_idx in range(c_last, len(c_lines)):
+                            c_raw = c_lines[c_idx].strip()
+                            if not c_raw:
+                                continue
+                            try:
+                                c_entry = json.loads(c_raw)
+                                c_etype = c_entry.get("type")
+                                if c_etype == "PLANNER_RESPONSE":
+                                    c_th = c_entry.get("thinking", "")
+                                    if c_th and c_th not in child_state["sent_thinking"]:
+                                        child_state["sent_thinking"].add(c_th)
+                                        self.emit(run, "thought", {
+                                            "text": c_th,
+                                            "subagent_id": child_cid,
+                                            "subagent_role": child_state["role"],
+                                            "subagent_type": child_state["type"],
+                                        })
+                                    for c_tc in (c_entry.get("tool_calls") or []):
+                                        c_tname = c_tc.get("name") or ""
+                                        c_targs = c_tc.get("args") or {}
+                                        if isinstance(c_targs, str):
+                                            try:
+                                                c_targs = json.loads(c_targs)
+                                            except Exception:
+                                                pass
+                                        c_step = {
+                                            "tool_name": c_tname,
+                                            "parameters": c_targs,
+                                            "step_index": c_entry.get("step_index"),
+                                            "subagent_id": child_cid,
+                                            "subagent_role": child_state["role"],
+                                            "subagent_type": child_state["type"],
+                                        }
+                                        child_state.setdefault("pending_tools", []).append(c_step)
+                                        self.emit(run, "tool", {
+                                            "step_index": c_step["step_index"],
+                                            "tool_name": c_tname,
+                                            "parameters": c_targs,
+                                            "state": "ACTIVE",
+                                            "subagent_id": child_cid,
+                                            "subagent_role": child_state["role"],
+                                            "subagent_type": child_state["type"],
+                                        })
+                                elif c_etype in ("GENERIC", "TOOL_RESULT", "TOOL_OUTPUT"):
+                                    c_raw_out = c_entry.get("content") or ""
+                                    if isinstance(c_raw_out, (dict, list)):
+                                        c_raw_out = json.dumps(c_raw_out, ensure_ascii=False)
+                                    c_out = str(c_raw_out).strip()
+                                    if c_out:
+                                        MAX_TOOL_OUTPUT = 16384
+                                        if len(c_out) > MAX_TOOL_OUTPUT:
+                                            c_out = c_out[:MAX_TOOL_OUTPUT] + "\n... [تم اختصار العرض المباشر لحماية سرعة وأداء التطبيق]"
+                                        c_pending = child_state.get("pending_tools", [])
+                                        if c_pending:
+                                            c_matched = c_pending.pop(0)
+                                            self.emit(run, "tool", {
+                                                "step_index": c_matched.get("step_index"),
+                                                "tool_name": c_matched.get("tool_name"),
+                                                "parameters": c_matched.get("parameters", {}),
+                                                "state": "DONE",
+                                                "output": c_out,
+                                                "subagent_id": child_cid,
+                                                "subagent_role": child_state["role"],
+                                                "subagent_type": child_state["type"],
+                                            })
+                            except Exception:
+                                pass
+                        child_state["cursor"] = len(c_lines)
+                except Exception:
+                    pass
+
             return len(lines)
         except Exception:
             return last_line
