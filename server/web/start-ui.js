@@ -245,6 +245,24 @@ function reportError(error) {
             }
         }
 
+        async function syncServerFiles() {
+            announce('جارٍ استخراج ملفات السيرفر وتحديث Termux...');
+            try {
+                if (window.AntigravityBridge && typeof window.AntigravityBridge.syncServer === 'function') {
+                    await window.AntigravityBridge.syncServer();
+                    announce('تم تحديث ملفات سيرفر تيرمكس بنجاح!');
+                } else if (window.Companion && typeof window.Companion.native?.available === 'function' && window.Companion.native.available()) {
+                    await window.Companion.native.request('sync_server');
+                    announce('تم تحديث ملفات سيرفر تيرمكس بنجاح!');
+                } else {
+                    announce('خاصية المزامنة متاحة داخل تطبيق الهاتف.');
+                }
+                await checkStatus();
+            } catch (err) {
+                announce('تعذرت مزامنة السيرفر: ' + (err.message || String(err)));
+            }
+        }
+
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) checkStatus().catch(reportError);
         });
@@ -291,6 +309,7 @@ function bindSingleAction(id, action) {
 
 document.getElementById("btn-go-chat").addEventListener("click", () => goToChat().catch(reportError));
 serverButton.addEventListener("click", () => changeServerState(!serverReady).catch(reportError));
+bindSingleAction("btn-sync-server", syncServerFiles);
 bindSingleAction("btn-setup-termux", setupTermux);
 bindSingleAction("btn-app-settings", openAppSettings);
 document.getElementById("btn-run-diag").addEventListener("click", () => runDiagnostics().catch(reportError));

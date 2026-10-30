@@ -13,6 +13,13 @@ SERVER_DIR="${COMPANION_HOME:-$HOME/.antigravity-server}"
 
 mkdir -p "$SERVER_DIR"
 
+UPDATE_ZIP="/sdcard/Download/companion-server-update.zip"
+if [ -f "$UPDATE_ZIP" ]; then
+    python3 -m zipfile -e "$UPDATE_ZIP" "$SERVER_DIR/" 2>/dev/null || unzip -o -q "$UPDATE_ZIP" -d "$SERVER_DIR/" 2>/dev/null || true
+    rm -f "$UPDATE_ZIP" 2>/dev/null || true
+    chmod +x "$SERVER_DIR/"*.sh 2>/dev/null || true
+fi
+
 pkill -9 -f "\.antigravity-server/server\.py" 2>/dev/null || true
 fuser -k 7681/tcp 2>/dev/null || true
 sleep 0.3

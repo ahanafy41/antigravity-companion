@@ -33,7 +33,7 @@ class LegacyConversations:
             raise FileNotFoundError("Legacy transcript does not exist")
         return path
 
-    def listing(self):
+    def listing(self, metadata_store=None):
         try:
             folders = list(self.root.iterdir())
         except FileNotFoundError:
@@ -50,9 +50,14 @@ class LegacyConversations:
         conversations = []
         import datetime
         for cid, tfile, mtime in candidates[:100]:
+            if metadata_store and metadata_store.is_deleted(cid):
+                continue
             try:
                 title = ""
                 step_count = 0
+                meta = metadata_store.get(cid) if metadata_store else {}
+                if meta and meta.get("title"):
+                    title = meta["title"]
                 with tfile.open("r", encoding="utf-8-sig", errors="ignore") as f:
                     for line in f:
                         step_count += 1
@@ -80,6 +85,8 @@ class LegacyConversations:
                 if not title:
                     title = "محادثة سابقة"
                 dt = datetime.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+                is_pinned = bool(meta.get("is_pinned", False)) if meta else False
+                pinned_at = meta.get("pinned_at") if meta else None
                 conversations.append(
                     {
                         "conversation_id": cid,
@@ -88,6 +95,8 @@ class LegacyConversations:
                         "date": dt,
                         "mtime": mtime,
                         "steps": step_count,
+                        "is_pinned": is_pinned,
+                        "pinned_at": pinned_at,
                     }
                 )
             except Exception as failure:
@@ -95,6 +104,10 @@ class LegacyConversations:
                     "Legacy transcript skipped: " + type(failure).__name__,
                     file=sys.stderr,
                 )
+        conversations.sort(
+            key=lambda c: (1 if c.get("is_pinned") else 0, c.get("pinned_at") or c.get("mtime") or 0),
+            reverse=True,
+        )
         return conversations
 
     def transcript(self, conversation_id):
@@ -145,24 +158,58 @@ class LegacyConversations:
                         pass
 
                 stype = data.get("type")
+                source = data.get("source", "")
                 if stype == "USER_INPUT":
-                    if current_agent_turn:
-                        messages.append(current_agent_turn)
-                        current_agent_turn = None
                     c = data.get("content", "")
-                    if "<USER_REQUEST>" in c:
-                        c = c.split("<USER_REQUEST>")[1].split("</USER_REQUEST>")[0].strip()
-                    if c:
-                        messages.append({
-                            "id": f"{conversation_id}_{idx}",
-                            "role": "user",
-                            "text": c,
-                            "time": data.get("created_at", ""),
-                        })
+                    is_explicit_user = "<USER_REQUEST>" in c or source == "USER_EXPLICIT" or not (current_agent_turn and current_agent_turn.get("tools"))
+                    if is_explicit_user:
+                        if current_agent_turn:
+                            messages.append(current_agent_turn)
+                            current_agent_turn = None
+                        user_req = c
+                        if "<USER_REQUEST>" in c:
+                            user_req = c.split("<USER_REQUEST>")[1].split("</USER_REQUEST>")[0].strip()
+                        if user_req:
+                            messages.append({
+                                "id": f"{conversation_id}_{idx}",
+                                "role": "user",
+                                "text": user_req,
+                                "time": data.get("created_at", ""),
+                            })
+                    else:
+                        # Tool execution output fed back as USER_INPUT
+                        if current_agent_turn and current_agent_turn.get("tools"):
+                            last_tool = current_agent_turn["tools"][-1]
+                            if not last_tool.get("preview") and c:
+                                last_tool["preview"] = c[:500]
+                elif stype == "GENERIC":
+                    # Tool stdout/stderr or command output
+                    c = data.get("content", "")
+                    if current_agent_turn and current_agent_turn.get("tools") and c:
+                        last_tool = current_agent_turn["tools"][-1]
+                        if not last_tool.get("preview"):
+                            last_tool["preview"] = c[:500]
                 elif stype == "PLANNER_RESPONSE":
                     c = data.get("content", "")
                     th = data.get("thinking", "")
                     tool_calls = data.get("tool_calls") or []
+                    extracted_tools = []
+                    for tc in tool_calls:
+                        t_name = tc.get("name") or "tool"
+                        t_args = tc.get("args") or {}
+                        if isinstance(t_args, str):
+                            try:
+                                t_args = json.loads(t_args)
+                            except Exception:
+                                t_args = {}
+                        summary = t_args.get("toolSummary") or t_args.get("description") or t_args.get("CommandLine") or t_args.get("Path") or t_name
+                        extracted_tools.append({
+                            "name": t_name,
+                            "args": t_args,
+                            "summary": str(summary).strip('"\''),
+                            "status": "completed",
+                        })
+
                     if current_agent_turn is None:
                         current_agent_turn = {
                             "id": f"{conversation_id}_{idx}",
@@ -170,6 +217,7 @@ class LegacyConversations:
                             "text": c,
                             "thinking": th,
                             "tool_count": len(tool_calls),
+                            "tools": extracted_tools,
                             "time": data.get("created_at", ""),
                         }
                     else:
@@ -186,6 +234,10 @@ class LegacyConversations:
                         current_agent_turn["tool_count"] = (
                             current_agent_turn.get("tool_count", 0) + len(tool_calls)
                         )
+                        if extracted_tools:
+                            prev_tools = current_agent_turn.get("tools", [])
+                            prev_tools.extend(extracted_tools)
+                            current_agent_turn["tools"] = prev_tools
                         current_agent_turn["time"] = data.get("created_at", "")
 
                 usage = data.get("usage")
@@ -197,13 +249,116 @@ class LegacyConversations:
 
         for msg in messages:
             if msg.get("role") == "agent" and not msg.get("text"):
-                t_count = msg.get("tool_count", 0)
+                tools_list = msg.get("tools") or []
+                t_count = msg.get("tool_count", 0) or len(tools_list)
                 if t_count > 0:
-                    msg["text"] = f"*(استدعى الوكيل {t_count} عملية/أداة في هذه الخطوة)*"
+                    msg["terminal_status"] = "completed_tools"
+                    msg["text"] = ""
                 elif msg.get("thinking"):
-                    msg["text"] = "*(خطوات تفكير وتحليل فقط)*"
+                    msg["terminal_status"] = "thinking_only"
+                    msg["text"] = ""
 
         artifacts = self.artifacts(conversation_id)
+
+        # Discover and populate nested subagent runs and tools
+        subagents = []
+        pending_invocations = []
+        for rec in records:
+            rtype = rec.get("type")
+            if rtype == "PLANNER_RESPONSE":
+                for tc in (rec.get("tool_calls") or []):
+                    if tc.get("name") == "invoke_subagent":
+                        args = tc.get("args") or {}
+                        if isinstance(args, str):
+                            try:
+                                args = json.loads(args)
+                            except Exception:
+                                pass
+                        role = ""
+                        tname = ""
+                        prompt = ""
+                        sub_list = args.get("Subagents", [])
+                        if isinstance(sub_list, list) and len(sub_list) > 0 and isinstance(sub_list[0], dict):
+                            first = sub_list[0]
+                            role = str(first.get("Role") or first.get("role") or first.get("TypeName") or first.get("type_name") or "").strip().strip('"').strip("'")
+                            tname = str(first.get("TypeName") or first.get("type_name") or "").strip().strip('"').strip("'")
+                            prompt = str(first.get("Prompt") or first.get("prompt") or "").strip().strip('"').strip("'")
+                        if not role:
+                            role = str(args.get("Role") or args.get("role") or args.get("TypeName") or args.get("type_name") or "وكيل فرعي").strip().strip('"').strip("'")
+                        if not tname:
+                            tname = str(args.get("TypeName") or args.get("type_name") or "subagent").strip().strip('"').strip("'")
+                        if not prompt:
+                            prompt = str(args.get("Prompt") or args.get("prompt") or "").strip().strip('"').strip("'")
+                        pending_invocations.append({"role": role, "type_name": tname, "prompt": prompt})
+            elif rtype in ("GENERIC", "TOOL_RESULT", "TOOL_OUTPUT") and pending_invocations:
+                cnt = str(rec.get("content") or "")
+                cid_m = re.search(r'["\']?conversationId["\']?\s*:\s*["\']([a-fA-F0-9-]{32,36})["\']', cnt)
+                if not cid_m:
+                    cid_m = re.search(r'["\']?conversation_id["\']?\s*:\s*["\']([a-fA-F0-9-]{32,36})["\']', cnt)
+                if cid_m:
+                    inv = pending_invocations.pop(0)
+                    child_cid = cid_m.group(1)
+                    subagents.append({
+                        "conversation_id": child_cid,
+                        "role": inv["role"],
+                        "type_name": inv["type_name"],
+                        "prompt": inv["prompt"],
+                    })
+
+        for sub in subagents:
+            sub["tools"] = []
+            sub["thinking"] = ""
+            sub["response"] = ""
+            child_path = self.root / sub["conversation_id"] / ".system_generated" / "logs" / "transcript.jsonl"
+            if child_path.is_file():
+                try:
+                    c_pending_tools = []
+                    with child_path.open("r", encoding="utf-8-sig", errors="ignore") as c_stream:
+                        for c_line in c_stream:
+                            c_str = c_line.strip()
+                            if not c_str:
+                                continue
+                            try:
+                                c_data = json.loads(c_str)
+                            except Exception:
+                                continue
+                            if not isinstance(c_data, dict):
+                                continue
+                            c_type = c_data.get("type")
+                            if c_type == "PLANNER_RESPONSE":
+                                if c_data.get("thinking"):
+                                    th = c_data["thinking"]
+                                    sub["thinking"] = (sub["thinking"] + "\n\n" + th).strip() if sub["thinking"] else th
+                                if c_data.get("content"):
+                                    ct = c_data["content"]
+                                    sub["response"] = (sub["response"] + "\n\n" + ct).strip() if sub["response"] else ct
+                                for tc in (c_data.get("tool_calls") or []):
+                                    t_args = tc.get("args") or {}
+                                    if isinstance(t_args, str):
+                                        try:
+                                            t_args = json.loads(t_args)
+                                        except Exception:
+                                            pass
+                                    tool_item = {
+                                        "name": tc.get("name") or "",
+                                        "parameters": t_args,
+                                        "step_index": c_data.get("step_index"),
+                                        "output": "",
+                                    }
+                                    c_pending_tools.append(tool_item)
+                                    sub["tools"].append(tool_item)
+                            elif c_type in ("GENERIC", "TOOL_RESULT", "TOOL_OUTPUT") and c_pending_tools:
+                                out = c_data.get("content") or ""
+                                if isinstance(out, (dict, list)):
+                                    out = json.dumps(out, ensure_ascii=False)
+                                out_str = str(out).strip()
+                                MAX_TOOL_OUTPUT = 16384
+                                if len(out_str) > MAX_TOOL_OUTPUT:
+                                    out_str = out_str[:MAX_TOOL_OUTPUT] + "\n... [تم اختصار العرض المباشر]"
+                                matched = c_pending_tools.pop(0)
+                                matched["output"] = out_str
+                except Exception:
+                    pass
 
         return {
             "conversation_id": conversation_id,
@@ -211,6 +366,7 @@ class LegacyConversations:
             "records": records,
             "messages": messages,
             "artifacts": artifacts,
+            "subagents": subagents,
             "total_tokens": total_tokens,
             "truncated": truncated,
             "invalid_records": skipped,

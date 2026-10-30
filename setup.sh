@@ -33,7 +33,7 @@ fi
 # ── المرحلة 2: تحديث الحزم وتثبيت أدوات النظام الأساسية ────────────────────────
 echo -e "\n${YELLOW}[2/5] جاري تحديث المستودعات وتثبيت الأدوات الأساسية (صامت)...${NC}"
 pkg update -y -o Dpkg::Options::="--force-confnew" >/dev/null 2>&1 || true
-pkg install -y python git curl openssl-tool glibc-repo >/dev/null 2>&1 || true
+pkg install -y python git curl openssl-tool unzip glibc-repo >/dev/null 2>&1 || true
 pkg install -y glibc >/dev/null 2>&1 || true
 
 # تثبيت متطلبات بايثون الأساسية للسيرفر
@@ -63,18 +63,20 @@ else
     # تنزيل الملفات الأساسية مباشرة في حال تعذر git clone
     GITHUB_RAW="https://raw.githubusercontent.com/ahanafy41/antigravity-companion/main"
     mkdir -p "$SERVER_DIR/web"
-    for file in server.py application.py sessions.py storage.py security.py local_tasks.py voice_agent.py voice_planner.py task_runtime.py mcp_probe.py mcp_settings.py cli_client.py cli_settings.py cli_catalog.py auth_flow.py android_client.py legacy_conversations.py runtime_status.py launch_server.sh stop_server.sh version.json; do
+    for file in server.py application.py sessions.py storage.py security.py local_tasks.py voice_agent.py voice_planner.py task_runtime.py mcp_probe.py mcp_settings.py cli_client.py cli_settings.py cli_catalog.py auth_flow.py android_client.py legacy_conversations.py runtime_status.py launch_server.sh stop_server.sh sync_server.sh version.json conversation_metadata.py; do
         curl -fsSL --retry 3 --connect-timeout 10 "$GITHUB_RAW/server/$file" -o "$SERVER_DIR/$file" 2>/dev/null || true
     done
 fi
 
-chmod +x "$SERVER_DIR/launch_server.sh" "$SERVER_DIR/stop_server.sh" 2>/dev/null || true
+chmod +x "$SERVER_DIR/launch_server.sh" "$SERVER_DIR/stop_server.sh" "$SERVER_DIR/sync_server.sh" 2>/dev/null || true
 
 # عمل الروابط الرمزية للتوافق مع Termux RUN_COMMAND
 ln -sf "$SERVER_DIR/launch_server.sh" "$HOME/launch_server.sh"
 ln -sf "$SERVER_DIR/launch_server.sh" "$HOME/.termux/tasker/launch_server.sh"
 ln -sf "$SERVER_DIR/stop_server.sh" "$HOME/stop_server.sh"
 ln -sf "$SERVER_DIR/stop_server.sh" "$HOME/.termux/tasker/stop_server.sh"
+ln -sf "$SERVER_DIR/sync_server.sh" "$HOME/sync_server.sh"
+ln -sf "$SERVER_DIR/sync_server.sh" "$HOME/.termux/tasker/sync_server.sh"
 
 echo "  -> تم تجهيز ملفات السيرفر في: $SERVER_DIR"
 

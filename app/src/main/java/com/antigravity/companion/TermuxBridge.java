@@ -89,6 +89,38 @@ public final class TermuxBridge {
             else if (callback != null) callback.onState(state("failed", errorMsg));
         }
     }
+    public static void syncServer(Context context, LaunchCallback callback) {
+        String nonce = UUID.randomUUID().toString();
+        try {
+            String applicationDataDir = context.getPackageManager()
+                    .getApplicationInfo(TERMUX_PACKAGE, 0).dataDir;
+            Intent callbackIntent = new Intent(context, TermuxResultReceiver.class)
+                    .setAction(ACTION_TERMUX_RESULT).setData(Uri.parse("companion-result://sync/" + nonce));
+            int flags = PendingIntent.FLAG_ONE_SHOT;
+            if (Build.VERSION.SDK_INT >= 31) flags |= PendingIntent.FLAG_MUTABLE;
+            PendingIntent pending = PendingIntent.getBroadcast(context, REQUEST_IDS.incrementAndGet(), callbackIntent, flags);
+            Runnable timeout = () -> finish(nonce, state("outcome_unknown", "Termux sync result timeout"));
+            REQUESTS.put(nonce, new LaunchRequest(context, pending, callback, timeout));
+            DEADLINES.postDelayed(timeout, 20000);
+            Intent syncIntent = new Intent("com.termux.RUN_COMMAND")
+                    .setComponent(new ComponentName(TERMUX_PACKAGE, "com.termux.app.RunCommandService"))
+                    .putExtra("com.termux.RUN_COMMAND_PATH", TermuxLaunchContract.executable(applicationDataDir))
+                    .putExtra("com.termux.RUN_COMMAND_ARGUMENTS", TermuxLaunchContract.syncArguments(applicationDataDir))
+                    .putExtra("com.termux.RUN_COMMAND_WORKDIR", TermuxLaunchContract.workingDirectory(applicationDataDir))
+                    .putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
+                    .putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pending);
+            if (!startCommandService(context, syncIntent)) {
+                throw new IllegalStateException("Termux command service is unavailable");
+            }
+            if (callback != null) callback.onState(state("accepted", ""));
+        } catch (PackageManager.NameNotFoundException | SecurityException | IllegalStateException failure) {
+            String errorMsg = failure instanceof SecurityException
+                    ? "Termux RUN_COMMAND permission denied; enable in App Settings"
+                    : "Termux could not accept sync request";
+            if (REQUESTS.containsKey(nonce)) finish(nonce, state("failed", errorMsg));
+            else if (callback != null) callback.onState(state("failed", errorMsg));
+        }
+    }
     public static JsonObject startInteractive(Context context, String purpose, String workingDirectory) {
         try {
             String applicationDataDir = context.getPackageManager()

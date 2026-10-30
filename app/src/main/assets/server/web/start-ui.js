@@ -59,7 +59,6 @@ function reportError(error) {
 
         async function changeServerState(start) {
             if (serverBusy) return false;
-            if (!start && !confirm('هل تريد إيقاف خادم تيرمكس نهائياً؟')) return false;
             if (start && !window.AntigravityBridge?.triggerServerWakeup) {
                 announce('تشغيل الخادم متاح داخل التطبيق؛ شغّله عبر Termux ثم أعد فتح الصفحة.');
                 return false;
@@ -71,16 +70,25 @@ function reportError(error) {
             try {
                 if (start) {
                     await window.AntigravityBridge.triggerServerWakeup();
-                } else if (window.AntigravityBridge?.stopServer) {
-                    await window.AntigravityBridge.stopServer();
-                    showServerStatus(false);
                 } else {
-                    const stopped = await window.mainV1Fetch('/api/shutdown', {method: 'POST'});
-                    if (!stopped.ok) throw new Error((await stopped.json()).error || 'تعذر إيقاف الخادم');
+                    if (window.AntigravityBridge?.stopServer) {
+                        try {
+                            await window.AntigravityBridge.stopServer();
+                        } catch (bridgeErr) {
+                            console.warn('AntigravityBridge.stopServer failed, continuing with direct shutdown:', bridgeErr);
+                            try {
+                                await window.mainV1Fetch('/api/shutdown', {method: 'POST'});
+                            } catch (fetchErr) {}
+                        }
+                    } else {
+                        try {
+                            await window.mainV1Fetch('/api/shutdown', {method: 'POST'});
+                        } catch (fetchErr) {}
+                    }
                     showServerStatus(false);
                 }
                 for (let attempt = 0; attempt < (start ? 15 : 8); attempt++) {
-                    await pause(start ? 800 : 500);
+                    await pause(start ? 800 : 300);
                     if (await checkStatus() === start) {
                         announce(start ? 'خادم تيرمكس نشط ومتصل.' : 'خادم تيرمكس متوقف الآن.');
                         return true;
@@ -237,6 +245,24 @@ function reportError(error) {
             }
         }
 
+        async function syncServerFiles() {
+            announce('جارٍ استخراج ملفات السيرفر وتحديث Termux...');
+            try {
+                if (window.AntigravityBridge && typeof window.AntigravityBridge.syncServer === 'function') {
+                    await window.AntigravityBridge.syncServer();
+                    announce('تم تحديث ملفات سيرفر تيرمكس بنجاح!');
+                } else if (window.Companion && typeof window.Companion.native?.available === 'function' && window.Companion.native.available()) {
+                    await window.Companion.native.request('sync_server');
+                    announce('تم تحديث ملفات سيرفر تيرمكس بنجاح!');
+                } else {
+                    announce('خاصية المزامنة متاحة داخل تطبيق الهاتف.');
+                }
+                await checkStatus();
+            } catch (err) {
+                announce('تعذرت مزامنة السيرفر: ' + (err.message || String(err)));
+            }
+        }
+
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) checkStatus().catch(reportError);
         });
@@ -283,6 +309,7 @@ function bindSingleAction(id, action) {
 
 document.getElementById("btn-go-chat").addEventListener("click", () => goToChat().catch(reportError));
 serverButton.addEventListener("click", () => changeServerState(!serverReady).catch(reportError));
+bindSingleAction("btn-sync-server", syncServerFiles);
 bindSingleAction("btn-setup-termux", setupTermux);
 bindSingleAction("btn-app-settings", openAppSettings);
 document.getElementById("btn-run-diag").addEventListener("click", () => runDiagnostics().catch(reportError));

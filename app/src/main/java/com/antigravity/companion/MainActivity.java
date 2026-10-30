@@ -72,6 +72,19 @@ public final class MainActivity extends AppCompatActivity {
                 && checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{"com.termux.permission.RUN_COMMAND"}, REQUEST_TERMUX_RUN_COMMAND);
         }
+        long lastSeenCode = getSharedPreferences("companion_settings", MODE_PRIVATE).getLong("last_seen_version_code", -1);
+        long currentCode = updates.currentVersionCode();
+        if (lastSeenCode != currentCode) {
+            webView.clearCache(true);
+            getSharedPreferences("companion_settings", MODE_PRIVATE).edit().putLong("last_seen_version_code", currentCode).apply();
+            connectionExecutor.execute(() -> {
+                if (ServerDeployer.exportServerBundle(this)) {
+                    if (checkSelfPermission("com.termux.permission.RUN_COMMAND") == PackageManager.PERMISSION_GRANTED) {
+                        runOnUiThread(() -> TermuxBridge.syncServer(this, null));
+                    }
+                }
+            });
+        }
         webView.loadUrl(OriginPolicy.DASHBOARD_URL); probeServer(null, false);
     }
     private void buildViews() {
@@ -215,6 +228,7 @@ public final class MainActivity extends AppCompatActivity {
             reply(request, flag("opened", true)); webView.loadUrl(OriginPolicy.DASHBOARD_URL);
         });
         actions.put("stop_server", this::stopServer);
+        actions.put("sync_server", this::syncServer);
     }
     private JsonObject connectionStatus() {
         JsonObject connection = new JsonObject();
@@ -380,6 +394,40 @@ public final class MainActivity extends AppCompatActivity {
                 if (destroyed) return;
                 serverConnected = false; serverAvailable = !isOffline;
                 refreshLegacyState(); reply(request, flag("stopping", isOffline));
+            });
+        });
+    }
+    private void syncServer(NativeRequest request) {
+        showStatus("جارٍ استخراج ملفات السيرفر وتحديث Termux...");
+        connectionExecutor.execute(() -> {
+            boolean exported = ServerDeployer.exportServerBundle(this);
+            if (!exported) {
+                runOnUiThread(() -> {
+                    showStatus("تعذر استخراج ملفات السيرفر المؤقتة");
+                    if (request != null) reply(request, error("Failed to export server bundle"));
+                });
+                return;
+            }
+            runOnUiThread(() -> {
+                if (checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) {
+                    showStatus("يرجى منح صلاحية تشغيل الأوامر في Termux أولاً");
+                    if (request != null) reply(request, error("RUN_COMMAND permission required"));
+                    return;
+                }
+                TermuxBridge.syncServer(this, outcome -> {
+                    String state = outcome != null && outcome.has("state") ? outcome.get("state").getAsString() : "unknown";
+                    runOnUiThread(() -> {
+                        if ("finished".equals(state) || "accepted".equals(state)) {
+                            webView.clearCache(true);
+                            showStatus("تم تحديث خادم Termux بنجاح!");
+                            if (request != null) reply(request, flag("synced", true));
+                            probeServer(null, false);
+                        } else {
+                            showStatus("فشلت مزامنة السيرفر في Termux");
+                            if (request != null) reply(request, outcome != null ? outcome : error("Termux sync failed"));
+                        }
+                    });
+                });
             });
         });
     }

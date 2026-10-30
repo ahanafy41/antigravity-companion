@@ -136,3 +136,15 @@ Current architecture (2026-10-16): [lean RFC](docs/lean-companion-architecture-r
 - [x] Task 8: مزامنة أصول الويب المحدثة إلى `app/src/main/assets/web/` و `app/src/main/assets/server/web/` و `/data/data/com.termux/files/home/.antigravity-server/web/`.
 - [x] Task 9: التحقق الآلي الصارم وخلو الملفات من أي أخطاء بنيوية عبر `validate_code.py`.
 
+## Phase 20: Automated Offline Server Deployment & Auto-Sync Engine (REQ-019)
+- [x] Task 1: إنشاء سكريبت `server/sync_server.sh` للتعامل مع حزم التحديث المضغوطة أوفلاين والمزامنة التلقائية مع المستودع وإعادة تشغيل السيرفر.
+- [x] Task 2: دمج التحقق الذاتي من وجود حزمة التحديث وفكها التلقائي قبل الإقلاع في `server/launch_server.sh`.
+- [x] Task 3: تحديث `setup.sh` لتضمين حزمة `unzip` وعمل الروابط الرمزية لـ `sync_server.sh`.
+- [x] Task 4: إنشاء فئة `ServerDeployer.java` في كود أندرويد لتصدير أصول السيرفر `assets/server` كملف مضغوط في مسار التحميلات المشترك أوفلاين 100%.
+- [x] Task 5: إضافة `syncArguments` في `TermuxLaunchContract.java` و `syncServer` في `TermuxBridge.java` عبر `RUN_COMMAND`.
+- [x] Task 6: إدراج `sync_server` في السياسة الأمنية `NativeBridgePolicy.java` و `NativeActionArguments.java`.
+- [x] Task 7: تفعيل الرصد التلقائي لتغير رقم الإصدار في `MainActivity.java` لتنظيف كاش الـ WebView (`clearCache(true)`) وإطلاق المزامنة الخلفية للسيرفر ذاتياً.
+- [x] Task 8: إضافة زر يمكن الوصول إليه صوتياً بقارئات الشاشة "مزامنة وتحديث السيرفر" في `start.html` و `start-ui.js` و `legacy-native.js`.
+- [x] Task 9: إنشاء سكريبت `scripts/sync_server_assets.py` لضمان مزامنة كود السيرفر والأصول بين المستودع وتطبيق الأندرويد ومجلد تيرمكس النشط.
+- [x] Task 10: اجتياز جميع فحوصات واختبارات الجودة بنسبة 100%.
+

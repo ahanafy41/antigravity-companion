@@ -474,7 +474,9 @@
         title: rec.title || 'محادثة سابقة',
         date: rec.date || (rec.mtime ? new Date(rec.mtime * 1000).toLocaleString('ar-EG') : ''),
         mtime: rec.mtime || 0,
-        steps: rec.steps || 0
+        steps: rec.steps || 0,
+        is_pinned: Boolean(rec.is_pinned),
+        pinned_at: rec.pinned_at || null
       });
     }
 
@@ -522,8 +524,13 @@
       }
     }
 
-    // 4. CRITICAL: Sort all conversations by mtime descending (newest conversation ALWAYS first!)
-    const sorted = [...map.values()].sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+    // 4. CRITICAL: Sort pinned conversations first, then by mtime descending
+    const sorted = [...map.values()].sort((a, b) => {
+      const aPin = a.is_pinned ? 1 : 0;
+      const bPin = b.is_pinned ? 1 : 0;
+      if (aPin !== bPin) return bPin - aPin;
+      return (b.pinned_at || b.mtime || 0) - (a.pinned_at || a.mtime || 0);
+    });
 
     return {conversations: sorted};
   }
@@ -564,7 +571,11 @@
         tool: toolName,
         params: params,
         state: state,
-        output: out
+        output: out,
+        step_index: payload.step_index !== undefined ? payload.step_index : toolInfo.step_index,
+        subagent_id: payload.subagent_id || toolInfo.subagent_id,
+        subagent_role: payload.subagent_role || toolInfo.subagent_role,
+        subagent_type: payload.subagent_type || toolInfo.subagent_type
       };
     }
     if (event.event === 'permission_request') return {
@@ -579,7 +590,8 @@
       answer: payload.answer,
       label: payload.label
     };
-    if (event.event === 'error' || event.event === 'replay_unavailable') return {type: 'error', message: payload.message || 'تعذر استعادة البث؛ افتح سجل المحادثة.'};
+    if (event.event === 'error') return {type: 'error', message: payload.message || 'خطأ في معالجة الطلب.'};
+    if (event.event === 'replay_unavailable') return null;
     if (event.event === 'result') return {type: 'final_result', response: payload.response || '', state: payload.state};
     return null;
   }
@@ -647,13 +659,37 @@
             if (controller.signal.aborted) throw error;
             streamFailure = error;
           }
-          const snapshot = await request('/runs/' + encode(runId), {signal: controller.signal});
+          let snapshot = await request('/runs/' + encode(runId), {signal: controller.signal});
+          // Resilient polling fallback: if stream disconnected but run is still active, poll until terminal
+          let pollAttempts = 0;
+          while (!terminal.has(snapshot.state) && pollAttempts < 80 && !controller.signal.aborted) {
+            await new Promise(r => setTimeout(r, 1500));
+            try {
+              snapshot = await request('/runs/' + encode(runId), {signal: controller.signal});
+            } catch (pErr) {
+              if (controller.signal.aborted) throw pErr;
+            }
+            pollAttempts++;
+          }
           if (terminal.has(snapshot.state)) {
             if (snapshot.conversation_id) emit({type: 'init', conversation_id: snapshot.conversation_id});
             if (snapshot.error && !hasEmittedError) emit({type: 'error', message: snapshot.error});
             emit({type: 'final_result', response: snapshot.response || '', state: snapshot.state});
             await saveHistory(sessionId);
             output.close(); return;
+          }
+          // Secondary fallback: check transcript in legacy conversation
+          if (current.conversationId) {
+            try {
+              const conv = await request('/legacy/conversations/' + encode(current.conversationId));
+              const lastAgent = (conv.messages || []).filter(m => m.role === 'agent').pop();
+              if (lastAgent && lastAgent.text && lastAgent.text.trim()) {
+                emit({type: 'final_result', response: lastAgent.text, state: 'completed'});
+                await saveHistory(sessionId);
+                output.close();
+                return;
+              }
+            } catch (cErr) {}
           }
           throw streamFailure || new Error('انقطع البث؛ الطلب ما زال قيد التنفيذ. افتح سجل المحادثة لمتابعته.');
         })().catch(error => output.error(error));
@@ -729,6 +765,29 @@
       case 'ai/chat/reset': await closeCurrent(); return {status: 'ok'};
       case 'ai/conversations': return conversations();
       case 'ai/conversation': return conversation(query.get('id'));
+      case 'ai/conversation/manage': {
+        const action = body.action; // 'rename' | 'pin' | 'unpin' | 'delete'
+        const convId = body.conversation_id || body.id;
+        if (!convId) throw new Error('معرف المحادثة مطلوب');
+        if (action === 'delete') {
+          const res = await request('/legacy/conversations/' + encode(convId), {method: 'DELETE'});
+          if (current.conversationId === convId) {
+            await closeCurrent();
+          }
+          return res;
+        } else if (action === 'rename') {
+          return request('/legacy/conversations/' + encode(convId), {
+            method: 'PATCH',
+            body: {title: body.title}
+          });
+        } else if (action === 'pin' || action === 'unpin') {
+          return request('/legacy/conversations/' + encode(convId), {
+            method: 'PATCH',
+            body: {is_pinned: action === 'pin'}
+          });
+        }
+        throw new Error('إجراء غير معروف');
+      }
       case 'ai/permissions/whitelist/add': {
         const rule = (body.rule || body.command || body.pattern || '').trim();
         if (!rule) throw new Error('Rule is required');

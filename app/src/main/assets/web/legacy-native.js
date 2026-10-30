@@ -49,6 +49,7 @@
     startServer: () => command('start_server'),
     triggerServerWakeup: () => command('start_server'),
     stopServer: () => command('stop_server'),
+    syncServer: () => command('sync_server'),
     loadChatUrl: () => command('open_chat'),
     loadDashboardUrl: () => command('open_dashboard'),
     openSettings: () => command('open_settings'),

@@ -24,6 +24,21 @@ public final class TermuxLaunchContract {
                 + "/.antigravity-server/stop_server.sh"};
     }
 
+    public static String[] syncArguments(String applicationDataDir) {
+        String serverDir = workingDirectory(applicationDataDir) + "/.antigravity-server";
+        String script = "if [ -f \"" + serverDir + "/sync_server.sh\" ]; then "
+                + "bash \"" + serverDir + "/sync_server.sh\"; "
+                + "else "
+                + "mkdir -p \"" + serverDir + "\" && "
+                + "if [ -f /sdcard/Download/companion-server-update.zip ]; then "
+                + "(python3 -m zipfile -e /sdcard/Download/companion-server-update.zip \"" + serverDir + "/\" 2>/dev/null || unzip -o -q /sdcard/Download/companion-server-update.zip -d \"" + serverDir + "/\" 2>/dev/null || true) && "
+                + "rm -f /sdcard/Download/companion-server-update.zip; fi && "
+                + "chmod +x \"" + serverDir + "/\"*.sh 2>/dev/null || true; "
+                + "bash \"" + serverDir + "/stop_server.sh\" 2>/dev/null || true; "
+                + "bash \"" + serverDir + "/launch_server.sh\"; fi";
+        return new String[]{"-c", script};
+    }
+
     public static String interactiveWorkingDirectory(String applicationDataDir, String requested) {
         if (requested == null) return workingDirectory(applicationDataDir);
         if (!requested.startsWith("/") || requested.length() > 4096)

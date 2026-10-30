@@ -20,6 +20,7 @@ from local_tasks import LocalTasks
 from voice_agent import VoiceAgent
 from voice_planner import VoicePlanner
 from legacy_conversations import LegacyConversations
+from conversation_metadata import ConversationMetadataStore
 from security import COOKIE, Pairing, error, isolation
 from sessions import RunConflict, Sessions, TERMINAL
 from runtime_status import CLIAdministration, system_usage
@@ -101,6 +102,9 @@ def create_app(data_dir, port=7681):
     )
     application["visibility"] = {}
     application["legacy"] = LegacyConversations(Path.home())
+    application["conversation_metadata"] = ConversationMetadataStore(
+        store.root / "conversation_metadata.json"
+    )
     application["catalog_cache"] = {
         ("models", None): (list(DEFAULT_MODELS_CATALOG), time.time())
     }
@@ -206,6 +210,8 @@ def register_routes(application):
     routes[0:0] = [
         web.get("/api/v1/legacy/conversations", list_legacy),
         web.get("/api/v1/legacy/conversations/{conversation_id}", read_legacy),
+        web.patch("/api/v1/legacy/conversations/{conversation_id}", patch_legacy),
+        web.delete("/api/v1/legacy/conversations/{conversation_id}", delete_legacy),
     ]
     application.add_routes(routes)
     root_assets = (
@@ -944,6 +950,21 @@ async def stream_events(request):
     await response.prepare(request)
     try:
         if replay is None:
+            if run["state"] in TERMINAL or run.get("response"):
+                await send_event(
+                    response,
+                    {
+                        "id": log.sequence or 1,
+                        "event": "result",
+                        "data": {
+                            "run_id": run_id,
+                            "state": run["state"],
+                            "response": run.get("response", ""),
+                            "conversation_id": run.get("conversation_id"),
+                        },
+                    },
+                )
+                return response
             await send_event(
                 response,
                 {
@@ -953,12 +974,34 @@ async def stream_events(request):
                 },
             )
             return response
+        sent_result = False
         while True:
             log.changed.clear()
             for event in log.after(cursor) or []:
                 await send_event(response, event)
                 cursor = event["id"]
+                if event.get("event") == "result":
+                    sent_result = True
             if run["state"] in TERMINAL:
+                for event in log.after(cursor) or []:
+                    await send_event(response, event)
+                    cursor = event["id"]
+                    if event.get("event") == "result":
+                        sent_result = True
+                if not sent_result:
+                    await send_event(
+                        response,
+                        {
+                            "id": log.sequence or (cursor + 1),
+                            "event": "result",
+                            "data": {
+                                "run_id": run_id,
+                                "state": run["state"],
+                                "response": run.get("response", ""),
+                                "conversation_id": run.get("conversation_id"),
+                            },
+                        },
+                    )
                 break
             try:
                 await asyncio.wait_for(log.changed.wait(), 15)
@@ -1498,13 +1541,57 @@ async def response_headers(request, response):
 
 
 async def list_legacy(request):
-    return web.json_response(
-        {
-            "conversations": await asyncio.to_thread(
-                request.app["legacy"].listing
-            )
-        }
+    meta = request.app.get("conversation_metadata")
+    conversations = await asyncio.to_thread(
+        request.app["legacy"].listing, metadata_store=meta
     )
+    return web.json_response({"conversations": conversations})
+
+
+async def patch_legacy(request):
+    cid = request.match_info["conversation_id"]
+    try:
+        body = await request.json()
+    except Exception:
+        return error(400, "Invalid JSON payload")
+    if not isinstance(body, dict):
+        return error(400, "Payload must be an object")
+
+    meta = request.app.get("conversation_metadata")
+    if not meta:
+        return error(500, "Metadata store unavailable")
+
+    title = body.get("title")
+    is_pinned = body.get("is_pinned")
+    entry = meta.update(cid, title=title, is_pinned=is_pinned)
+    return web.json_response({"status": "updated", "conversation": entry})
+
+
+async def delete_legacy(request):
+    cid = request.match_info["conversation_id"]
+    meta = request.app.get("conversation_metadata")
+    if meta:
+        meta.mark_deleted(cid)
+
+    sessions_mgr = request.app.get("sessions")
+    if sessions_mgr:
+        for s_id, s_data in list(sessions_mgr.sessions.items()):
+            if s_data.get("conversation_id") == cid or s_id == cid:
+                try:
+                    await sessions_mgr.close(s_id)
+                except Exception:
+                    pass
+
+    legacy_root = request.app["legacy"].root
+    conv_folder = legacy_root / cid
+    if conv_folder.is_dir() and conv_folder.resolve().parent == legacy_root.resolve():
+        try:
+            import shutil
+            await asyncio.to_thread(shutil.rmtree, conv_folder, ignore_errors=True)
+        except Exception:
+            pass
+
+    return web.json_response({"status": "deleted", "conversation_id": cid})
 
 
 async def read_legacy(request):
