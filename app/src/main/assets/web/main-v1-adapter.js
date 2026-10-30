@@ -565,7 +565,10 @@
         params: params,
         state: state,
         output: out,
-        step_index: payload.step_index !== undefined ? payload.step_index : toolInfo.step_index
+        step_index: payload.step_index !== undefined ? payload.step_index : toolInfo.step_index,
+        subagent_id: payload.subagent_id || toolInfo.subagent_id,
+        subagent_role: payload.subagent_role || toolInfo.subagent_role,
+        subagent_type: payload.subagent_type || toolInfo.subagent_type
       };
     }
     if (event.event === 'permission_request') return {

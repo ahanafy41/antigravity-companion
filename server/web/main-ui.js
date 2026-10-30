@@ -874,9 +874,17 @@ await window.mainV1.ready;
       } else if (toolName === 'list_dir' || toolName === 'find_by_name') {
         return intent || 'فحص محتويات المجلد';
       } else if (toolName === 'invoke_subagent') {
-        const subagents = params.Subagents || [];
-        const roles = subagents.map(s => s.Role || s.TypeName).join(', ');
-        return '🤖 إطلاق فريق وكلاء متخصصين: ' + (roles || 'وكيل جديد');
+        const subagents = Array.isArray(params.Subagents) ? params.Subagents : [];
+        let role = '';
+        if (subagents.length > 0) {
+          role = subagents.map(s => s.Role || s.TypeName).filter(Boolean).join(', ');
+        }
+        if (!role) {
+          role = params.Role || params.role || params.TypeName || params.type_name || '';
+        }
+        const typeName = params.TypeName || params.type_name || '';
+        const roleLabel = role || typeName || 'وكيل فرعي';
+        return `🤖 إطلاق الوكيل الفرعي: ${roleLabel}`;
       } else if (toolName === 'send_message') {
         const recipient = params.Recipient || 'وكيل فرعي';
         return `💬 تواصل وتنسيق مع ${recipient}`;
@@ -1670,7 +1678,16 @@ await window.mainV1.ready;
                   // Check for subagent multi-agent operations
                   if (data.tool === 'invoke_subagent') {
                     playBeep(650, 0.12);
-                    const subList = (data.params && data.params.Subagents) ? data.params.Subagents : [];
+                    const subList = [];
+                    if (data.params && Array.isArray(data.params.Subagents) && data.params.Subagents.length > 0) {
+                      data.params.Subagents.forEach(s => subList.push(s));
+                    } else if (data.params) {
+                      subList.push({
+                        Role: data.params.Role || data.params.role || data.params.TypeName || data.params.type_name || 'وكيل فرعي',
+                        TypeName: data.params.TypeName || data.params.type_name || 'subagent',
+                        Prompt: data.params.Prompt || data.params.prompt || ''
+                      });
+                    }
                     subList.forEach(s => {
                       registerSubagent({
                         role: s.Role || s.TypeName || 'وكيل فرعي',
@@ -1690,13 +1707,50 @@ await window.mainV1.ready;
                     updateSubagentMessage(recipient, msg);
                   }
 
+                  // Route subagent tool steps to a SubagentThreadCard
+                  let targetList = stepsList;
+                  if (data.subagent_id || data.subagent_role) {
+                    const subId = data.subagent_id || 'subagent';
+                    const roleName = data.subagent_role || 'وكيل فرعي';
+                    const typeName = data.subagent_type || '';
+                    let subCard = aiCard.querySelector(`.subagent-thread-card[data-subagent-id="${escapeHtml(subId)}"]`);
+                    if (!subCard) {
+                      subCard = document.createElement('div');
+                      subCard.className = 'subagent-thread-card';
+                      subCard.dataset.subagentId = subId;
+                      subCard.setAttribute('role', 'region');
+                      subCard.setAttribute('aria-label', `أنشطة الوكيل الفرعي: ${roleName}`);
+                      subCard.innerHTML = `
+                        <div class="subagent-thread-header">
+                          <div style="display:flex;align-items:center;gap:8px;">
+                            <span aria-hidden="true" style="font-size:1.1rem;">🤖</span>
+                            <strong>${escapeHtml(roleName)}</strong>
+                            ${typeName ? `<small class="step-state-badge">${escapeHtml(typeName)}</small>` : ''}
+                          </div>
+                          <span class="subagent-thread-badge badge-active">🟢 يعمل الآن</span>
+                        </div>
+                        <ul class="subagent-steps-list steps-list" role="list"></ul>
+                      `;
+                      if (stepsTracker) {
+                        stepsTracker.removeAttribute('hidden');
+                        stepsTracker.appendChild(subCard);
+                      } else {
+                        stepsList.parentElement.appendChild(subCard);
+                      }
+                    }
+                    targetList = subCard.querySelector('.subagent-steps-list') || stepsList;
+                    if (data.state === 'DONE') {
+                      announce(`الوكيل ${roleName}: أنجز ${escapeHtml(toolDesc)}`);
+                    }
+                  }
+
                   // Check if there is an existing step for this tool/step_index to update in-place
                   let stepLi = null;
                   if (data.step_index !== undefined && data.step_index !== null) {
-                    stepLi = stepsList.querySelector(`.step-item[data-step-index="${data.step_index}"]`);
+                    stepLi = targetList.querySelector(`.step-item[data-step-index="${data.step_index}"]`);
                   }
                   if (!stepLi && data.state !== 'ACTIVE') {
-                    const activeSteps = stepsList.querySelectorAll('.step-item.active');
+                    const activeSteps = targetList.querySelectorAll('.step-item.active');
                     for (let i = activeSteps.length - 1; i >= 0; i--) {
                       if (!data.tool || activeSteps[i].dataset.tool === data.tool) {
                         stepLi = activeSteps[i];
@@ -1705,7 +1759,7 @@ await window.mainV1.ready;
                     }
                   }
                   if (!stepLi && data.state === 'DONE') {
-                    const lastStep = stepsList.querySelector('.step-item:last-child');
+                    const lastStep = targetList.querySelector('.step-item:last-child');
                     if (lastStep) stepLi = lastStep;
                   }
 
@@ -1718,7 +1772,7 @@ await window.mainV1.ready;
                       stepLi.dataset.stepIndex = data.step_index;
                     }
                     if (data.tool) stepLi.dataset.tool = data.tool;
-                    stepsList.appendChild(stepLi);
+                    targetList.appendChild(stepLi);
                   } else {
                     if (data.step_index !== undefined && data.step_index !== null) {
                       stepLi.dataset.stepIndex = data.step_index;
@@ -3667,6 +3721,62 @@ await window.mainV1.ready;
           });
         }
 
+        // Render Subagents associated with this conversation
+        window.subagentRegistry = [];
+        if (data.subagents && data.subagents.length > 0) {
+          data.subagents.forEach(sub => {
+            registerSubagent({
+              role: sub.role || 'وكيل فرعي',
+              type: sub.type_name || 'subagent',
+              prompt: sub.prompt || '',
+              state: 'مكتمل',
+              lastAction: sub.response ? 'أنجز المهمة وأرسل المخرجات' : 'أنجز مهامه',
+              timestamp: ''
+            });
+
+            if (sub.tools && sub.tools.length > 0) {
+              const subThread = document.createElement('article');
+              subThread.className = 'chat-message ai-message subagent-thread-card';
+              subThread.setAttribute('role', 'region');
+              subThread.setAttribute('aria-label', `أنشطة ومخرجات الوكيل السابق: ${escapeHtml(sub.role || 'وكيل')}`);
+              let toolsHtml = '';
+              sub.tools.forEach(t => {
+                const label = escapeHtml(getToolLabel(t.name, t.parameters || {}));
+                toolsHtml += `
+                  <li class="step-item done">
+                    <details class="step-tool-tile">
+                      <summary class="step-item-header step-tool-summary" role="button" aria-expanded="false">
+                        <div style="display:flex;align-items:center;gap:8px;flex:1;">
+                          <span class="step-icon">✓</span>
+                          <span class="step-label">${label} <small class="step-state-badge">(اكتمل)</small></span>
+                        </div>
+                        <span class="step-expand-indicator" aria-hidden="true">▼</span>
+                      </summary>
+                      <div class="step-output-card-wrapper">
+                        ${renderToolResultCard(t.name, t.parameters || {}, t.output || '')}
+                      </div>
+                    </details>
+                  </li>
+                `;
+              });
+
+              subThread.innerHTML = `
+                <header class="msg-header" style="border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:6px;margin-bottom:8px;">
+                  <div class="msg-header-left">
+                    <span class="ai-avatar" aria-hidden="true">🤖</span>
+                    <h3 class="msg-title">الوكيل التابع: ${escapeHtml(sub.role || 'وكيل فرعي')} <small class="step-state-badge">${escapeHtml(sub.type_name || '')}</small></h3>
+                  </div>
+                  <span class="subagent-thread-badge badge-done">✅ مكتمل</span>
+                </header>
+                ${sub.prompt ? `<div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px;">🎯 المهمة: ${escapeHtml(sub.prompt)}</div>` : ''}
+                <ul class="subagent-steps-list steps-list" role="list">${toolsHtml}</ul>
+                ${sub.response ? `<div class="msg-content markdown-body" style="margin-top:8px;" dir="rtl">${renderMarkdown(sub.response)}</div>` : ''}
+              `;
+              aiChatFeed.appendChild(subThread);
+            }
+          });
+        }
+
         // Render Artifacts associated with this conversation
         knownArtifacts.clear();
         if (data.artifacts && data.artifacts.length > 0) {
@@ -5456,9 +5566,21 @@ await window.mainV1.ready;
     window.subagentRegistry = [];
 
     function registerSubagent(agentInfo) {
-      window.subagentRegistry.unshift(agentInfo);
+      if (!agentInfo) return;
+      const role = agentInfo.role || 'وكيل فرعي';
+      const type = agentInfo.type || 'subagent';
+      const existing = window.subagentRegistry.find(a => a.role === role && a.type === type);
+      if (existing) {
+        Object.assign(existing, agentInfo);
+      } else {
+        window.subagentRegistry.unshift(agentInfo);
+      }
       if (valSubagentsCount) {
         valSubagentsCount.textContent = window.subagentRegistry.length;
+      }
+      const valSubDrawer = document.getElementById('val-subagents-count-drawer');
+      if (valSubDrawer) {
+        valSubDrawer.textContent = window.subagentRegistry.length;
       }
       renderSubagentsList();
     }
