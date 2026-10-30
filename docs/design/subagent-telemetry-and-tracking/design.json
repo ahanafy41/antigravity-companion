@@ -1,0 +1,668 @@
+{
+  "version": 2,
+  "slug": "subagent-telemetry-and-tracking",
+  "title": "Subagent Telemetry, Observability, and Interactive Chat Tracking",
+  "mode": "repo",
+  "status": "draft",
+  "decided": null,
+  "updatedAt": "2026-10-29",
+
+  "context": {
+    "problem": "Subagent invocations in the companion app currently suffer from broken telemetry: subagent names, roles, and prompts are lost due to a mismatch between Antigravity parameters and an assumed array wrapper; active counts remain zero; and the inner activities of subagents (web searches, file reads, terminal commands, outputs) are completely hidden from the chat conversation and the subagents team room both during live streaming and when resuming past conversations.",
+    "constraints": [
+      "Android Termux resource limits: server memory must remain under 80 MB, 2 CPU threads max",
+      "Screen reader first: TalkBack and Jieshuo (CSR) must announce subagent identity, actions, and completion clearly without emoji noise or wide tables",
+      "Zero disk transcript corruption: CLI transcripts in ~/.gemini/antigravity-cli/brain/ are strictly read-only append-only",
+      "Tool output bounds: previews strictly bounded to 16 KB to prevent EventLog buffer overflows, SSE disconnects, and WebView freezes on mobile",
+      "Backward compatibility: 100% pass on existing test suites (run_ui_tests.cjs, run_backend_tests.py, run_tests.py)"
+    ],
+    "vocabulary": [
+      "Subagent",
+      "invoke_subagent",
+      "send_message",
+      "Parent Turn",
+      "Child Transcript",
+      "SubagentThreadCard",
+      "Tool Result Card",
+      "Subagents Team Room"
+    ],
+    "observed": {
+      "commit": "1d504a1100003fce509a30b6e17582c9332cf657",
+      "uncommittedChanges": false
+    }
+  },
+
+  "requirements": {
+    "functional": [
+      {
+        "id": "fr-1",
+        "text": "Accurate Subagent Identification & Identity Extraction: Top-level Role, TypeName, and Prompt parameters parsed directly from invoke_subagent, eliminating 'وكيل جديد' fallback and restoring live agent badges and counts.",
+        "priority": "core"
+      },
+      {
+        "id": "fr-2",
+        "text": "Deep Subagent Execution Observability: Capture and stream inner child tool calls (search_web, view_file, run_command, send_message) and their outputs directly from child transcripts.",
+        "priority": "core"
+      },
+      {
+        "id": "fr-3",
+        "text": "In-Chat Subagent Thread & Cards: Embed live and historical subagent progress directly inside the conversation turn feed with collapsible accordions matching main tool result cards.",
+        "priority": "core"
+      },
+      {
+        "id": "fr-4",
+        "text": "Accessible Screen-Reader Telemetry: Announce subagent launches, tool activities, and completions via ARIA live regions and semantic badges without visual-only dependencies.",
+        "priority": "core"
+      },
+      {
+        "id": "fr-5",
+        "text": "Full Historical Recovery: When resuming past conversations, auto-discover all child subagent transcripts and restore the complete multi-agent activity stream.",
+        "priority": "core"
+      }
+    ],
+    "nonFunctional": [
+      {
+        "id": "nfr-1",
+        "axis": "latency",
+        "target": "< 1000 ms from child transcript write to UI render",
+        "rationale": "Keeps user informed of parallel agent progress in real time"
+      },
+      {
+        "id": "nfr-2",
+        "axis": "memory",
+        "target": "<= 80 MB server memory footprint & <= 16 KB output buffer cap",
+        "rationale": "Prevents Termux OOM kills on Android"
+      },
+      {
+        "id": "nfr-3",
+        "axis": "accessibility",
+        "target": "100% WCAG 2.2 AA and Screen Reader navigable",
+        "rationale": "Essential for TalkBack and Jieshuo/CSR"
+      }
+    ],
+    "outOfScope": [
+      "Client-side direct subagent steering without parent orchestrator mediation",
+      "Mutating CLI internal transcript formats or schemas"
+    ],
+    "priorities": {
+      "top3": ["simplicity", "faultTolerance", "performance"],
+      "source": "user",
+      "rationale": "Mobile Termux environment demands rock-solid crash resilience, lightweight execution, and seamless accessibility."
+    },
+    "conflicts": []
+  },
+
+  "estimates": {
+    "assumptions": [
+      { "text": "1 to 4 concurrent subagents per active parent turn", "source": "observed" },
+      { "text": "500 ms polling cadence during active runs", "source": "observed" }
+    ],
+    "rows": [
+      {
+        "metric": "polling overhead",
+        "value": "2-5 ms per tick",
+        "derivation": "stat check + cursor line slice on local storage"
+      },
+      {
+        "metric": "memory per subagent tracker",
+        "value": "< 12 KB in-memory state",
+        "derivation": "small metadata dictionary holding conversationId, cursor, and recent step cache"
+      },
+      {
+        "metric": "payload size per tool event",
+        "value": "1 - 16 KB",
+        "derivation": "bounded preview with fallback to full on-demand reading"
+      }
+    ]
+  },
+
+  "domain": {
+    "entities": [
+      {
+        "name": "SubagentInstance",
+        "purpose": "Represents an autonomous child agent launched by the orchestrator",
+        "invariants": [
+          "conversationId must be a valid 36-char UUID or 32-char hex string",
+          "transcript is append-only at brain/<conversationId>/.system_generated/logs/transcript.jsonl",
+          "state transitions from ACTIVE to DONE or ERROR without dangling states"
+        ]
+      },
+      {
+        "name": "SubagentToolStep",
+        "purpose": "A discrete action executed by a subagent (e.g. view_file, run_command)",
+        "invariants": [
+          "output preview strictly capped at 16 KB",
+          "step belongs to exactly one subagent instance"
+        ]
+      }
+    ]
+  },
+
+  "dataModel": {
+    "entities": [
+      {
+        "name": "SubagentTracker",
+        "representation": "In-memory dictionary in Sessions poller tracking conversationId, role, typeName, prompt, and transcript cursor",
+        "identity": "conversationId (UUID)",
+        "orderingAuthority": "Child transcript line index",
+        "conflictResolution": "Single-writer append-only disk transcript; server is read-only observer",
+        "durabilityPoint": "Flushed by CLI process to transcript.jsonl",
+        "gc": "Destroyed when parent turn finishes; persistent history reads from disk"
+      }
+    ],
+    "schemas": [
+      {
+        "name": "SubagentStep",
+        "store": "Local JSONL transcript",
+        "kind": "authoritative history",
+        "fields": [
+          { "name": "conversationId", "type": "UUID", "key": "partition key" },
+          { "name": "step_index", "type": "int", "key": "sort key" },
+          { "name": "tool_name", "type": "string" },
+          { "name": "parameters", "type": "object" },
+          { "name": "output", "type": "text" }
+        ],
+        "indexes": ["(conversationId, step_index)"],
+        "relationships": ["conversationId -> ParentConversation.id"],
+        "notes": ["Immutable on-disk transcript maintained by AGY CLI engine."]
+      }
+    ],
+    "notes": ["Ordering is sequential per subagent transcript, correlated with parent via invoke_subagent conversationId."]
+  },
+
+  "interfaces": [
+    {
+      "name": "Subagent Telemetry Stream Event",
+      "transport": "SSE (text/event-stream) over GET /sessions/{session_id}/runs/{run_id}/stream",
+      "purpose": "Deliver real-time subagent launches, inner tool executions, and state changes to the UI",
+      "consistency": "Strictly ordered line stream",
+      "idempotency": "Subagent tool steps keyed by (subagent_cid, step_index)",
+      "style": "server-sent events",
+      "trustBoundary": "Termux localhost loopback (127.0.0.1:7681) to Companion Client",
+      "deadline": "Immediate emission upon transcript discovery (< 500 ms)",
+      "retryability": "Standard SSE reconnection with event ID cursor",
+      "backpressure": "Output truncated to 16 KB; excess dropped gracefully with notice",
+      "compatibility": "Additive payload fields on existing tool and subagent event types",
+      "failureResult": "Subagent failure emits error state step; does not terminate parent run prematurely"
+    },
+    {
+      "name": "Conversation Detail with Nested Subagents",
+      "transport": "HTTP GET /api/ai/conversation?id={conv_id}",
+      "purpose": "Provide complete historical messages, artifacts, and nested subagent activities for resumed chats",
+      "consistency": "Read-committed from on-disk transcript snapshots",
+      "idempotency": "Deterministic read",
+      "style": "REST resource",
+      "trustBoundary": "Local server to Companion WebUI",
+      "deadline": "< 500 ms total response time",
+      "retryability": "Safe to retry indefinitely",
+      "backpressure": "Max bytes cap (1 MB) with truncation flag",
+      "compatibility": "Additive subagents array in conversation response payload",
+      "failureResult": "404 if conversation missing; 200 with empty subagents if none invoked"
+    }
+  ],
+
+  "deepDives": [
+    {
+      "title": "Dual-Cursor Hierarchical Transcript Poller",
+      "pressure": "Subagent activity occurs in independent child directories while parent run is active; polling multiple directories must not peg mobile CPU or cause file lock errors.",
+      "decision": "Maintain a dictionary of active child cursors in Sessions poller. When an invoke_subagent tool result yields a conversationId, register the child path and poll up to 4 child transcripts per tick with cursor line offsets.",
+      "alternatives": ["Global recursive directory watcher", "Blocking inotify listener"],
+      "failureMode": "Child transcript not created yet or slow disk flush; caught with existence checks and retry on next tick without crashing.",
+      "evidence": ["polling overhead estimate", "mobile battery invariant"]
+    },
+    {
+      "title": "In-Place Chat Thread Rendering & Screen Reader Live Announcements",
+      "pressure": "Visually impaired users using TalkBack or CSR need immediate, clear auditory feedback when subagents start, execute tools, and finish, without overwhelming chatter or visual-only accordions.",
+      "decision": "Render a specialized SubagentThreadCard in the chat feed and announce semantic summary lines (e.g. 'الوكيل: مراجع الكود بدأ فحص الملفات') via aria-live='polite'. Nested tools use the standard accessible details/summary pattern with ARIA expanded states.",
+      "alternatives": ["Modal dialog only", "Silent inline badge"],
+      "failureMode": "Repeated ARIA announcements stuttering speech; debounced to only announce significant state transitions and new tool names.",
+      "evidence": ["WCAG 2.2 AA accessibility requirements", "CSR/TalkBack compatibility"]
+    },
+    {
+      "title": "Memory Bounding & Android WebView Protection",
+      "pressure": "Subagents running large code searches or compilation commands can generate hundreds of kilobytes of output, crashing low-memory Android WebViews if unconstrained.",
+      "decision": "Enforce a strict 16 KB preview cap on child tool outputs at both the poller emitter and frontend card renderer, with a clean button to view full content or copy text.",
+      "alternatives": ["Streaming full megabyte buffers", "Dropping tool output completely"],
+      "failureMode": "User needs complete log; remedy is inline copy button reading full text from local file API or disk path.",
+      "evidence": ["MAX_TOOL_OUTPUT = 16384 benchmark in existing codebase"]
+    }
+  ],
+
+  "architectures": [
+    {
+      "id": "current",
+      "name": "Current Architecture (Disconnected Subagent Telemetry)",
+      "style": "modular-monolith",
+      "thesis": "Parent transcript is polled without tracking child transcripts, and tool parameters expect a non-existent Subagents array wrapper.",
+      "canvas": {
+        "primaryFlow": "broken-subagent-flow"
+      },
+      "components": [
+        {
+          "id": "web-ui",
+          "name": "Companion Web UI",
+          "type": "client",
+          "zone": "app",
+          "position": { "x": 180, "y": 200 },
+          "note": "Vanilla ES6 UI in WebView or browser",
+          "change": "modified"
+        },
+        {
+          "id": "sessions-poller",
+          "name": "Sessions Poller",
+          "type": "service",
+          "zone": "app",
+          "position": { "x": 480, "y": 200 },
+          "note": "Polls only parent conversation transcript at 500ms intervals",
+          "change": "modified"
+        },
+        {
+          "id": "parent-transcript",
+          "name": "Parent Transcript",
+          "type": "stream",
+          "zone": "data",
+          "position": { "x": 780, "y": 140 },
+          "note": "Append-only JSONL in ~/.gemini/antigravity-cli/brain/<parent_cid>/",
+          "change": "unchanged"
+        },
+        {
+          "id": "child-transcript",
+          "name": "Child Subagent Transcripts",
+          "type": "stream",
+          "zone": "data",
+          "position": { "x": 780, "y": 280 },
+          "note": "Unmonitored child transcripts in brain/<subagent_cid>/",
+          "change": "unchanged"
+        }
+      ],
+      "edges": [
+        {
+          "from": "web-ui",
+          "to": "sessions-poller",
+          "kind": "stream",
+          "label": "SSE stream",
+          "importance": "primary"
+        },
+        {
+          "from": "sessions-poller",
+          "to": "parent-transcript",
+          "kind": "sync",
+          "label": "Reads parent lines",
+          "importance": "primary"
+        },
+        {
+          "from": "sessions-poller",
+          "to": "child-transcript",
+          "kind": "sync",
+          "label": "Ignored / Unread",
+          "importance": "secondary"
+        }
+      ],
+      "flows": [
+        {
+          "id": "broken-subagent-flow",
+          "name": "Current Subagent Launch (Blind)",
+          "steps": [
+            { "seq": 1, "from": "web-ui", "to": "sessions-poller", "label": "Stream request", "note": "Receives generic tool step" },
+            { "seq": 2, "from": "sessions-poller", "to": "parent-transcript", "label": "Reads invoke_subagent", "note": "Extracts tool call but ignores child cid" }
+          ]
+        }
+      ],
+      "tradeoffs": {
+        "pros": ["Simple single-file poller"],
+        "cons": ["Subagents invisible in chat", "Zero tracking of child actions", "Subagent room remains empty"]
+      },
+      "ratings": {
+        "deployability": 4, "elasticity": 2, "evolvability": 2, "faultTolerance": 2,
+        "modularity": 3, "cost": 5, "performance": 3, "reliability": 2,
+        "scalability": 2, "simplicity": 3, "testability": 3
+      }
+    },
+    {
+      "id": "a",
+      "name": "Hierarchical Dual-Cursor Telemetry & In-Chat Subagent Thread (Recommended)",
+      "style": "modular-monolith",
+      "thesis": "Correlate parent invoke_subagent events with child conversation transcripts via async dual-cursor polling, emitting enriched subagent telemetry over SSE and rendering interactive nested tool cards directly in the chat feed.",
+      "canvas": {
+        "primaryFlow": "hierarchical-subagent-flow"
+      },
+      "components": [
+        {
+          "id": "web-ui",
+          "name": "Companion Web UI",
+          "type": "client",
+          "zone": "app",
+          "position": { "x": 180, "y": 200 },
+          "note": "Renders SubagentThreadCard in chat feed and syncs subagents room",
+          "change": "modified"
+        },
+        {
+          "id": "sessions-poller",
+          "name": "Hierarchical Poller",
+          "type": "service",
+          "zone": "app",
+          "position": { "x": 480, "y": 200 },
+          "note": "Polls parent and all registered child transcripts using cursor lines",
+          "change": "modified"
+        },
+        {
+          "id": "parent-transcript",
+          "name": "Parent Transcript",
+          "type": "stream",
+          "zone": "data",
+          "position": { "x": 780, "y": 140 },
+          "note": "Discovers invoke_subagent calls and conversationId results",
+          "change": "unchanged"
+        },
+        {
+          "id": "child-transcript",
+          "name": "Child Subagent Transcripts",
+          "type": "stream",
+          "zone": "data",
+          "position": { "x": 780, "y": 280 },
+          "note": "Actively drained for tool executions, outputs, and thoughts",
+          "change": "unchanged"
+        },
+        {
+          "id": "legacy-conv-svc",
+          "name": "Legacy Conversations Svc",
+          "type": "service",
+          "zone": "app",
+          "position": { "x": 480, "y": 380 },
+          "note": "Auto-discovers and nests child subagent transcripts on chat resume",
+          "change": "modified"
+        }
+      ],
+      "edges": [
+        {
+          "from": "web-ui",
+          "to": "sessions-poller",
+          "kind": "stream",
+          "label": "Hierarchical SSE",
+          "importance": "primary"
+        },
+        {
+          "from": "sessions-poller",
+          "to": "parent-transcript",
+          "kind": "sync",
+          "label": "Parent poll cursor",
+          "importance": "primary"
+        },
+        {
+          "from": "sessions-poller",
+          "to": "child-transcript",
+          "kind": "sync",
+          "label": "Child poll cursor",
+          "importance": "primary"
+        },
+        {
+          "from": "web-ui",
+          "to": "legacy-conv-svc",
+          "kind": "sync",
+          "label": "Fetch conversation",
+          "importance": "secondary"
+        },
+        {
+          "from": "legacy-conv-svc",
+          "to": "child-transcript",
+          "kind": "sync",
+          "label": "Resolve subagent runs",
+          "importance": "secondary"
+        }
+      ],
+      "flows": [
+        {
+          "id": "hierarchical-subagent-flow",
+          "name": "Subagent Launch, Execution, and UI Feedback",
+          "steps": [
+            { "seq": 1, "from": "sessions-poller", "to": "parent-transcript", "label": "1. Detect invoke_subagent", "note": "Extracts Role, TypeName, Prompt" },
+            { "seq": 2, "from": "sessions-poller", "to": "web-ui", "label": "2. Emit subagent_launch", "note": "UI renders active subagent card & updates counter" },
+            { "seq": 3, "from": "sessions-poller", "to": "child-transcript", "label": "3. Register child CID & poll", "note": "Drains subagent tool steps (read_file, search_web)" },
+            { "seq": 4, "from": "sessions-poller", "to": "web-ui", "label": "4. Stream subagent_step", "note": "UI appends live tool cards inside subagent thread" },
+            { "seq": 5, "from": "sessions-poller", "to": "web-ui", "label": "5. Subagent complete / reply", "note": "Updates badge to done and announces to screen reader" }
+          ]
+        }
+      ],
+      "tradeoffs": {
+        "pros": [
+          "Complete end-to-end visibility of subagent actions in chat and subagents dialog",
+          "Zero new server infrastructure or heavy external dependencies",
+          "Preserves full history when resuming past multi-agent conversations",
+          "Strict 16 KB bounds ensure mobile battery and memory safety"
+        ],
+        "cons": [
+          "Polling multiple files introduces small CPU overhead (tested < 5ms per tick)"
+        ],
+        "migration": {
+          "cost": "S",
+          "notes": [
+            "Additive change in server and web UI; completely backward compatible with existing conversations."
+          ]
+        }
+      },
+      "ratings": {
+        "deployability": 5, "elasticity": 4, "evolvability": 5, "faultTolerance": 5,
+        "modularity": 4, "cost": 5, "performance": 4, "reliability": 5,
+        "scalability": 4, "simplicity": 5, "testability": 5
+      }
+    },
+    {
+      "id": "b",
+      "name": "Client-Side Polling via Dedicated Subagent REST Endpoints",
+      "style": "service-oriented",
+      "thesis": "Separate subagent state into discrete REST endpoints (/api/ai/subagents/{cid}) and require the frontend to poll them independently from the parent SSE stream.",
+      "canvas": {
+        "primaryFlow": "rest-subagent-flow"
+      },
+      "components": [
+        {
+          "id": "web-ui",
+          "name": "Companion Web UI",
+          "type": "client",
+          "zone": "app",
+          "position": { "x": 180, "y": 200 },
+          "note": "Manages multiple concurrent fetch timers",
+          "change": "modified"
+        },
+        {
+          "id": "subagent-api",
+          "name": "Subagent REST API",
+          "type": "service",
+          "zone": "app",
+          "position": { "x": 480, "y": 280 },
+          "note": "Reads child transcript on client request",
+          "change": "added"
+        },
+        {
+          "id": "child-transcript",
+          "name": "Child Subagent Transcripts",
+          "type": "stream",
+          "zone": "data",
+          "position": { "x": 780, "y": 280 },
+          "note": "Drained per HTTP GET request",
+          "change": "unchanged"
+        }
+      ],
+      "edges": [
+        {
+          "from": "web-ui",
+          "to": "subagent-api",
+          "kind": "sync",
+          "label": "Poll /subagents/{id}",
+          "importance": "primary"
+        },
+        {
+          "from": "subagent-api",
+          "to": "child-transcript",
+          "kind": "sync",
+          "label": "Read transcript",
+          "importance": "primary"
+        }
+      ],
+      "flows": [
+        {
+          "id": "rest-subagent-flow",
+          "name": "Client REST Polling",
+          "steps": [
+            { "seq": 1, "from": "web-ui", "to": "subagent-api", "label": "HTTP GET", "note": "Repeated every 1s" }
+          ]
+        }
+      ],
+      "tradeoffs": {
+        "pros": ["Decouples subagent polling from parent SSE run"],
+        "cons": [
+          "Redundant HTTP round-trips causing high battery drain on Android",
+          "Out-of-order race conditions between parent chat output and subagent cards",
+          "High client timer complexity and connection fatigue"
+        ],
+        "migration": {
+          "cost": "M",
+          "notes": ["Requires new endpoints and complex client polling logic."]
+        }
+      },
+      "ratings": {
+        "deployability": 4, "elasticity": 3, "evolvability": 3, "faultTolerance": 3,
+        "modularity": 4, "cost": 3, "performance": 2, "reliability": 3,
+        "scalability": 3, "simplicity": 2, "testability": 3
+      }
+    }
+  ],
+
+  "comparison": {
+    "axes": ["simplicity", "faultTolerance", "performance", "modularity", "cost", "evolvability"],
+    "recommendation": {
+      "architecture": "a",
+      "reasoning": [
+        "Architecture A unifies parent and child telemetry into a single coordinated SSE stream, eliminating mobile battery drain from redundant client HTTP polling.",
+        "It leverages the existing 500 ms poller in server/sessions.py with simple cursor line indexing, keeping memory addition under 12 KB.",
+        "It provides immediate in-chat visibility and seamless TalkBack/CSR screen-reader accessibility for Ahmed without altering disk transcripts."
+      ]
+    }
+  },
+
+  "debt": {
+    "scheme": "pattern+components/v1",
+    "checked": [
+      "boundaries",
+      "data-ownership",
+      "coupling",
+      "dependency-contracts",
+      "failure-containment",
+      "over-engineering",
+      "obsolescence"
+    ],
+    "unverified": [],
+    "findings": [
+      {
+        "id": "dbt-fragile-parameter-mapping--main-ui-sessions",
+        "identity": {
+          "scheme": "pattern+components/v1",
+          "pattern": "fragile-parameter-mapping",
+          "components": ["main-ui", "sessions-poller"]
+        },
+        "aliases": [],
+        "subject": "repo",
+        "category": "boundaries",
+        "pattern": "fragile-parameter-mapping",
+        "affects": ["evolvability", "reliability"],
+        "title": "Subagent invocation parameters look for params.Subagents array instead of direct Role/TypeName",
+        "components": ["main-ui", "sessions-poller"],
+        "edges": [],
+        "consequence": "breaking",
+        "exposure": "on-path",
+        "severity": "blocking",
+        "confidence": "high",
+        "evidence": [
+          {
+            "text": "main-ui.js line 877 and line 1673 check data.params.Subagents which is undefined in Antigravity",
+            "source": "server/web/main-ui.js; server/sessions.py:62"
+          }
+        ],
+        "whyItMatters": "Subagents appear as anonymous 'وكيل جديد' or fail to register entirely in the subagent team room and counters.",
+        "remedy": {
+          "action": "replace",
+          "text": "Directly extract Role, TypeName, and Prompt from params top-level with fallback to legacy array."
+        },
+        "effort": "XS",
+        "reversibility": "reversible",
+        "blastRadius": "Subagent UI labeling and registration",
+        "resolvedBy": ["a"],
+        "verification": {
+          "gates": { "real": "pass", "live": "pass" },
+          "lenses": [
+            { "lens": "uncovered", "refuted": false, "objection": "Verified against real transcript step 31" }
+          ],
+          "tools": ["repository inspection"],
+          "survived": 1
+        },
+        "status": "open",
+        "justification": null,
+        "acceptedUntil": null,
+        "firstSeen": "2026-10-29",
+        "baselineState": "new"
+      },
+      {
+        "id": "dbt-unmonitored-child-transcripts--sessions-poller",
+        "identity": {
+          "scheme": "pattern+components/v1",
+          "pattern": "unmonitored-child-transcripts",
+          "components": ["sessions-poller", "child-transcript"]
+        },
+        "aliases": [],
+        "subject": "repo",
+        "category": "data-ownership",
+        "pattern": "unmonitored-child-transcripts",
+        "affects": ["observability", "reliability"],
+        "title": "Sessions poller only reads parent transcript, leaving child subagent transcripts unobserved",
+        "components": ["sessions-poller", "child-transcript"],
+        "edges": [],
+        "consequence": "breaking",
+        "exposure": "on-path",
+        "severity": "blocking",
+        "confidence": "high",
+        "evidence": [
+          {
+            "text": "server/sessions.py _drain_transcript only accesses brain_dir / conv_id",
+            "source": "server/sessions.py:691"
+          }
+        ],
+        "whyItMatters": "Users cannot observe what subagents are doing (reading files, executing commands, searching web) during turn execution.",
+        "remedy": {
+          "action": "consolidate",
+          "text": "Register child conversationId upon subagent creation and drain child transcripts concurrently using line cursors."
+        },
+        "effort": "S",
+        "reversibility": "reversible",
+        "blastRadius": "Sessions poller and SSE emission",
+        "resolvedBy": ["a"],
+        "verification": {
+          "gates": { "real": "pass", "live": "pass" },
+          "lenses": [
+            { "lens": "uncovered", "refuted": false, "objection": "Confirmed by absence of child transcript drain loop" }
+          ],
+          "tools": ["repository inspection"],
+          "survived": 1
+        },
+        "status": "open",
+        "justification": null,
+        "acceptedUntil": null,
+        "firstSeen": "2026-10-29",
+        "baselineState": "new"
+      }
+    ]
+  },
+
+  "risks": [
+    {
+      "text": "Multiple concurrent subagents writing simultaneously could lead to transient read-after-write delays",
+      "horizon": "under heavy 4+ subagent workloads; mitigated by cursor retries on subsequent 500ms poller ticks"
+    }
+  ],
+  "nextSteps": [
+    "Refactor invoke_subagent parameter parsing in server/sessions.py and server/web/main-ui.js",
+    "Add child transcript cursor registration in poll_transcript (server/sessions.py)",
+    "Enhance legacy_conversations.py to load nested subagent steps on conversation resume",
+    "Add SubagentThreadCard rendering and aria-live announcements in server/web/main-ui.js"
+  ],
+  "adr": null
+}
