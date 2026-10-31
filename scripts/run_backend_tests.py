@@ -9,7 +9,9 @@ import signal
 from pathlib import Path
 import sys
 import tempfile
+import time
 import unittest
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 from types import SimpleNamespace
 
@@ -1152,6 +1154,73 @@ class SessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             recovered.log(run_id).events[-1]["data"]["state"], "interrupted"
         )
+
+    async def test_transcript_polling_baselines_to_existing_length(self):
+        conv_id = "test-conv-" + uuid.uuid4().hex[:12]
+        brain_dir = Path.home() / ".gemini" / "antigravity-cli" / "brain"
+        conv_dir = brain_dir / conv_id / ".system_generated" / "logs"
+        conv_dir.mkdir(parents=True, exist_ok=True)
+        t_file = conv_dir / "transcript.jsonl"
+        try:
+            # 2 pre-existing historical lines
+            t_file.write_text(
+                json.dumps({"type": "PLANNER_RESPONSE", "thinking": "Old historical thinking"}) + "\n" +
+                json.dumps({"type": "TOOL_RESULT", "content": "Old tool result"}) + "\n",
+                encoding="utf-8"
+            )
+
+            session = dict(self.session, conversation_id=conv_id)
+            run = {
+                "run_id": "test-baseline-run",
+                "state": "running",
+                "response": "",
+                "usage": {},
+            }
+            self.sessions.runs[run["run_id"]] = run
+
+            poll_task = asyncio.create_task(self.sessions.poll_transcript(session, run))
+            await asyncio.sleep(0.1)
+
+            # Old historical lines must NOT have been emitted to this run
+            events = self.sessions.log(run["run_id"]).events
+            thoughts = [e["data"].get("text") for e in events if e.get("event") == "thought"]
+            self.assertNotIn("Old historical thinking", thoughts)
+
+            # Now append a brand new line during this turn
+            with t_file.open("a", encoding="utf-8") as f:
+                f.write(json.dumps({"type": "PLANNER_RESPONSE", "thinking": "New turn thinking"}) + "\n")
+
+            await asyncio.sleep(0.7)
+            run["state"] = "completed"
+            await poll_task
+
+            events_after = self.sessions.log(run["run_id"]).events
+            thoughts_after = [e["data"].get("text") for e in events_after if e.get("event") == "thought"]
+            self.assertIn("New turn thinking", thoughts_after)
+            self.assertNotIn("Old historical thinking", thoughts_after)
+        finally:
+            import shutil
+            shutil.rmtree(brain_dir / conv_id, ignore_errors=True)
+
+    async def test_defunct_running_run_is_pruned_before_capacity_check(self):
+        session_id = self.session["session_id"]
+        # Simulate an orphaned run marked running whose task is finished/missing
+        orphaned_id = "orphaned-run-" + uuid.uuid4().hex[:8]
+        self.sessions.runs[orphaned_id] = {
+            "run_id": orphaned_id,
+            "session_id": session_id,
+            "state": "running",
+            "message": "stale",
+            "client_request_id": "stale-req",
+            "fingerprint": "xyz",
+            "created_at": time.time() - 3600,
+            "usage": {},
+        }
+        self.session["runs"].append(orphaned_id)
+
+        # check_capacity should reap the dead run and NOT raise RunConflict
+        self.sessions.check_capacity(self.session)
+        self.assertEqual(self.sessions.runs[orphaned_id]["state"], "interrupted")
 
     async def test_android_failed_action_is_not_reexecuted(self):
         android = AndroidClient(self.store)
