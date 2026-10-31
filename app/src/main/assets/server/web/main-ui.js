@@ -3717,10 +3717,12 @@ await window.mainV1.ready;
         convs.forEach(c => {
           const item = document.createElement('div');
           const isCurrent = currentActiveConversationId === c.id;
-          item.className = 'conv-card-item' + (isCurrent ? ' active' : '');
+          const isRunning = Boolean(c.is_active || c.active_run);
+          item.className = 'conv-card-item' + (isCurrent ? ' active' : '') + (isRunning ? ' running-task' : '');
           item.setAttribute('role', 'listitem');
 
-          const ariaText = (c.is_pinned ? 'محادثة مثبتة: ' : '') +
+          const ariaText = (isRunning ? '⚡ مهمة جارية تعمل الآن: ' : '') +
+            (c.is_pinned ? 'محادثة مثبتة: ' : '') +
             (isCurrent ? `المحادثة الحالية المفتوحة: ${c.title}` : `استئناف المحادثة: ${c.title}`) +
             (c.date ? `، تاريخ ${c.date}` : '') + `، ${c.steps} رسالة وخطوة. اضغط لفتح المحادثة`;
 
@@ -3728,9 +3730,11 @@ await window.mainV1.ready;
             <button type="button" class="btn-conv-main" aria-label="${escapeHtml(ariaText)}">
               <div class="conv-card-info">
                 <div class="conv-card-title">
+                  ${isRunning ? '<span class="conv-active-tag" style="background:#00e676;color:#000;padding:2px 6px;border-radius:4px;font-size:0.8rem;font-weight:bold;margin-left:6px;">⚡ تعمل الآن</span>' : ''}
                   ${c.is_pinned ? '<span class="conv-pin-tag" aria-hidden="true">📌 </span>' : ''}${escapeHtml(c.title)}
                 </div>
                 <div class="conv-card-meta">
+                  ${isRunning ? '<span style="color:#00e676;font-weight:bold;">⚡ جارٍ التنفيذ بالخلفية</span>' : ''}
                   ${c.is_pinned ? '<span class="conv-pin-tag">مثبتة</span>' : ''}
                   <span>📅 ${escapeHtml(c.date || 'بدون تاريخ')}</span>
                   <span>🔢 ${c.steps} خطوة</span>
@@ -7251,6 +7255,18 @@ await window.mainV1.ready;
     reportVisibility(document.visibilityState === 'visible');
     (async () => {
       try {
+        let activeConvId = null;
+        let activeConvTitle = 'المهمة الجارية الحالية';
+        try {
+          const actRes = await window.mainV1Fetch('/api/ai/runs/active');
+          if (actRes.ok) {
+            const actData = await actRes.json();
+            if (actData.active_run && actData.active_run.conversation_id && actData.active_run.state === 'running') {
+              activeConvId = actData.active_run.conversation_id;
+            }
+          }
+        } catch (e) {}
+
         let savedConversation = window.mainV1 ? window.mainV1.currentConversation() : null;
         if (!savedConversation) {
           try {
@@ -7259,7 +7275,9 @@ await window.mainV1.ready;
             }
           } catch (e) {}
         }
-        if (savedConversation) {
+        if (activeConvId) {
+          await resumeConversation(activeConvId, activeConvTitle);
+        } else if (savedConversation) {
           await resumeConversation(savedConversation, 'المحادثة المحفوظة');
         } else {
           // Cold-start auto-hydration: automatically open and render the most recent conversation

@@ -171,6 +171,7 @@ def register_routes(application):
         web.get("/api/v1/sessions/{session_id}", session_detail),
         web.post("/api/v1/sessions/{session_id}/close", close_session),
         web.post("/api/v1/sessions/{session_id}/runs", start_run),
+        web.get("/api/v1/runs/active", active_run_endpoint),
         web.get("/api/v1/runs/{run_id}", run_detail),
         web.post("/api/v1/runs/{run_id}/cancel", cancel_run),
         web.get("/api/v1/runs/{run_id}/events", stream_events),
@@ -800,12 +801,21 @@ async def list_sessions(request):
             else created_at
         )
 
+        active = sessions_obj.active_run_for(s["session_id"]) or sessions_obj.active_run_for(s.get("conversation_id"))
         s_dict["title"] = title or "محادثة سابقة"
         s_dict["created_at"] = created_at
         s_dict["mtime"] = mtime
         s_dict["steps"] = len(s_runs) * 2
+        s_dict["active_run"] = active
         result.append(s_dict)
     return web.json_response({"sessions": result})
+
+
+async def active_run_endpoint(request):
+    sessions = request.app["sessions"]
+    identifier = request.query.get("conversation_id") or request.query.get("session_id") or ""
+    active = sessions.active_run_for(identifier) if identifier else sessions.active_run_for()
+    return web.json_response({"status": "ok", "active_run": active})
 
 
 async def create_session(request):
@@ -958,6 +968,9 @@ async def stream_events(request):
     )
     await response.prepare(request)
     try:
+        if replay is None and run["state"] not in TERMINAL and log.events:
+            replay = list(log.events)
+
         if replay is None:
             if run["state"] in TERMINAL or run.get("response"):
                 await send_event(

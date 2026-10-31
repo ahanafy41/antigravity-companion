@@ -357,21 +357,27 @@ class Sessions:
         self.persist()
         return session
 
+    def active_run_for(self, identifier=None):
+        for run in reversed(list(self.runs.values())):
+            if run.get("state") == "running":
+                s_id = run.get("session_id")
+                sess = self.sessions.get(s_id, {})
+                c_id = sess.get("conversation_id") or run.get("conversation_id")
+                if not identifier or identifier in (s_id, c_id, run.get("run_id")):
+                    return {
+                        "run_id": run["run_id"],
+                        "session_id": s_id,
+                        "conversation_id": c_id,
+                        "state": "running",
+                        "message": run.get("message", ""),
+                        "created_at": run.get("created_at"),
+                    }
+        return None
+
     def detail(self, session_id):
         session = dict(self.sessions[session_id])
         session["runs"] = [self.runs[run_id] for run_id in session["runs"]]
-        active = None
-        for run in reversed(session["runs"]):
-            if run.get("state") == "running":
-                active = {
-                    "run_id": run["run_id"],
-                    "session_id": session_id,
-                    "state": "running",
-                    "message": run.get("message", ""),
-                    "created_at": run.get("created_at"),
-                }
-                break
-        session["active_run"] = active
+        session["active_run"] = self.active_run_for(session_id) or self.active_run_for(session.get("conversation_id"))
         return session
 
     def log(self, run_id):

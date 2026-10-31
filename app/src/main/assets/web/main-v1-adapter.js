@@ -407,26 +407,17 @@
       current.conversationId = id;
       persist();
     }
-    let sessions = [];
-    try { sessions = (await request('/sessions')).sessions || []; }
-    catch (error) {
-      const local = (await companion.history.list()).find(record => record.id === id || record.conversation_id === id);
-      if (local && !error.status) return {messages: local.messages, read_only: true};
-      throw error;
-    }
-    const sessionSummary = sessions.find(entry => entry.session_id === id || entry.conversation_id === id);
-    let sessionDetail = null;
-    if (sessionSummary) {
-      try {
-        sessionDetail = await request('/sessions/' + encode(sessionSummary.session_id));
-        if (sessionDetail?.active_run) {
-          current.sessionId = sessionSummary.session_id;
-          current.runId = sessionDetail.active_run.run_id;
-          current.conversationId = id;
-          persist();
-        }
-      } catch (e) {}
-    }
+    let activeRun = null;
+    try {
+      const activeRes = await request('/runs/active' + (id ? '?conversation_id=' + encode(id) : ''));
+      if (activeRes && activeRes.active_run && activeRes.active_run.state === 'running') {
+        activeRun = activeRes.active_run;
+        current.sessionId = activeRun.session_id;
+        current.runId = activeRun.run_id;
+        if (activeRun.conversation_id) current.conversationId = activeRun.conversation_id;
+        persist();
+      }
+    } catch (e) {}
 
     let legacy = null;
     try {
@@ -441,12 +432,23 @@
       messages = legacy.messages;
       artifacts = legacy.artifacts || [];
       total_tokens = legacy.total_tokens || 0;
-    } else if (sessionDetail) {
-      messages = runMessages(await saveHistory(sessionSummary.session_id));
+    } else if (current.sessionId) {
+      try {
+        messages = runMessages(await saveHistory(current.sessionId));
+      } catch (e) {}
     } else {
       const local = await companion.history.get(id);
       if (local) {
         messages = local.messages.map(message => ({...message, role: message.role === 'user' ? 'user' : 'agent'}));
+      }
+    }
+
+    // If an active run is currently ongoing, remove any partial static agent message from messages
+    // so the UI can mount a live card that updates smoothly via SSE without duplicates
+    if (activeRun && messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg && lastMsg.role === 'agent') {
+        messages.pop();
       }
     }
 
@@ -468,8 +470,8 @@
       messages: messages,
       artifacts: artifacts,
       total_tokens: total_tokens,
-      active_run: sessionDetail?.active_run || null,
-      session_id: sessionSummary?.session_id || null
+      active_run: activeRun,
+      session_id: activeRun?.session_id || current.sessionId || null
     };
   }
   async function conversations() {
@@ -548,8 +550,24 @@
       }
     }
 
-    // 4. CRITICAL: Sort pinned conversations first, then by mtime descending
+    // 3.5 Check active run across the server to highlight active conversation
+    try {
+      const activeRes = await request('/runs/active');
+      if (activeRes && activeRes.active_run && activeRes.active_run.conversation_id) {
+        const actCid = activeRes.active_run.conversation_id;
+        const entry = map.get(actCid);
+        if (entry) {
+          entry.is_active = true;
+          entry.active_run = activeRes.active_run;
+        }
+      }
+    } catch (e) {}
+
+    // 4. CRITICAL: Sort active run first, then pinned conversations, then by mtime descending
     const sorted = [...map.values()].sort((a, b) => {
+      const aAct = a.is_active ? 1 : 0;
+      const bAct = b.is_active ? 1 : 0;
+      if (aAct !== bAct) return bAct - aAct;
       const aPin = a.is_pinned ? 1 : 0;
       const bPin = b.is_pinned ? 1 : 0;
       if (aPin !== bPin) return bPin - aPin;
@@ -797,6 +815,10 @@
         if (current.runId) await request('/runs/' + encode(current.runId) + '/cancel', {method: 'POST', body: {}});
         return {status: 'ok'};
       case 'ai/chat/reset': await closeCurrent(); return {status: 'ok'};
+      case 'ai/runs/active': {
+        const cId = query.get('conversation_id');
+        return request('/runs/active' + (cId ? '?conversation_id=' + encode(cId) : ''));
+      }
       case 'ai/conversations': return conversations();
       case 'ai/conversation': return conversation(query.get('id'));
       case 'ai/conversation/manage': {

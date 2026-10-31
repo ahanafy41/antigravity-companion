@@ -91,5 +91,44 @@ class ActiveRunReconnectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(agent_msg["tools"]), 1)
         self.assertEqual(agent_msg["tools"][0]["name"], "read_file")
 
+    async def test_event_log_after_returns_retained_events_when_cursor_is_zero(self):
+        session = self.sessions.create({})
+        session_id = session["session_id"]
+        run_id = self.sessions.start(session_id, {"message": "hello", "client_request_id": "req-evt"})
+        log = self.sessions.log(run_id)
+        initial_count = len(log.events) # 1 initial state event
+        # Append 10 events
+        for i in range(10):
+            log.append("delta", {"text_delta": f"token-{i}"})
+        self.assertEqual(len(log.events), initial_count + 10)
+        
+        # When cursor is 0 and events are retained, after(0) must return all events
+        events_from_zero = log.after(0)
+        self.assertIsNotNone(events_from_zero)
+        self.assertEqual(len(events_from_zero), initial_count + 10)
+
+        # When events were popped/trimmed so earliest id > 1, after(0) returns None to signal partial retention
+        log.events.popleft() # pop earliest event
+        self.assertIsNone(log.after(0))
+        # But after cursor pointing to retained events returns them
+        self.assertIsNotNone(log.after(1))
+
+    async def test_active_run_for_finds_correct_session_when_multiple_share_conversation_id(self):
+        conv_id = "shared-conv-456"
+        # Create older session 1
+        s1 = self.sessions.create({"conversation_id": conv_id})
+        # Create newer session 2
+        s2 = self.sessions.create({"conversation_id": conv_id})
+        
+        # Start a run on the newer session s2
+        run_id = self.sessions.start(s2["session_id"], {"message": "run on s2", "client_request_id": "req-s2"})
+        
+        # active_run_for with conv_id must return the active run from s2
+        active = self.sessions.active_run_for(conv_id)
+        self.assertIsNotNone(active)
+        self.assertEqual(active["run_id"], run_id)
+        self.assertEqual(active["session_id"], s2["session_id"])
+        self.assertEqual(active["conversation_id"], conv_id)
+
 if __name__ == "__main__":
     unittest.main()
