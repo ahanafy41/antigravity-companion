@@ -142,7 +142,7 @@
       if (event.id && Number(event.id) <= Number(cursor)) return;
       options.onEvent(event);
       if (event.id) cursor = event.id;
-      if (event.event === 'result' || event.event === 'replay_unavailable') completed = true;
+      if (event.event === 'result') completed = true;
     };
     for (let attempt = 0; ; attempt++) {
       try {

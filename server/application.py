@@ -957,7 +957,9 @@ async def stream_events(request):
         request.headers.get("Last-Event-ID", request.query.get("after", "0"))
     )
     if cursor < 0 or cursor > log.sequence:
-        raise ValueError("Invalid event cursor")
+        cursor = 0
+    if log.events and cursor < log.events[0]["id"] - 1:
+        cursor = max(0, log.events[0]["id"] - 1)
     replay = log.after(cursor)
     response = web.StreamResponse(
         headers={
@@ -968,8 +970,10 @@ async def stream_events(request):
     )
     await response.prepare(request)
     try:
-        if replay is None and run["state"] not in TERMINAL and log.events:
+        if replay is None and run["state"] not in TERMINAL:
             replay = list(log.events)
+            if log.events:
+                cursor = max(0, log.events[0]["id"] - 1)
 
         if replay is None:
             if run["state"] in TERMINAL or run.get("response"):
@@ -999,13 +1003,21 @@ async def stream_events(request):
         sent_result = False
         while True:
             log.changed.clear()
-            for event in log.after(cursor) or []:
+            events_to_send = log.after(cursor)
+            if events_to_send is None and log.events:
+                cursor = max(0, log.events[0]["id"] - 1)
+                events_to_send = log.after(cursor)
+            for event in events_to_send or []:
                 await send_event(response, event)
                 cursor = event["id"]
                 if event.get("event") == "result":
                     sent_result = True
             if run["state"] in TERMINAL:
-                for event in log.after(cursor) or []:
+                events_to_send = log.after(cursor)
+                if events_to_send is None and log.events:
+                    cursor = max(0, log.events[0]["id"] - 1)
+                    events_to_send = log.after(cursor)
+                for event in events_to_send or []:
                     await send_event(response, event)
                     cursor = event["id"]
                     if event.get("event") == "result":

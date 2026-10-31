@@ -713,14 +713,21 @@
             streamFailure = error;
           }
           let snapshot = await request('/runs/' + encode(runId), {signal: controller.signal});
-          // Resilient polling fallback: if stream disconnected but run is still active, poll until terminal without arbitrary limits
+          // Resilient stream loop: if api.events disconnected but run is still active, continuously retry SSE
           while (!terminal.has(snapshot.state) && !controller.signal.aborted) {
             emit({type: 'heartbeat', timestamp: Date.now(), state: snapshot.state});
-            await new Promise(r => setTimeout(r, 1500));
+            try {
+              await api.events(runId, {signal: controller.signal, cursor: current.cursor, onEvent});
+            } catch (err) {
+              if (controller.signal.aborted) throw err;
+            }
             try {
               snapshot = await request('/runs/' + encode(runId), {signal: controller.signal});
             } catch (pErr) {
               if (controller.signal.aborted) throw pErr;
+            }
+            if (!terminal.has(snapshot.state) && !controller.signal.aborted) {
+              await new Promise(r => setTimeout(r, 1000));
             }
           }
           if (terminal.has(snapshot.state)) {
