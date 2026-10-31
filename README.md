@@ -6,6 +6,16 @@ The current lean architecture follows the maintainer's [RFC](docs/lean-companion
 
 ## Install and run
 
+### Quick Start (One-Line Setup in Termux)
+
+Run this single command inside Termux to automatically install dependencies, set up Termux permissions, sync the server, configure auto-start, and launch the Antigravity Companion:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ahanafy41/antigravity-companion/main/setup.sh | bash
+```
+
+### Manual Setup
+
 Install Python, put `agy` on PATH, and install [requirements.txt](requirements.txt). Android also needs Termux, the RUN_COMMAND permission and your chosen allow-external-apps setting. Setup preserves existing conversations and configuration; it does not silently enable that Termux setting.
 
 One example, from the project root:
