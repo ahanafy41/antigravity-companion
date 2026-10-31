@@ -145,9 +145,26 @@
 ];
   const terminal = new Set(['completed', 'cancelled', 'failed', 'interrupted']);
   const stateKey = 'companion-main-v1';
+  function getStorage() {
+    try {
+      if (typeof global.localStorage !== 'undefined' && global.localStorage) return global.localStorage;
+    } catch (e) {}
+    try {
+      if (typeof global.sessionStorage !== 'undefined' && global.sessionStorage) return global.sessionStorage;
+    } catch (e) {}
+    return {
+      _data: {},
+      getItem(k) { return this._data[k] || null; },
+      setItem(k, v) { this._data[k] = String(v); },
+      removeItem(k) { delete this._data[k]; }
+    };
+  }
+  const storage = getStorage();
   let current = {};
-  try { current = JSON.parse(global.sessionStorage.getItem(stateKey) || '{}'); }
-  catch (error) { if (!(error instanceof SyntaxError)) throw error; }
+  try {
+    const raw = storage.getItem(stateKey) || (global.sessionStorage ? global.sessionStorage.getItem(stateKey) : null);
+    current = JSON.parse(raw || '{}');
+  } catch (error) { if (!(error instanceof SyntaxError)) throw error; }
   if (!current || typeof current !== 'object' || Array.isArray(current)) current = {};
   let settingsDocument;
   let policyDocument;
@@ -207,7 +224,10 @@
   let sessionCreation;
   const historyReady = dashboard ? Promise.resolve() : companion.history.open();
   historyReady.catch(report);
-  function persist() { global.sessionStorage.setItem(stateKey, JSON.stringify(current)); }
+  function persist() {
+    try { storage.setItem(stateKey, JSON.stringify(current)); } catch(e) {}
+    try { if (global.sessionStorage) global.sessionStorage.setItem(stateKey, JSON.stringify(current)); } catch(e) {}
+  }
   function report(error) {
     const live = document.getElementById('sr-announcer') || document.getElementById('live-announcer') || document.getElementById('aria-announcer');
     if (live) live.textContent = error.message;
@@ -387,78 +407,69 @@
       current.conversationId = id;
       persist();
     }
-    let sessions;
-    try { sessions = (await request('/sessions')).sessions; }
+    let sessions = [];
+    try { sessions = (await request('/sessions')).sessions || []; }
     catch (error) {
       const local = (await companion.history.list()).find(record => record.id === id || record.conversation_id === id);
       if (local && !error.status) return {messages: local.messages, read_only: true};
       throw error;
     }
-    const session = sessions.find(entry => entry.session_id === id || entry.conversation_id === id);
-    if (session) return {messages: runMessages(await saveHistory(session.session_id))};
-    const local = await companion.history.get(id);
-    if (local) return {messages: local.messages.map(message => ({...message, role: message.role === 'user' ? 'user' : 'agent'})), read_only: local.read_only};
-    const legacy = await request('/legacy/conversations/' + encode(id));
-    if (legacy && Array.isArray(legacy.messages)) {
-      return {
-        id: legacy.id || id,
-        messages: legacy.messages,
-        artifacts: legacy.artifacts || [],
-        total_tokens: legacy.total_tokens || 0
-      };
+    const sessionSummary = sessions.find(entry => entry.session_id === id || entry.conversation_id === id);
+    let sessionDetail = null;
+    if (sessionSummary) {
+      try {
+        sessionDetail = await request('/sessions/' + encode(sessionSummary.session_id));
+        if (sessionDetail?.active_run) {
+          current.sessionId = sessionSummary.session_id;
+          current.runId = sessionDetail.active_run.run_id;
+          current.conversationId = id;
+          persist();
+        }
+      } catch (e) {}
     }
-    const records = (legacy && legacy.records) || [];
-    const messages = [];
-    let currentAgent = null;
-    records.forEach((record, index) => {
-      const type = record.type;
-      if (type === 'USER_INPUT') {
-        if (currentAgent) { messages.push(currentAgent); currentAgent = null; }
-        let c = record.content || '';
-        if (c.includes('<USER_REQUEST>')) {
-          c = c.split('<USER_REQUEST>')[1].split('</USER_REQUEST>')[0].trim();
-        }
-        if (c) {
-          messages.push({
-            id: String(index),
-            role: 'user',
-            text: c,
-            time: record.created_at || ''
-          });
-        }
-      } else if (type === 'PLANNER_RESPONSE' || type === 'AGENT_RESPONSE') {
-        const c = record.content || '';
-        const th = record.thinking || '';
-        const toolCalls = record.tool_calls || [];
-        if (!currentAgent) {
-          currentAgent = {
-            id: String(index),
-            role: 'agent',
-            text: c,
-            thinking: th,
-            tool_count: toolCalls.length,
-            time: record.created_at || ''
-          };
-        } else {
-          if (th) currentAgent.thinking = (currentAgent.thinking ? currentAgent.thinking + '\n\n' + th : th);
-          if (c) currentAgent.text = (currentAgent.text ? currentAgent.text + '\n\n' + c : c);
-          currentAgent.tool_count = (currentAgent.tool_count || 0) + toolCalls.length;
-          currentAgent.time = record.created_at || currentAgent.time;
-        }
+
+    let legacy = null;
+    try {
+      legacy = await request('/legacy/conversations/' + encode(id));
+    } catch (e) {}
+
+    let messages = [];
+    let artifacts = [];
+    let total_tokens = 0;
+
+    if (legacy && Array.isArray(legacy.messages) && legacy.messages.length > 0) {
+      messages = legacy.messages;
+      artifacts = legacy.artifacts || [];
+      total_tokens = legacy.total_tokens || 0;
+    } else if (sessionDetail) {
+      messages = runMessages(await saveHistory(sessionSummary.session_id));
+    } else {
+      const local = await companion.history.get(id);
+      if (local) {
+        messages = local.messages.map(message => ({...message, role: message.role === 'user' ? 'user' : 'agent'}));
       }
-    });
-    if (currentAgent) messages.push(currentAgent);
+    }
+
     messages.forEach(msg => {
-      if (msg.role === 'agent' && !msg.text) {
-        if (msg.tool_count > 0) msg.text = '*(نفّذ الوكيل ' + msg.tool_count + ' عملية/أداة بنجاح في هذه الخطوة)*';
-        else if (msg.thinking) msg.text = '*(خطوات تفكير وتحليل فقط)*';
+      if (msg.role === 'agent' && (!msg.text || !msg.text.trim())) {
+        const count = Array.isArray(msg.tools) ? msg.tools.length : (msg.tool_count || 0);
+        if (count > 0) {
+          msg.text = '*(نفّذ الوكيل ' + count + ' أداة وعملية بنجاح في هذه الخطوة)*';
+          msg.terminal_status = 'completed_tools';
+        } else if (msg.thinking) {
+          msg.text = '*(تحليل وتفكير الوكيل الداخلي)*';
+          msg.terminal_status = 'thinking_only';
+        }
       }
     });
+
     return {
       id: id,
       messages: messages,
-      artifacts: (legacy && legacy.artifacts) || [],
-      total_tokens: (legacy && legacy.total_tokens) || 0
+      artifacts: artifacts,
+      total_tokens: total_tokens,
+      active_run: sessionDetail?.active_run || null,
+      session_id: sessionSummary?.session_id || null
     };
   }
   async function conversations() {
@@ -610,31 +621,41 @@
     return null;
   }
   async function stream(payload, signal) {
-    if (current.pending && current.pending.message !== payload.prompt) {
+    let started;
+    if (payload && payload.reconnect_run_id) {
+      if (payload.session_id) current.sessionId = payload.session_id;
+      if (payload.conversation_id) current.conversationId = payload.conversation_id;
+      current.runId = payload.reconnect_run_id;
+      current.cursor = payload.cursor || current.cursor || '';
       current.pending = null;
       persist();
-    }
-    await ensureSession(payload);
-    current.pending = current.pending || {message: payload.prompt, requestId: uuid()}; persist();
-    let started;
-    try {
-      started = await request('/sessions/' + encode(current.sessionId) + '/runs', {method: 'POST',
-        body: {message: current.pending.message, client_request_id: current.pending.requestId}});
-    } catch (runErr) {
-      // Auto-recovery if session closed, capacity reached, or conflict: reset session and retry once
-      if (runErr.status === 404 || runErr.status === 409) {
-        current.sessionId = null;
+      started = { run_id: payload.reconnect_run_id };
+    } else {
+      if (current.pending && current.pending.message !== payload.prompt) {
         current.pending = null;
         persist();
-        await ensureSession(payload);
-        current.pending = {message: payload.prompt, requestId: uuid()};
-        persist();
+      }
+      await ensureSession(payload);
+      current.pending = current.pending || {message: payload.prompt, requestId: uuid()}; persist();
+      try {
         started = await request('/sessions/' + encode(current.sessionId) + '/runs', {method: 'POST',
           body: {message: current.pending.message, client_request_id: current.pending.requestId}});
-      } else {
-        current.pending = null;
-        persist();
-        throw runErr;
+      } catch (runErr) {
+        // Auto-recovery if session closed, capacity reached, or conflict: reset session and retry once
+        if (runErr.status === 404 || runErr.status === 409) {
+          current.sessionId = null;
+          current.pending = null;
+          persist();
+          await ensureSession(payload);
+          current.pending = {message: payload.prompt, requestId: uuid()};
+          persist();
+          started = await request('/sessions/' + encode(current.sessionId) + '/runs', {method: 'POST',
+            body: {message: current.pending.message, client_request_id: current.pending.requestId}});
+        } else {
+          current.pending = null;
+          persist();
+          throw runErr;
+        }
       }
     }
     current.runId = started.run_id; current.cursor = ''; current.pending = null; persist();

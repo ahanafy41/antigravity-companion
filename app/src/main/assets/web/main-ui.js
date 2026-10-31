@@ -1317,10 +1317,10 @@ await window.mainV1.ready;
       }
     });
 
-    // Send AI Prompt (Always continuous - supports messaging while working)
-    async function sendAiPrompt(promptText) {
-      if (!promptText || !promptText.trim()) return;
-      promptText = promptText.trim();
+    // Send AI Prompt (Always continuous - supports messaging while working or reconnecting to active run)
+    async function sendAiPrompt(promptText, reconnectOptions = null) {
+      if (!reconnectOptions && (!promptText || !promptText.trim())) return;
+      promptText = (promptText || '').trim();
 
       // ==============================================================================
       // Zero-Token Smart Command Dispatcher (Instant REST API Execution & Modals)
@@ -1457,7 +1457,9 @@ await window.mainV1.ready;
 
       isAiGenerating = true;
       playStartChime();
-      if (mentionedMcpNames.length > 0) {
+      if (reconnectOptions) {
+        announce('تمت استعادة الاتصال بالمهمة الجارية، الوكيل يعمل الآن...');
+      } else if (mentionedMcpNames.length > 0) {
         announce('تم إرسال الطلب مع استدعاء بروتوكول MCP: ' + mentionedMcpNames.map(n => '@' + n).join(', '));
       } else {
         announce('تم إرسال الطلب للوكيل...');
@@ -1466,26 +1468,28 @@ await window.mainV1.ready;
       const now = new Date();
       const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
 
-      if (activeFocusedAgent) {
-        userMsgContent = `<div class="main-style-142">🎯 موجه إلى: ${escapeHtml(activeFocusedAgent)}</div><br>` + userMsgContent;
-        finalPromptToSend = `[توجيه محادثة مباشر إلى الوكيل الفرعي: "${activeFocusedAgent}"]: ${promptText}`;
-      }
+      if (!reconnectOptions) {
+        if (activeFocusedAgent) {
+          userMsgContent = `<div class="main-style-142">🎯 موجه إلى: ${escapeHtml(activeFocusedAgent)}</div><br>` + userMsgContent;
+          finalPromptToSend = `[توجيه محادثة مباشر إلى الوكيل الفرعي: "${activeFocusedAgent}"]: ${promptText}`;
+        }
 
-      // 1. Append User Card
-      const userCard = document.createElement('article');
-      userCard.className = 'chat-message user-message';
-      userCard.setAttribute('role', 'article');
-      userCard.setAttribute('aria-label', activeFocusedAgent ? `طلبك موجه للوكيل ${activeFocusedAgent}` : 'طلبك');
-      userCard.innerHTML =
-        '<header class="msg-header">' +
-          '<div class="msg-header-left">' +
-            '<span class="user-avatar" aria-hidden="true">👤</span>' +
-            '<span class="msg-title">أنت</span>' +
-          '</div>' +
-          '<span class="msg-time">' + timeStr + '</span>' +
-        '</header>' +
-        '<div class="msg-content" dir="auto">' + userMsgContent + '</div>';
-      aiChatFeed.appendChild(userCard);
+        // 1. Append User Card
+        const userCard = document.createElement('article');
+        userCard.className = 'chat-message user-message';
+        userCard.setAttribute('role', 'article');
+        userCard.setAttribute('aria-label', activeFocusedAgent ? `طلبك موجه للوكيل ${activeFocusedAgent}` : 'طلبك');
+        userCard.innerHTML =
+          '<header class="msg-header">' +
+            '<div class="msg-header-left">' +
+              '<span class="user-avatar" aria-hidden="true">👤</span>' +
+              '<span class="msg-title">أنت</span>' +
+            '</div>' +
+            '<span class="msg-time">' + timeStr + '</span>' +
+          '</header>' +
+          '<div class="msg-content" dir="auto">' + userMsgContent + '</div>';
+        aiChatFeed.appendChild(userCard);
+      }
 
       // 2. Append AI Card with Live Execution Steps Container
       const aiCard = document.createElement('article');
@@ -1638,13 +1642,22 @@ await window.mainV1.ready;
       let streamWatchdog = null;
 
       try {
-        const payload = {
-          prompt: finalPromptToSend,
-          continue: shouldContinue,
-          force_new: isForcedNew
-        };
-        if (currentActiveConversationId && !isForcedNew) {
-          payload.conversation_id = currentActiveConversationId;
+        let payload;
+        if (reconnectOptions) {
+          payload = {
+            reconnect_run_id: reconnectOptions.run_id,
+            session_id: reconnectOptions.session_id,
+            conversation_id: reconnectOptions.conversation_id
+          };
+        } else {
+          payload = {
+            prompt: finalPromptToSend,
+            continue: shouldContinue,
+            force_new: isForcedNew
+          };
+          if (currentActiveConversationId && !isForcedNew) {
+            payload.conversation_id = currentActiveConversationId;
+          }
         }
         const response = await window.mainV1Fetch('/api/ai/stream', {
           method: 'POST',
@@ -1849,6 +1862,15 @@ await window.mainV1.ready;
                       stepLi.dataset.stepIndex = data.step_index;
                     }
                     if (data.tool) stepLi.dataset.tool = data.tool;
+                  }
+
+                  const totalStepsSoFar = targetList.querySelectorAll('.step-item').length;
+                  if (!data.subagent_id && !data.subagent_role) {
+                    if (data.state === 'ACTIVE') {
+                      announce(`جارٍ تنفيذ أداة: ${toolDesc} (خطوة رقم ${totalStepsSoFar})`);
+                    } else if (isDone) {
+                      announce(`اكتملت أداة: ${toolDesc}`);
+                    }
                   }
 
                   stepLi.className = 'step-item ' + (data.state === 'ACTIVE' ? 'active' : (isError ? 'error' : 'done'));
@@ -3991,7 +4013,22 @@ await window.mainV1.ready;
         aiChatFeed.scrollTop = aiChatFeed.scrollHeight;
         if (conversationsDialog) conversationsDialog.close();
         playSuccessChime();
-        announce(`تم استئناف المحادثة بنجاح: ${convTitle}`);
+        try {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem('antigravity_last_active_conv', convId);
+          }
+        } catch (e) {}
+
+        if (data.active_run && data.active_run.state === 'running') {
+          announce('تمت استعادة الاتصال بالمهمة الجارية، الوكيل يعمل الآن...');
+          sendAiPrompt('', {
+            run_id: data.active_run.run_id,
+            session_id: data.session_id,
+            conversation_id: convId
+          });
+        } else {
+          announce(`تم استئناف المحادثة بنجاح: ${convTitle}`);
+        }
         if (aiInput) aiInput.focus();
       } catch (err) {
         playBeep(400, 0.2);
@@ -7214,7 +7251,14 @@ await window.mainV1.ready;
     reportVisibility(document.visibilityState === 'visible');
     (async () => {
       try {
-        const savedConversation = window.mainV1 ? window.mainV1.currentConversation() : null;
+        let savedConversation = window.mainV1 ? window.mainV1.currentConversation() : null;
+        if (!savedConversation) {
+          try {
+            if (typeof localStorage !== 'undefined') {
+              savedConversation = localStorage.getItem('antigravity_last_active_conv');
+            }
+          } catch (e) {}
+        }
         if (savedConversation) {
           await resumeConversation(savedConversation, 'المحادثة المحفوظة');
         } else {
