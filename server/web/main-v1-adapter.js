@@ -342,8 +342,17 @@
       const listed = await request('/sessions');
       const found = listed.sessions.find(session => session.conversation_id === payload.conversation_id || session.session_id === payload.conversation_id);
       if (found) { current.sessionId = found.session_id; current.conversationId = found.conversation_id; persist(); }
+      else { current.conversationId = payload.conversation_id; persist(); }
     }
-    if (current.sessionId) return;
+    if (current.sessionId) {
+      try {
+        const check = await request('/sessions/' + encode(current.sessionId));
+        if (check && check.session_id) return;
+      } catch (e) {
+        current.sessionId = null;
+        persist();
+      }
+    }
     if (!sessionCreation) sessionCreation = (async () => {
       const stored = await settings();
       const options = context();
@@ -374,6 +383,10 @@
   }
   async function conversation(id) {
     await historyReady;
+    if (id) {
+      current.conversationId = id;
+      persist();
+    }
     let sessions;
     try { sessions = (await request('/sessions')).sessions; }
     catch (error) {

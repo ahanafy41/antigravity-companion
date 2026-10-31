@@ -862,6 +862,20 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
         async with self.client.get(self.url + "/api/ai/chat") as response:
             self.assertEqual(response.status, 426)
 
+    async def test_create_session_with_nonexistent_conversation_returns_404(self):
+        async with self.client.post(
+            self.url + "/api/v1/pair", json={"code": self.app["pairing"].code}
+        ) as response:
+            csrf = (await response.json())["csrf_token"]
+        async with self.client.post(
+            self.url + "/api/v1/sessions",
+            json={"conversation_id": "nonexistent-conversation-id"},
+            headers={"X-CSRF-Token": csrf},
+        ) as response:
+            self.assertEqual(response.status, 404)
+            data = await response.json()
+            self.assertTrue("code" in data or "error" in data or "message" in data)
+
 
 FIXTURE = r"""
 import json
