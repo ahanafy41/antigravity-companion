@@ -486,6 +486,32 @@ class Sessions:
         if session["session_id"] in self.session_closures:
             raise RunConflict("The session process is closing")
         self.prune_events()
+
+        # Reap defunct runs that are still marked 'running' but have no active task
+        for r_id in list(session.get("runs", [])):
+            r = self.runs.get(r_id)
+            if r and r.get("state") == "running":
+                task = self.tasks.get(r_id)
+                if not task or task.done():
+                    r["state"] = "interrupted"
+                    r["completed_at"] = time.time()
+                    r["error"] = r.get("error") or "Turn interrupted due to previous termination"
+                    try:
+                        self.persist()
+                    except Exception:
+                        pass
+        for r in self.runs.values():
+            if r.get("state") == "running":
+                task = self.tasks.get(r["run_id"])
+                if not task or task.done():
+                    r["state"] = "interrupted"
+                    r["completed_at"] = time.time()
+                    r["error"] = r.get("error") or "Turn interrupted due to previous termination"
+                    try:
+                        self.persist()
+                    except Exception:
+                        pass
+
         event_bytes = sum(
             path.stat().st_size for path in self.store.root.glob("*.ndjson")
         )
@@ -911,8 +937,16 @@ class Sessions:
 
     async def poll_transcript(self, session, run):
         sent_thinking = set()
-        last_line = 0
+        conv_id = session.get("conversation_id")
         brain_dir = Path.home() / ".gemini" / "antigravity-cli" / "brain"
+        last_line = 0
+        if conv_id:
+            t_file = brain_dir / conv_id / ".system_generated" / "logs" / "transcript.jsonl"
+            if t_file.exists():
+                try:
+                    last_line = len(t_file.read_text(encoding="utf-8", errors="ignore").splitlines())
+                except Exception:
+                    last_line = 0
         try:
             while run["state"] == "running":
                 last_line = self._drain_transcript(

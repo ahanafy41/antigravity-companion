@@ -190,7 +190,7 @@ function reportError(error) {
             }
         }
 
-        window.onUpdateCheckResult = function(info) {
+        window.onUpdateCheckResult = async function(info) {
             const statusEl = document.getElementById('update-status');
             if (!info) { reportError(new Error('لم يصل جواب فحص الإصدار.')); return; }
             if (!(info.isUpdateAvailable || info.hasUpdate)) {
@@ -203,36 +203,135 @@ function reportError(error) {
                 const label = document.createElement('strong');
                 label.className = 'start-style-3';
                 label.textContent = 'تحديث جديد متاح: ' + info.latestVersion;
+
+                let canInstall = true;
+                if (window.AntigravityBridge && typeof window.AntigravityBridge.canInstallUnknownApps === 'function') {
+                    try {
+                        canInstall = await window.AntigravityBridge.canInstallUnknownApps();
+                    } catch (e) {
+                        canInstall = true;
+                    }
+                }
+
+                const container = document.createElement('div');
+                container.style.marginTop = '8px';
+
+                if (!canInstall) {
+                    const permWarning = document.createElement('div');
+                    permWarning.style.color = '#f59e0b';
+                    permWarning.style.marginBottom = '6px';
+                    permWarning.textContent = '⚠️ يلزم السماح بتثبيت التطبيقات من الإعدادات قبل المتابعة.';
+                    const permBtn = document.createElement('button');
+                    permBtn.type = 'button';
+                    permBtn.className = 'btn';
+                    permBtn.style.marginBottom = '8px';
+                    permBtn.textContent = 'فتح إعدادات إذن التثبيت';
+                    permBtn.addEventListener('click', () => {
+                        if (window.AntigravityBridge && typeof window.AntigravityBridge.openInstallPermissionSettings === 'function') {
+                            window.AntigravityBridge.openInstallPermissionSettings();
+                        }
+                    });
+                    container.append(permWarning, permBtn, document.createElement('br'));
+                }
+
                 const button = document.createElement('button');
                 button.type = 'button';
+                button.id = 'btn-install-update-start';
                 button.className = 'btn btn-success start-style-4';
                 button.textContent = 'تثبيت التحديث الآن';
-                button.addEventListener('click', () => downloadUpdate(info.downloadUrl).catch(reportError));
-                statusEl.append(label, document.createElement('br'), button);
+                button.addEventListener('click', () => {
+                    button.disabled = true;
+                    button.textContent = 'جاري بدء التنزيل...';
+                    downloadUpdate(info.downloadUrl).catch(err => {
+                        button.disabled = false;
+                        button.textContent = 'تثبيت التحديث الآن';
+                        reportError(err);
+                    });
+                });
+                container.appendChild(button);
+                statusEl.append(label, document.createElement('br'), container);
             }
             announce('يوجد تحديث جديد متاح: ' + info.latestVersion);
         };
 
         window.onUpdateCheckError = function(err) {
             const statusEl = document.getElementById('update-status');
-            if (statusEl) statusEl.textContent = 'تعذر التحقق من التحديث: ' + (err.error || err.message || String(err));
-            announce('تعذر التحقق من التحديث.');
+            const msg = (err && err.error) ? err.error : (err && err.message ? err.message : String(err));
+            if (statusEl) statusEl.textContent = 'تعذر التحقق من التحديث: ' + msg;
+            announce('تعذر التحقق من التحديث: ' + msg);
         };
 
         async function downloadUpdate(url) {
             announce('بدء تنزيل التحديث...');
+            const statusEl = document.getElementById('update-status');
+            if (window.AntigravityBridge && typeof window.AntigravityBridge.canInstallUnknownApps === 'function') {
+                try {
+                    const canInstall = await window.AntigravityBridge.canInstallUnknownApps();
+                    if (!canInstall) {
+                        announce('يرجى السماح بتثبيت التطبيقات من الإعدادات قبل التنزيل');
+                        if (typeof window.AntigravityBridge.openInstallPermissionSettings === 'function') {
+                            await window.AntigravityBridge.openInstallPermissionSettings();
+                        }
+                        return;
+                    }
+                } catch (e) {}
+            }
             if (window.AntigravityBridge && typeof window.AntigravityBridge.startUpdateDownload === 'function') {
                 try {
                     await window.AntigravityBridge.startUpdateDownload(url || '');
-                } catch(e) {
+                } catch (e) {
                     await window.AntigravityBridge.startUpdateDownload();
                 }
+            } else {
+                announce('تنزيل التحديث متاح فقط داخل تطبيق الأندرويد.');
+                if (statusEl) statusEl.textContent = 'خاصية التحديث متاحة فقط داخل تطبيق الأندرويد.';
             }
         }
 
         window.onUpdateProgress = function(percent) {
+            const p = Math.max(0, Math.min(100, Math.round(percent)));
             const statusEl = document.getElementById('update-status');
-            if (statusEl) statusEl.textContent = 'جاري تنزيل التحديث: ' + percent + '%';
+            if (statusEl) {
+                let progEl = document.getElementById('start-update-progress-text');
+                if (!progEl) {
+                    progEl = document.createElement('p');
+                    progEl.id = 'start-update-progress-text';
+                    progEl.setAttribute('role', 'status');
+                    statusEl.appendChild(progEl);
+                }
+                progEl.textContent = 'جاري تنزيل التحديث: ' + p + '%';
+            }
+            if (p === 25 || p === 50 || p === 75) {
+                announce('اكتمل تنزيل ' + p + '% من التحديث');
+            }
+        };
+
+        window.onUpdateDownloadComplete = function(outcome) {
+            const statusEl = document.getElementById('update-status');
+            if (outcome && outcome.install_permission_required) {
+                if (statusEl) {
+                    statusEl.innerHTML = '<strong class="start-style-3">اكتمل التنزيل بنسبة 100%.</strong><br><p style="color:#f59e0b; margin-top:6px;">يلزم منح إذن تثبيت التطبيقات غير المعروفة لفتح المثبت.</p><button type="button" class="btn btn-primary" id="btn-grant-install-start">منح إذن التثبيت الآن</button>';
+                    const btn = document.getElementById('btn-grant-install-start');
+                    if (btn && window.AntigravityBridge && typeof window.AntigravityBridge.openInstallPermissionSettings === 'function') {
+                        btn.addEventListener('click', () => window.AntigravityBridge.openInstallPermissionSettings());
+                    }
+                }
+                announce('اكتمل تنزيل التحديث. يرجى منح إذن تثبيت التطبيقات لفتح الحزمة.');
+                return;
+            }
+            if (statusEl) {
+                statusEl.textContent = 'اكتمل تنزيل التحديث بنسبة 100%. جاري تشغيل مثبت الحزم...';
+            }
+            announce('اكتمل تنزيل التحديث بنسبة 100 في المائة. جاري فتح مثبت الحزم لتثبيت الإصدار الجديد.');
+        };
+
+        window.onUpdateDownloadError = function(err) {
+            const statusEl = document.getElementById('update-status');
+            const msg = (err && err.error) ? err.error : (err && err.message ? err.message : String(err));
+            if (statusEl) {
+                statusEl.textContent = 'تعذر تنزيل التحديث: ' + msg;
+            }
+            announce('تعذر تنزيل التحديث. ' + msg);
         };
 
         async function openAppSettings() {

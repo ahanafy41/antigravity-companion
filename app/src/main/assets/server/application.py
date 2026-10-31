@@ -860,10 +860,19 @@ async def create_session(request):
         elif not isinstance(value, str):
             raise ValueError("CLI options must be strings")
     if payload.get("conversation_id"):
-        await asyncio.to_thread(
-            request.app["legacy"].transcript_path, payload["conversation_id"]
-        )
-        options["conversation_id"] = payload["conversation_id"]
+        cid = payload["conversation_id"]
+        legacy = request.app["legacy"]
+        root = legacy.root.resolve()
+        c_dir = (root / cid).resolve()
+        if not (
+            isinstance(cid, str)
+            and cid not in (".", "..")
+            and re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", cid)
+            and root in c_dir.parents
+            and c_dir.is_dir()
+        ):
+            await asyncio.to_thread(legacy.transcript_path, cid)
+        options["conversation_id"] = cid
     options["cwd"] = str(
         workspaces(request).resolve(payload.get("cwd", str(Path.home())))
     )
