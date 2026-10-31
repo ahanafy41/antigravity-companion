@@ -153,11 +153,10 @@ public final class MainActivity extends AppCompatActivity {
             String authError = null;
             if (availability == ServerConnection.Availability.MODERN) {
                 try {
-                    authenticated = server.authenticServer();
+                    String cookie = server.bootstrapCookie();
+                    authenticated = (cookie != null && !cookie.isEmpty());
                     if (authenticated) {
-                        server.bootstrapCookie();
-                    } else {
-                        authError = "الخادم لم يثبت الرمز السري الخاص";
+                        runOnUiThread(() -> serverReady(null, cookie));
                     }
                 } catch (IOException error) {
                     authenticated = false;
@@ -478,14 +477,6 @@ public final class MainActivity extends AppCompatActivity {
     }
     private void authenticateServer(NativeRequest request) throws IOException, InterruptedException {
         try {
-            if (!server.authenticServer()) {
-                if (checkSelfPermission("com.termux.permission.RUN_COMMAND") == PackageManager.PERMISSION_GRANTED) {
-                    configureRunningServer();
-                }
-            }
-            if (!server.authenticServer()) {
-                throw new IOException("Server authentication failed");
-            }
             String cookie = server.bootstrapCookie();
             if (cookie == null || cookie.isEmpty()) {
                 throw new IOException("Bootstrap cookie was empty");
@@ -500,7 +491,7 @@ public final class MainActivity extends AppCompatActivity {
                 JsonObject ready = connectionStatus();
                 ready.addProperty("state", "health_ready");
                 if (request != null) reply(request, ready);
-                showStatus("الخادم متصل ومتاح");
+                showStatus("الخادم متصل");
             });
         }
     }
@@ -525,8 +516,8 @@ public final class MainActivity extends AppCompatActivity {
     private void manualPairing(NativeRequest request, String reason) {
         runOnUiThread(() -> {
             if (destroyed) return;
-            serverConnected = false; showStatus("اقترن يدويًا بالخادم؛ جسر الهاتف غير مصادق. " + connectionFailureReason(reason));
-            if (request != null) reply(request, error("Manual pairing required; phone bridge is not authenticated"));
+            serverConnected = false; showStatus("الخادم غير متصل: " + connectionFailureReason(reason));
+            if (request != null) reply(request, error("Connection failed: " + reason));
             serverAvailable = true; refreshLegacyState();
         });
     }

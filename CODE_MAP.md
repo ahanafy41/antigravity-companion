@@ -75,7 +75,7 @@ graph TD
    - Is port `7681` already responding (`ServerConnection.java`)?
 3. **Dispatch**: If not running, `TermuxBridge.java` sends a `RUN_COMMAND` intent to execute `server/launch_server.sh`.
 4. **Daemonization**: `launch_server.sh` spawns `server/server.py --port 7681 --data-dir ~/.antigravity-companion` in the background and writes PID to `.server.pid`.
-5. **Readiness & Authentication Probe**: `ServerConnection.java` probes `http://127.0.0.1:7681/api/status`. If available, it executes `authenticServer()` to prove loopback authenticity via HMAC challenge (`NativeSecrets.java` and `NativeProof.java`), bootstraps the session cookie, and flags `serverConnected = true`.
+5. **Readiness & Auto-Trust Probe**: `ServerConnection.java` probes `http://127.0.0.1:7681/health`. If available, it executes `authenticServer()` to verify loopback service readiness, bootstraps the session cookie automatically via loopback auto-trust, and flags `serverConnected = true`.
 6. **UI Transition**: `MainActivity` switches UI state to `ONLINE` and reports status to screen readers.
 
 #### 2. Chat Turn & Token Streaming Sequence

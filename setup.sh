@@ -51,7 +51,7 @@ GITHUB_REPO="https://github.com/ahanafy41/antigravity-companion.git"
 
 if [ -d "$REPO_DIR/.git" ]; then
     echo "  -> تحديث المستودع الحالي..."
-    (cd "$REPO_DIR" && git pull --rebase 2>/dev/null || true)
+    (cd "$REPO_DIR" && git fetch origin main 2>/dev/null && git reset --hard origin/main 2>/dev/null || git pull --rebase 2>/dev/null || true)
 else
     echo "  -> استنساخ المستودع الكامل..."
     git clone --depth 1 "$GITHUB_REPO" "$REPO_DIR" 2>/dev/null || true

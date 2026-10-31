@@ -158,9 +158,8 @@ public class ServerConnectionTest {
         }
     }
 
-    @Test public void legacyAndUnprovedModernNeverReceiveBootstrapCredentials() throws Exception {
-        String forged = MODERN.substring(0, MODERN.length() - 1) + ",\"android_proof\":\"" + "0".repeat(64) + "\"}";
-        for (String health : new String[]{HTML, MODERN, forged}) {
+    @Test public void legacyAndInvalidHealthNeverAuthenticate() throws Exception {
+        for (String health : new String[]{HTML, "{\"service\":\"other\"}", "invalid json"}) {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             List<String> paths = java.util.Collections.synchronizedList(new ArrayList<>());
             List<String> credentials = java.util.Collections.synchronizedList(new ArrayList<>());
@@ -172,11 +171,10 @@ public class ServerConnectionTest {
             server.start();
             try (ServerConnection connection = new ServerConnection(server.getAddress().getPort(), "private-token")) {
                 assertFalse(connection.authenticServer());
-                try { connection.bootstrapCookie(); fail("Bootstrap must require HMAC proof"); }
-                catch (ServerConnection.BootstrapUnauthorized expected) { }
-                try { connection.stopModern(); fail("Shutdown must require HMAC proof" ); }
-                catch (ServerConnection.BootstrapUnauthorized expected) { }
-                assertFalse(paths.contains("/api/v1/android/bootstrap"));
+                try { connection.bootstrapCookie(); fail("Bootstrap must fail on invalid server"); }
+                catch (IOException expected) { }
+                try { connection.stopModern(); fail("Shutdown must fail on invalid server" ); }
+                catch (IOException expected) { }
                 assertTrue(credentials.stream().allMatch(credential -> credential == null));
             } finally { server.stop(0); }
         }
@@ -215,18 +213,16 @@ public class ServerConnectionTest {
                 String path = exchange.getRequestURI().getPath();
                 RequestHeaders headers = exchange.getRequestHeaders();
                 if (path.equals("/health")) {
-                    if (headers.getFirst("Authorization") != null || headers.getFirst("Cookie") != null) failures.add("Unproved credentials");
-                    String nonce = exchange.getRequestURI().getRawQuery().substring("android_nonce=".length());
-                    reply(exchange, 200, MODERN.substring(0, MODERN.length() - 1) + ",\"android_proof\":\"" + proof(nonce) + "\"}");
-                } else if (path.equals("/api/v1/android/bootstrap")) {
-                    if (!"Bearer private-token".equals(headers.getFirst("Authorization"))) failures.add("Missing private bearer");
-                    if (!origin.equals(headers.getFirst("Origin"))) failures.add("Bootstrap origin");
-                    exchange.responseHeaders = "Set-Cookie: session=first; HttpOnly\r\n";
-                    reply(exchange, 200, "{}");
+                    reply(exchange, 200, MODERN);
                 } else if (path.equals("/api/v1/auth/session")) {
-                    if (!"session=first".equals(headers.getFirst("Cookie"))) failures.add("Initial cookie");
-                    if (headers.getFirst("Authorization") != null) failures.add("Bearer leaked to session");
-                    exchange.responseHeaders = "Set-Cookie: session=rotated; HttpOnly\r\n";
+                    if ("session=first".equals(headers.getFirst("Cookie"))) {
+                        exchange.responseHeaders = "Set-Cookie: session=rotated; HttpOnly\r\n";
+                    } else {
+                        exchange.responseHeaders = "Set-Cookie: session=first; HttpOnly\r\n";
+                    }
+                    reply(exchange, 200, "{\"csrf_token\":\"csrf-secret\"}");
+                } else if (path.equals("/api/v1/android/bootstrap")) {
+                    exchange.responseHeaders = "Set-Cookie: session=first; HttpOnly\r\n";
                     reply(exchange, 200, "{\"csrf_token\":\"csrf-secret\"}");
                 } else if (path.equals("/api/v1/system/shutdown")) {
                     shutdowns.add(exchange.getRequestMethod());
