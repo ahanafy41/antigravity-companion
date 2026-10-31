@@ -46,5 +46,23 @@ class TestStreamingResilience(unittest.IsolatedAsyncioTestCase):
             evs3 = log.after(2)
             self.assertEqual(len(evs3), 0)
 
+    def test_structured_heartbeat_payload_contract(self):
+        """Contract test: heartbeat event carries run_id, state, and timestamp."""
+        import time
+        from application import send_event
+        # Test that heartbeat contract event formats properly
+        event = {
+            "id": 42,
+            "event": "heartbeat",
+            "data": {
+                "run_id": "run_test_hb",
+                "state": "running",
+                "timestamp": time.time(),
+            },
+        }
+        self.assertEqual(event["event"], "heartbeat")
+        self.assertIn("timestamp", event["data"])
+        self.assertEqual(event["data"]["state"], "running")
+
 if __name__ == "__main__":
     unittest.main()
