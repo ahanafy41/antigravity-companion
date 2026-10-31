@@ -13,6 +13,11 @@ SERVER_DIR="${COMPANION_HOME:-$HOME/.antigravity-server}"
 
 mkdir -p "$SERVER_DIR"
 
+# تفعيل قفل الاستيقاظ لمنع أندرويد من قتل السيرفر في الخلفية
+if command -v termux-wake-lock >/dev/null 2>&1; then
+    termux-wake-lock 2>/dev/null || true
+fi
+
 # 1. Capture android_token from STDIN if provided by Termux RUN_COMMAND
 if [ ! -t 0 ]; then
     read -t 1 -r STDIN_DATA || true

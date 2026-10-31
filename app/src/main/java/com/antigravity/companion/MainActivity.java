@@ -526,18 +526,22 @@ public final class MainActivity extends AppCompatActivity {
         if (checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 requestPermissions(new String[]{"com.termux.permission.RUN_COMMAND"}, REQUEST_TERMUX_RUN_COMMAND);
-            } else {
-                openAppSettings(null);
-                Intent terminal = getPackageManager().getLaunchIntentForPackage(TermuxBridge.TERMUX_PACKAGE);
-                if (terminal != null) startActivity(terminal.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             }
+            Intent terminal = getPackageManager().getLaunchIntentForPackage(TermuxBridge.TERMUX_PACKAGE);
+            if (terminal != null) startActivity(terminal.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             return;
         }
         TermuxBridge.startServer(this, launch -> {
             rememberTermuxFailure(launch);
             runOnUiThread(() -> {
-                if (!destroyed) showStatus((serverConnected ? "الخادم متصل؛ " : "")
-                        + TermuxLaunchContract.summary(launch));
+                if (!destroyed) {
+                    showStatus((serverConnected ? "الخادم متصل؛ " : "")
+                            + TermuxLaunchContract.summary(launch));
+                    if ("failed".equals(launch.has("state") ? launch.get("state").getAsString() : null)) {
+                        Intent terminal = getPackageManager().getLaunchIntentForPackage(TermuxBridge.TERMUX_PACKAGE);
+                        if (terminal != null) startActivity(terminal.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                    }
+                }
             });
         });
     }

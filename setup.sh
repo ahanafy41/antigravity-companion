@@ -29,6 +29,14 @@ if ! grep -q "allow-external-apps=true" "$HOME/.termux/termux.properties" 2>/dev
 else
     echo "  -> خاصية allow-external-apps مفعلة بالفعل."
 fi
+if command -v termux-reload-settings >/dev/null 2>&1; then
+    termux-reload-settings 2>/dev/null || true
+    echo "  -> تم تحديث إعدادات Termux فوراً (termux-reload-settings)."
+fi
+if command -v termux-wake-lock >/dev/null 2>&1; then
+    termux-wake-lock 2>/dev/null || true
+    echo "  -> تم تفعيل قفل الاستيقاظ (termux-wake-lock) لحماية السيرفر من نوم الخلفية."
+fi
 
 # ── المرحلة 2: تحديث الحزم وتثبيت أدوات النظام الأساسية ────────────────────────
 echo -e "\n${YELLOW}[2/5] جاري تحديث المستودعات وتثبيت الأدوات الأساسية (صامت)...${NC}"
@@ -79,6 +87,20 @@ ln -sf "$SERVER_DIR/sync_server.sh" "$HOME/sync_server.sh"
 ln -sf "$SERVER_DIR/sync_server.sh" "$HOME/.termux/tasker/sync_server.sh"
 
 echo "  -> تم تجهيز ملفات السيرفر في: $SERVER_DIR"
+
+# ── إضافة التشغيل التلقائي للسيرفر في ~/.bashrc ─────────────────────────────────
+BASHRC="$HOME/.bashrc"
+AUTO_START_MARKER="# Antigravity Companion Server Auto-Start"
+if ! grep -q "$AUTO_START_MARKER" "$BASHRC" 2>/dev/null; then
+    echo "  -> ضبط التشغيل التلقائي للسيرفر عند فتح Termux..."
+    cat << 'EOF' >> "$BASHRC"
+
+# Antigravity Companion Server Auto-Start
+if [ -f "$HOME/.antigravity-server/launch_server.sh" ] && ! pgrep -f "\.antigravity-server/server\.py" >/dev/null 2>&1; then
+    bash "$HOME/.antigravity-server/launch_server.sh" >/dev/null 2>&1 &
+fi
+EOF
+fi
 
 # ── المرحلة 4: تشغيل السيرفر والتحقق من المنفذ 7681 ────────────────────────────
 echo -e "\n${YELLOW}[4/5] جاري تشغيل خادم Antigravity والتحقق من المنفذ 7681...${NC}"
