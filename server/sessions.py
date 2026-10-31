@@ -360,6 +360,18 @@ class Sessions:
     def detail(self, session_id):
         session = dict(self.sessions[session_id])
         session["runs"] = [self.runs[run_id] for run_id in session["runs"]]
+        active = None
+        for run in reversed(session["runs"]):
+            if run.get("state") == "running":
+                active = {
+                    "run_id": run["run_id"],
+                    "session_id": session_id,
+                    "state": "running",
+                    "message": run.get("message", ""),
+                    "created_at": run.get("created_at"),
+                }
+                break
+        session["active_run"] = active
         return session
 
     def log(self, run_id):
