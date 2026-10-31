@@ -1662,14 +1662,14 @@ await window.mainV1.ready;
         let buffer = '';
         let lastEventReceivedAt = Date.now();
 
-        // Resilient Stream Watchdog: Monitors if SSE connection is completely idle for >= 60 seconds
-        // Only recovers if the backend transcript actually finished a NEW turn created after promptStartTime
+        // Resilient Stream Watchdog: Monitors connection health without killing long-running tools
         streamWatchdog = setInterval(async () => {
           if (!isAiGenerating) {
             clearInterval(streamWatchdog);
             return;
           }
           const idleMs = Date.now() - lastEventReceivedAt;
+          // If no events for >= 60s, query backend to verify turn status without aborting
           if (idleMs >= 60000 && currentActiveConversationId) {
             try {
               const res = await window.mainV1Fetch('/api/ai/conversation?id=' + encodeURIComponent(currentActiveConversationId));
@@ -1680,8 +1680,9 @@ await window.mainV1.ready;
                 if (lastAgent) {
                   const msgTime = lastAgent.time ? new Date(lastAgent.time).getTime() : 0;
                   const isCurrentTurn = msgTime >= (promptStartTime - 3000);
-                  if (isCurrentTurn && lastAgent.text && lastAgent.text.trim().length > 0) {
-                    if (lastAgent.text.length >= accumulatedText.length) {
+                  // ONLY finalize if the backend explicitly marked the agent turn as terminal/completed
+                  if (isCurrentTurn && lastAgent.terminal_status && lastAgent.terminal_status !== 'running') {
+                    if (lastAgent.text && lastAgent.text.length >= accumulatedText.length) {
                       accumulatedText = lastAgent.text;
                     }
                     if (lastAgent.thinking && !accumulatedThinking) {
@@ -1697,12 +1698,15 @@ await window.mainV1.ready;
                     announce('تم استرداد وإكمال رد الوكيل بنجاح من سجل الجلسة.');
                     playSuccessChime();
                     try { reader.cancel(); } catch(e) {}
+                  } else {
+                    // Turn is still running (long tool / subagent) — refresh timestamp so watchdog doesn't spin
+                    lastEventReceivedAt = Date.now();
                   }
                 }
               }
             } catch (wErr) {}
           }
-        }, 5000);
+        }, 10000);
 
         while (true) {
           const { done, value } = await reader.read();
@@ -1713,12 +1717,21 @@ await window.mainV1.ready;
           buffer = lines.pop() || '';
 
           for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith(':') || trimmed.startsWith('data: {"type":"heartbeat"')) {
+              lastEventReceivedAt = Date.now();
+            }
             if (line.startsWith('data: ')) {
               const jsonStr = line.slice(6).trim();
               if (!jsonStr) continue;
               try {
                 const data = JSON.parse(jsonStr);
                 lastEventReceivedAt = Date.now();
+
+                // Heartbeat keepalive event
+                if (data.type === 'heartbeat') {
+                  continue;
+                }
 
                 // 0) Session Init event
                 if (data.type === 'init' && data.conversation_id) {
@@ -2147,11 +2160,11 @@ await window.mainV1.ready;
           aiContentDiv.innerHTML = (accumulatedText && accumulatedText.trim() ? renderMarkdown(accumulatedText) : '') +
             '<div class="connection-notice main-style-152">' + noticeMsg + '</div>';
 
-          // Resilient auto-recovery: poll conversation transcript up to 6 times (every 2s) to fetch completed response
+          // Resilient auto-recovery: poll conversation transcript while active to fetch completed response
           let retryCount = 0;
           const recoveryTimer = setInterval(async () => {
             retryCount++;
-            if (retryCount > 6 || !currentActiveConversationId) {
+            if (retryCount > 60 || !currentActiveConversationId) {
               clearInterval(recoveryTimer);
               return;
             }

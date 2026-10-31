@@ -603,6 +603,7 @@
       answer: payload.answer,
       label: payload.label
     };
+    if (event.event === 'heartbeat') return {type: 'heartbeat', timestamp: payload.timestamp || Date.now(), state: payload.state};
     if (event.event === 'error') return {type: 'error', message: payload.message || 'خطأ في معالجة الطلب.'};
     if (event.event === 'replay_unavailable') return null;
     if (event.event === 'result') return {type: 'final_result', response: payload.response || '', state: payload.state};
@@ -673,16 +674,15 @@
             streamFailure = error;
           }
           let snapshot = await request('/runs/' + encode(runId), {signal: controller.signal});
-          // Resilient polling fallback: if stream disconnected but run is still active, poll until terminal
-          let pollAttempts = 0;
-          while (!terminal.has(snapshot.state) && pollAttempts < 80 && !controller.signal.aborted) {
+          // Resilient polling fallback: if stream disconnected but run is still active, poll until terminal without arbitrary limits
+          while (!terminal.has(snapshot.state) && !controller.signal.aborted) {
+            emit({type: 'heartbeat', timestamp: Date.now(), state: snapshot.state});
             await new Promise(r => setTimeout(r, 1500));
             try {
               snapshot = await request('/runs/' + encode(runId), {signal: controller.signal});
             } catch (pErr) {
               if (controller.signal.aborted) throw pErr;
             }
-            pollAttempts++;
           }
           if (terminal.has(snapshot.state)) {
             if (snapshot.conversation_id) emit({type: 'init', conversation_id: snapshot.conversation_id});
