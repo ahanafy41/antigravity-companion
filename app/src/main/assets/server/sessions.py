@@ -637,7 +637,8 @@ class Sessions:
         fut = asyncio.get_running_loop().create_future()
         self.pending_permissions[run["run_id"]] = fut
         try:
-            decision = await asyncio.wait_for(fut, timeout=120.0)
+            # Extended 10-minute timeout so complex operations and screen reader navigation never get prematurely killed
+            decision = await asyncio.wait_for(fut, timeout=600.0)
         except (asyncio.TimeoutError, asyncio.CancelledError):
             decision = "n"
         finally:

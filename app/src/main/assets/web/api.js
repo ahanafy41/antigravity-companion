@@ -10,6 +10,10 @@
       let id = '';
       const lines = [];
       for (const line of frame.split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith(':') && trimmed.includes('heartbeat') && event === 'message') {
+          event = 'heartbeat';
+        }
         if (line.startsWith('event:')) event = line.slice(6).trim();
         if (line.startsWith('id:')) id = line.slice(3).trim();
         if (line.startsWith('data:')) lines.push(line.slice(5).trimStart());
@@ -143,14 +147,16 @@
     for (let attempt = 0; ; attempt++) {
       try {
         await readEvents(runId, {...options, cursor, onEvent});
-        if (completed || attempt === 3) return;
+        if (completed) return;
         throw new ApiError('انقطع بث الرد قبل تمامه.', 0, 'stream_disconnected');
       } catch (error) {
         const retryable = error instanceof ApiError && (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500);
         if (options.signal?.aborted) throw error;
         if (completed && retryable) return;
-        if (!retryable || attempt === 3) throw error;
-        await reconnectDelay(1000 * 2 ** attempt, options.signal);
+        if (!retryable) throw error;
+        // Continuous, bounded backoff retry so long running tools never abort early
+        const delay = Math.min(3000, 1000 * (1.5 ** Math.min(attempt, 6)));
+        await reconnectDelay(delay, options.signal);
       }
     }
   }

@@ -1016,6 +1016,18 @@ async def stream_events(request):
                 await asyncio.wait_for(log.changed.wait(), 15)
             except asyncio.TimeoutError:
                 await response.write(b": heartbeat\n\n")
+                await send_event(
+                    response,
+                    {
+                        "id": log.sequence,
+                        "event": "heartbeat",
+                        "data": {
+                            "run_id": run_id,
+                            "state": run["state"],
+                            "timestamp": time.time(),
+                        },
+                    },
+                )
     except (ConnectionResetError, asyncio.CancelledError):
         pass
     return response
