@@ -317,6 +317,7 @@ public final class MainActivity extends AppCompatActivity {
             try {
                 ServerConnection.Availability availability = server.probe();
                 if (availability == ServerConnection.Availability.OFFLINE) {
+                    ServerDeployer.exportServerBundle(this);
                     runOnUiThread(this::launchTermux);
                     long deadline = SystemClock.elapsedRealtime() + 30000;
                     while (!destroyed && SystemClock.elapsedRealtime() < deadline) {
@@ -358,7 +359,24 @@ public final class MainActivity extends AppCompatActivity {
                     reply(request, error("Server unavailable; start it from the dashboard")); return;
                 }
                 if (request != null) reply(request, connectionStatus());
-                if (openChat) { installLegacyBridge(); webView.loadUrl(origins.origin()); }
+                if (openChat) {
+                    if (!serverConnected && availability == ServerConnection.Availability.MODERN) {
+                        connectionExecutor.execute(() -> {
+                            try {
+                                authenticateServer(request);
+                            } catch (Exception ignored) {}
+                            runOnUiThread(() -> {
+                                if (!destroyed) {
+                                    installLegacyBridge();
+                                    webView.loadUrl(origins.origin());
+                                }
+                            });
+                        });
+                    } else {
+                        installLegacyBridge();
+                        webView.loadUrl(origins.origin());
+                    }
+                }
             });
         });
     }
@@ -460,6 +478,11 @@ public final class MainActivity extends AppCompatActivity {
     }
     private void authenticateServer(NativeRequest request) throws IOException, InterruptedException {
         try {
+            if (!server.authenticServer()) {
+                if (checkSelfPermission("com.termux.permission.RUN_COMMAND") == PackageManager.PERMISSION_GRANTED) {
+                    configureRunningServer();
+                }
+            }
             if (!server.authenticServer()) {
                 throw new IOException("Server authentication failed");
             }

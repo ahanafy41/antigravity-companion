@@ -10,12 +10,28 @@ REPO_DIR="$HOME/.antigravity-companion-repo"
 
 mkdir -p "$SERVER_DIR"
 
-UPDATE_ZIP="/sdcard/Download/companion-server-update.zip"
+# 1. Capture android_token from STDIN if provided by Termux RUN_COMMAND
+if [ ! -t 0 ]; then
+    read -t 1 -r STDIN_DATA || true
+    if [ -n "$STDIN_DATA" ] && [[ "$STDIN_DATA" =~ android_token ]]; then
+        echo "$STDIN_DATA" > "$SERVER_DIR/android.json" 2>/dev/null || true
+        chmod 600 "$SERVER_DIR/android.json" 2>/dev/null || true
+    fi
+fi
 
-if [ -f "$UPDATE_ZIP" ]; then
+# 2. Check for offline update package if present
+UPDATE_ZIP=""
+for z in /sdcard/Download/companion-server-update*.zip; do
+    if [ -f "$z" ]; then
+        UPDATE_ZIP="$z"
+        break
+    fi
+done
+
+if [ -n "$UPDATE_ZIP" ]; then
     echo "[SYNC] Found offline server package from companion app. Installing into $SERVER_DIR..."
     python3 -m zipfile -e "$UPDATE_ZIP" "$SERVER_DIR/" 2>/dev/null || unzip -o -q "$UPDATE_ZIP" -d "$SERVER_DIR/" 2>/dev/null || true
-    rm -f "$UPDATE_ZIP" 2>/dev/null || true
+    rm -f /sdcard/Download/companion-server-update*.zip 2>/dev/null || true
     chmod +x "$SERVER_DIR/"*.sh 2>/dev/null || true
     echo "[SYNC] Offline package installed successfully."
 elif [ -d "$REPO_DIR/.git" ]; then

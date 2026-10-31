@@ -30,10 +30,20 @@ public final class ServerDeployer {
 
         try {
             OutputStream out = null;
+            boolean usedMediaStore = false;
             try {
+                if (targetFile.exists()) targetFile.delete();
+                if (tempFile.exists()) tempFile.delete();
                 out = new FileOutputStream(tempFile);
             } catch (Exception directFail) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    try {
+                        context.getContentResolver().delete(
+                                MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                                MediaStore.MediaColumns.DISPLAY_NAME + " LIKE ?",
+                                new String[]{"companion-server-update%"}
+                        );
+                    } catch (Throwable ignored) {}
                     ContentValues values = new ContentValues();
                     values.put(MediaStore.MediaColumns.DISPLAY_NAME, BUNDLE_ZIP_NAME);
                     values.put(MediaStore.MediaColumns.MIME_TYPE, "application/zip");
@@ -41,6 +51,7 @@ public final class ServerDeployer {
                     Uri uri = context.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
                     if (uri != null) {
                         out = context.getContentResolver().openOutputStream(uri);
+                        usedMediaStore = true;
                     }
                 }
             }
@@ -51,6 +62,10 @@ public final class ServerDeployer {
                 zipAssetFolder(context, "server", "", zos);
                 zos.finish();
                 zos.flush();
+            }
+
+            if (usedMediaStore) {
+                return true;
             }
 
             if (tempFile.exists()) {

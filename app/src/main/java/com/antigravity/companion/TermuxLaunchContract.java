@@ -26,14 +26,15 @@ public final class TermuxLaunchContract {
 
     public static String[] syncArguments(String applicationDataDir) {
         String serverDir = workingDirectory(applicationDataDir) + "/.antigravity-server";
-        String script = "if [ -f \"" + serverDir + "/sync_server.sh\" ]; then "
+        String script = "mkdir -p \"" + serverDir + "\" && "
+                + "ZIP_FILE=$(ls -t /sdcard/Download/companion-server-update*.zip 2>/dev/null | head -n 1); "
+                + "if [ -n \"$ZIP_FILE\" ] && [ -f \"$ZIP_FILE\" ]; then "
+                + "(python3 -m zipfile -e \"$ZIP_FILE\" \"" + serverDir + "/\" 2>/dev/null || unzip -o -q \"$ZIP_FILE\" -d \"" + serverDir + "/\" 2>/dev/null || true) && "
+                + "rm -f /sdcard/Download/companion-server-update*.zip 2>/dev/null; fi; "
+                + "chmod +x \"" + serverDir + "/\"*.sh 2>/dev/null || true; "
+                + "if [ -f \"" + serverDir + "/sync_server.sh\" ]; then "
                 + "bash \"" + serverDir + "/sync_server.sh\"; "
                 + "else "
-                + "mkdir -p \"" + serverDir + "\" && "
-                + "if [ -f /sdcard/Download/companion-server-update.zip ]; then "
-                + "(python3 -m zipfile -e /sdcard/Download/companion-server-update.zip \"" + serverDir + "/\" 2>/dev/null || unzip -o -q /sdcard/Download/companion-server-update.zip -d \"" + serverDir + "/\" 2>/dev/null || true) && "
-                + "rm -f /sdcard/Download/companion-server-update.zip; fi && "
-                + "chmod +x \"" + serverDir + "/\"*.sh 2>/dev/null || true; "
                 + "bash \"" + serverDir + "/stop_server.sh\" 2>/dev/null || true; "
                 + "bash \"" + serverDir + "/launch_server.sh\"; fi";
         return new String[]{"-c", script};

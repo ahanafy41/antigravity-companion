@@ -157,6 +157,7 @@ This matrix catalogs all production source files, their primary responsibilities
 | `UpdateCompatibility.java` | Checks Android SDK version compatibility and CPU architecture (arm64-v8a vs universal) for download candidate. Key symbols: `isCompatible()`, `getSupportedAbis()`. | Android `Build` | `UpdatePolicy`, `AppUpdateManager` |
 | `UpdateTransfer.java` | File downloader streaming update APK bytes to isolated app storage with SHA256 verification. Key symbols: `downloadFile()`, `verifyChecksum()`. | `java.net.URL`, `java.security.MessageDigest` | `AppUpdateManager` |
 | `BootReceiver.java` | Android BroadcastReceiver listening for `ACTION_BOOT_COMPLETED` to trigger optional background companion services. Key symbols: `onReceive()`, `recovered()`. | Android `BroadcastReceiver` | Android OS |
+| `ServerDeployer.java` | Exports offline server package as `companion-server-update.zip` to public Downloads folder with MediaStore support for Android 11+. Key symbols: `exportServerBundle()`, `BUNDLE_ZIP_NAME`, `zipAssetFolder()`. | `MediaStore`, `ZipOutputStream` | `MainActivity` |
 
 ---
 
@@ -230,6 +231,7 @@ This matrix catalogs all production source files, their primary responsibilities
 |---|---|---|
 | `doctor.py` | CLI diagnostic utility (`python scripts/doctor.py --doctor`); inspects Python, Termux environment, `agy` on PATH, server status. | Read-only inspection; run anytime. |
 | `sync_android_web.py` | Canonical asset synchronizer (`python scripts/sync_android_web.py [--check]`); copies `server/web/` to `app/src/main/assets/web/` and verifies MD5 parity. | Essential pre-commit check. |
+| `sync_server_assets.py` | Synchronizes canonical server and web runtime assets to Android APK assets and Termux directory. | Used by update and deployment pipeline. |
 | `prepare_web_release.py` | Updates cache version hashes inside `sw.js` before release builds. | Run before packaging releases. |
 | `package_release.py` | Builds signed production Termux ZIP packages with cryptographic signatures. | Requires release keys. |
 | `install_release.py` | Verifies and selects Termux package releases atomically with rollback protection. | Used by update orchestrator. |

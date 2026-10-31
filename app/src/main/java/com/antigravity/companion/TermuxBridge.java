@@ -102,12 +102,15 @@ public final class TermuxBridge {
             Runnable timeout = () -> finish(nonce, state("outcome_unknown", "Termux sync result timeout"));
             REQUESTS.put(nonce, new LaunchRequest(context, pending, callback, timeout));
             DEADLINES.postDelayed(timeout, 20000);
+            JsonObject credentials = new JsonObject();
+            credentials.addProperty("android_token", NativeSecrets.androidToken(context));
             Intent syncIntent = new Intent("com.termux.RUN_COMMAND")
                     .setComponent(new ComponentName(TERMUX_PACKAGE, "com.termux.app.RunCommandService"))
                     .putExtra("com.termux.RUN_COMMAND_PATH", TermuxLaunchContract.executable(applicationDataDir))
                     .putExtra("com.termux.RUN_COMMAND_ARGUMENTS", TermuxLaunchContract.syncArguments(applicationDataDir))
                     .putExtra("com.termux.RUN_COMMAND_WORKDIR", TermuxLaunchContract.workingDirectory(applicationDataDir))
                     .putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
+                    .putExtra("com.termux.RUN_COMMAND_STDIN", credentials.toString() + "\n")
                     .putExtra("com.termux.RUN_COMMAND_PENDING_INTENT", pending);
             if (!startCommandService(context, syncIntent)) {
                 throw new IllegalStateException("Termux command service is unavailable");
