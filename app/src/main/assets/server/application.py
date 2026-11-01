@@ -953,10 +953,15 @@ async def stream_events(request):
     sessions = request.app["sessions"]
     run = sessions.runs[run_id]
     log = sessions.log(run_id)
-    cursor = int(
-        request.headers.get("Last-Event-ID", request.query.get("after", "0"))
-    )
-    if cursor < 0 or cursor > log.sequence:
+    try:
+        cursor = int(
+            request.headers.get("Last-Event-ID", request.query.get("after", "0"))
+        )
+    except (ValueError, TypeError):
+        return error("invalid_request", "Invalid cursor", 400)
+    if cursor < 0:
+        return error("invalid_request", "Cursor cannot be negative", 400)
+    if cursor > log.sequence:
         cursor = 0
     if log.events and cursor < log.events[0]["id"] - 1:
         cursor = max(0, log.events[0]["id"] - 1)

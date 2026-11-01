@@ -5,7 +5,7 @@ from pathlib import Path
 import re
 import sys
 
-MAX_BYTES = 1024 * 1024
+MAX_BYTES = 50 * 1024 * 1024  # 50MB allows comprehensive restoration without truncating messages
 
 
 class LegacyConversations:
@@ -47,9 +47,32 @@ class LegacyConversations:
                 except OSError:
                     pass
         candidates.sort(key=lambda x: x[2], reverse=True)
+        pinned_cids = set()
+        if metadata_store:
+            try:
+                for k, v in getattr(metadata_store, "store", {}).get("conversations", {}).items():
+                    if v.get("is_pinned") and not v.get("deleted"):
+                        pinned_cids.add(k)
+            except Exception:
+                pass
+
+        selected_candidates = []
+        seen = set()
+        if pinned_cids:
+            for item in candidates:
+                if item[0] in pinned_cids:
+                    selected_candidates.append(item)
+                    seen.add(item[0])
+        for item in candidates:
+            if item[0] not in seen:
+                selected_candidates.append(item)
+                seen.add(item[0])
+                if len(selected_candidates) >= 150:
+                    break
+
         conversations = []
         import datetime
-        for cid, tfile, mtime in candidates[:100]:
+        for cid, tfile, mtime in selected_candidates:
             if metadata_store and metadata_store.is_deleted(cid):
                 continue
             try:
@@ -169,6 +192,11 @@ class LegacyConversations:
                         user_req = c
                         if "<USER_REQUEST>" in c:
                             user_req = c.split("<USER_REQUEST>")[1].split("</USER_REQUEST>")[0].strip()
+                        else:
+                            user_req = re.sub(r"<ADDITIONAL_METADATA>[\s\S]*?</ADDITIONAL_METADATA>", "", user_req)
+                            user_req = re.sub(r"<USER_SETTINGS_CHANGE>[\s\S]*?</USER_SETTINGS_CHANGE>", "", user_req)
+                            user_req = re.sub(r"<SYSTEM_MESSAGE>[\s\S]*?</SYSTEM_MESSAGE>", "", user_req)
+                            user_req = user_req.strip()
                         if user_req:
                             messages.append({
                                 "id": f"{conversation_id}_{idx}",

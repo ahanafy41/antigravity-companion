@@ -1268,6 +1268,10 @@ button:focus-visible, input:focus-visible, a:focus-visible {
   word-break: break-word;
 }
 
+.user-message .msg-content {
+  white-space: pre-wrap;
+}
+
 .markdown-body p {
   margin-bottom: 0.75em;
 }
