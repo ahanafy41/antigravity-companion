@@ -129,7 +129,7 @@ git commit -m "feat(server): add modular media streaming service with HTTP Range
 - Test: `server/web/run_media_viewer_tests.cjs`
 
 **Interfaces:**
-- Exposes: `window.MediaViewer = { isMediaFile, getCategory, buildMediaUrl, render }`
+- Exposes: `window.MediaViewer = { isMediaFile, getCategory, buildMediaUrl, render, enhanceContainer }`
 
 - [ ] **Step 1: Write Node.js unit tests for `media-viewer.js`**
 
@@ -139,6 +139,7 @@ Create `server/web/run_media_viewer_tests.cjs` testing:
 3. `isMediaFile("clip.mp4")` -> `{ isMedia: true, category: 'video' }`.
 4. `isMediaFile("code.js")` -> `{ isMedia: false }`.
 5. `buildMediaUrl(path, token)` returns formatted stream URL with `token`.
+6. `enhanceContainer(container)` replaces local media link with playable `<audio>` or `<video>` player and rewrites local image `src`.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -154,6 +155,10 @@ Implement `window.MediaViewer`:
   - Image: renders accessible image card with zoom toggle, dimensions, and download link.
   - Audio: renders accessible `<audio controls preload="metadata">` with skip -10s, skip +10s, speed toggles (1x, 1.25x, 1.5x, 2x), and download.
   - Video: renders responsive `<video controls preload="metadata">` container.
+- `enhanceContainer(container)`:
+  - Scans `img` elements with local `file://` or `/data/...` paths and rewrites them to streaming URLs.
+  - Scans `a` links ending in audio/video extensions or media tags and embeds inline playable `<audio>` / `<video>` players directly inside the chat turn!
+  - When tool execution creates an image/audio/video file, automatically inserts the player inline.
 - Add accessible styling in `main-ui.css` with high contrast borders and large touch targets.
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -200,6 +205,8 @@ Expected: FAIL
        - Resolve streaming URL via `window.MediaViewer.buildMediaUrl(artPath, cid)`.
        - Call `window.MediaViewer.render(artifactViewerContent, { name: artName, path: artPath, url, summary: artSummary, category: mediaCheck.category })`.
        - Skip plain-text fetch.
+   - In `aiContentDiv` render cycle & `renderChatTurn`:
+     - Call `window.MediaViewer.enhanceContainer(msgElement)` to automatically convert any image/audio/video paths or links in the conversation into playable HTML5 media players and visible images directly in the chat feed!
 
 - [ ] **Step 4: Run test to verify it passes**
 
