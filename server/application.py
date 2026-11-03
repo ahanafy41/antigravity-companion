@@ -1141,6 +1141,95 @@ async def list_artifacts(request):
                     })
             artifacts.sort(key=lambda x: x.get("mtime", 0), reverse=True)
 
+    seen_paths = {art.get("path") for art in artifacts if art.get("path")}
+
+    # Also discover unindexed .md files in brain target_dir
+    if cid and BRAIN_DIR.is_dir():
+        clean_cid = Path(cid).name
+        target_dir = (BRAIN_DIR / clean_cid).resolve()
+        if target_dir.is_dir() and BRAIN_DIR.resolve() in target_dir.parents:
+            for f in target_dir.iterdir():
+                if f.is_file() and f.suffix.lower() in (".md", ".markdown") and not f.name.endswith(".metadata.json"):
+                    f_res = str(f.resolve())
+                    if f_res not in seen_paths and f.name not in (".", ".."):
+                        st = f.stat()
+                        title = f.name
+                        try:
+                            first_lines = f.read_text(encoding="utf-8", errors="ignore").splitlines()[:5]
+                            for l in first_lines:
+                                l_strip = l.strip().lstrip("#").strip()
+                                if l_strip:
+                                    title = l_strip
+                                    break
+                        except Exception:
+                            pass
+                        artifacts.append({
+                            "name": f.name,
+                            "conversation_id": clean_cid,
+                            "summary": title,
+                            "requestFeedback": any(k in f.name.lower() for k in ("plan", "spec", "task")),
+                            "userFacing": True,
+                            "updatedAt": "",
+                            "mtime": st.st_mtime,
+                            "size": st.st_size,
+                            "path": f_res,
+                        })
+                        seen_paths.add(f_res)
+
+    # Universal Workspace Auto-Discovery for all users:
+    try:
+        ws_paths = workspaces(request)
+        for root_path in ws_paths.roots:
+            p_root = Path(root_path).resolve()
+            if not p_root.is_dir():
+                continue
+            candidates = []
+            specs_dir = p_root / "docs" / "superpowers" / "specs"
+            if specs_dir.is_dir():
+                candidates.extend(specs_dir.glob("*.md"))
+            plans_dir = p_root / "docs" / "superpowers" / "plans"
+            if plans_dir.is_dir():
+                candidates.extend(plans_dir.glob("*.md"))
+            for extra in ("task.md", "tasks.md", "project_state.md"):
+                candidate_extra = p_root / extra
+                if candidate_extra.is_file():
+                    candidates.append(candidate_extra)
+            
+            for doc_file in candidates:
+                if not doc_file.is_file():
+                    continue
+                doc_res = str(doc_file.resolve())
+                if doc_res in seen_paths:
+                    continue
+                st = doc_file.stat()
+                title = doc_file.name
+                try:
+                    first_lines = doc_file.read_text(encoding="utf-8", errors="ignore").splitlines()[:5]
+                    for l in first_lines:
+                        l_strip = l.strip().lstrip("#").strip()
+                        if l_strip:
+                            title = l_strip
+                            break
+                except Exception:
+                    pass
+                artifacts.append({
+                    "name": doc_file.name,
+                    "conversation_id": cid or "",
+                    "summary": title,
+                    "requestFeedback": True if any(k in doc_file.name.lower() for k in ("plan", "spec", "task")) else False,
+                    "userFacing": True,
+                    "updatedAt": "",
+                    "mtime": st.st_mtime,
+                    "size": st.st_size,
+                    "path": doc_res,
+                    "is_project_file": True,
+                })
+                seen_paths.add(doc_res)
+    except Exception:
+        pass
+
+    artifacts.sort(key=lambda x: x.get("mtime", 0), reverse=True)
+
     session_files = []
     legacy = request.app.get("legacy")
     if legacy and cid:
