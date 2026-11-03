@@ -876,6 +876,39 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
             data = await response.json()
             self.assertTrue("code" in data or "error" in data or "message" in data)
 
+    async def test_read_artifact_and_project_files(self):
+        headers = await self.authenticated()
+        with tempfile.TemporaryDirectory() as work_dir:
+            current = self.app["store"].read("settings")
+            self.app["store"].update(
+                "settings",
+                {"workspace_roots": [work_dir]},
+                current.get("revision", 0),
+            )
+            proj_file = Path(work_dir) / "main_code.py"
+            proj_file.write_text("print('antigravity code')", encoding="utf-8")
+
+            async with self.client.get(
+                self.url + "/api/v1/artifacts/content",
+                params={"path": str(proj_file)},
+                headers=headers,
+            ) as response:
+                self.assertEqual(response.status, 200)
+                data = await response.json()
+                self.assertEqual(data["status"], "ok")
+                self.assertEqual(data["name"], "main_code.py")
+                self.assertEqual(data["content"], "print('antigravity code')")
+                self.assertTrue(data.get("is_project_file"))
+
+            async with self.client.get(
+                self.url + "/api/v1/artifacts",
+                headers=headers,
+            ) as response:
+                self.assertEqual(response.status, 200)
+                data = await response.json()
+                self.assertIn("artifacts", data)
+                self.assertIn("session_files", data)
+
 
 FIXTURE = r"""
 import json

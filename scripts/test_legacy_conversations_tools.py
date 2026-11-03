@@ -69,5 +69,35 @@ class TestLegacyConversationsTools(unittest.TestCase):
         self.assertEqual(tool["name"], "run_command")
         self.assertEqual(tool["summary"], "List files")
 
+    def test_transcript_extracts_project_files(self):
+        cid = "cid-project-files"
+        t_dir = self.root / ".gemini" / "antigravity-cli" / "brain" / cid / ".system_generated" / "logs"
+        t_dir.mkdir(parents=True, exist_ok=True)
+        t_file = t_dir / "transcript.jsonl"
+
+        dummy_file = self.root / "app_module.py"
+        dummy_file.write_text("print('hello')", encoding="utf-8")
+
+        lines = [
+            json.dumps({"type": "USER_INPUT", "content": "أنشئ ملف كود"}),
+            json.dumps({
+                "type": "PLANNER_RESPONSE",
+                "content": "تم إنشاء الكود",
+                "tool_calls": [
+                    {"name": "write_file", "args": {"Path": str(dummy_file), "Content": "print('hello')"}},
+                    {"name": "edit_file", "args": {"Path": str(dummy_file), "Target": "hello", "Replacement": "world"}}
+                ]
+            })
+        ]
+        t_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        res = self.legacy.transcript(cid)
+        p_files = res.get("project_files", [])
+        self.assertEqual(len(p_files), 1)
+        self.assertEqual(p_files[0]["name"], "app_module.py")
+        self.assertEqual(p_files[0]["action"], "edited") # was edited after write
+        self.assertTrue(p_files[0]["exists"])
+        self.assertGreater(p_files[0]["size"], 0)
+
 if __name__ == "__main__":
     unittest.main()

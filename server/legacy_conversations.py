@@ -287,6 +287,7 @@ class LegacyConversations:
                     msg["text"] = "*(تحليل وتفكير الوكيل الداخلي)*"
 
         artifacts = self.artifacts(conversation_id)
+        project_files = self.project_files(records)
 
         # Discover and populate nested subagent runs and tools
         subagents = []
@@ -394,11 +395,77 @@ class LegacyConversations:
             "records": records,
             "messages": messages,
             "artifacts": artifacts,
+            "project_files": project_files,
             "subagents": subagents,
             "total_tokens": total_tokens,
             "truncated": truncated,
             "invalid_records": skipped,
         }
+
+    def project_files(self, records):
+        files_map = {}
+        file_tools = {
+            "write_file", "edit_file", "read_file",
+            "replace_file_content", "create_file", "modify_file"
+        }
+        for rec in records:
+            if rec.get("type") != "PLANNER_RESPONSE":
+                continue
+            for tc in (rec.get("tool_calls") or []):
+                t_name = tc.get("name") or ""
+                if t_name not in file_tools:
+                    continue
+                args = tc.get("args") or {}
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except Exception:
+                        args = {}
+                fpath = args.get("Path") or args.get("path") or args.get("file_path") or args.get("Target")
+                if not fpath or not isinstance(fpath, str):
+                    continue
+                fpath = fpath.strip().strip('"').strip("'")
+                if not fpath or fpath.startswith("http://") or fpath.startswith("https://"):
+                    continue
+
+                action = "read"
+                if t_name in ("write_file", "create_file"):
+                    is_append = bool(args.get("Append") or args.get("append"))
+                    action = "edited" if is_append else "created"
+                elif t_name in ("edit_file", "replace_file_content", "modify_file"):
+                    action = "edited"
+
+                prev = files_map.get(fpath)
+                if prev and prev["action"] in ("created", "edited") and action == "read":
+                    action = prev["action"]
+
+                name = Path(fpath).name
+                st_size = 0
+                st_mtime = 0
+                exists = False
+                try:
+                    p = Path(fpath)
+                    if p.is_file():
+                        exists = True
+                        st = p.stat()
+                        st_size = st.st_size
+                        st_mtime = st.st_mtime
+                except Exception:
+                    pass
+
+                files_map[fpath] = {
+                    "path": fpath,
+                    "name": name,
+                    "action": action,
+                    "tool": t_name,
+                    "exists": exists,
+                    "size": st_size,
+                    "mtime": st_mtime,
+                }
+
+        result = list(files_map.values())
+        result.sort(key=lambda x: (0 if x["action"] == "created" else (1 if x["action"] == "edited" else 2), -x["mtime"]))
+        return result
 
     def artifacts(self, conversation_id):
         b_dir = self.root / conversation_id

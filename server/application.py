@@ -1140,10 +1140,21 @@ async def list_artifacts(request):
                         "path": str(doc_path),
                     })
             artifacts.sort(key=lambda x: x.get("mtime", 0), reverse=True)
+
+    session_files = []
+    legacy = request.app.get("legacy")
+    if legacy and cid:
+        try:
+            conv_data = await asyncio.to_thread(legacy.get_conversation, cid)
+            session_files = conv_data.get("project_files", [])
+        except Exception:
+            pass
+
     return web.json_response({
         "status": "ok",
         "conversation_id": cid,
         "artifacts": artifacts,
+        "session_files": session_files,
     })
 
 
@@ -1152,10 +1163,11 @@ async def read_artifact(request):
     name = request.query.get("name", "").strip().strip('"').strip("'")
     req_path = request.query.get("path", "").strip().strip('"').strip("'")
 
-    # 1. If direct path is provided, validate it resides within BRAIN_DIR
+    # 1. If direct path is provided
     if req_path:
         try:
             resolved_p = Path(req_path).resolve()
+            # A) Inside BRAIN_DIR
             if BRAIN_DIR.resolve() in resolved_p.parents and resolved_p.is_file():
                 content = resolved_p.read_text(encoding="utf-8", errors="ignore")
                 return web.json_response({
@@ -1164,7 +1176,36 @@ async def read_artifact(request):
                     "name": resolved_p.name,
                     "path": str(resolved_p),
                     "content": content,
+                    "size": resolved_p.stat().st_size,
+                    "is_markdown": resolved_p.suffix.lower() in (".md", ".markdown"),
+                    "is_project_file": False,
                 })
+
+            # B) Inside allowed workspace roots
+            try:
+                allowed_p = api_path(request, req_path)
+                if allowed_p.is_file():
+                    st = allowed_p.stat()
+                    if st.st_size > 2 * 1024 * 1024:
+                        return error("file_too_large", "الملف يتجاوز حد الحجم الأقصى (2 ميجابايت)", 413)
+                    try:
+                        content = allowed_p.read_text(encoding="utf-8-sig")
+                    except UnicodeDecodeError:
+                        content = allowed_p.read_text(encoding="utf-8", errors="replace")
+                    return web.json_response({
+                        "status": "ok",
+                        "conversation_id": cid or "",
+                        "name": allowed_p.name,
+                        "path": str(allowed_p),
+                        "content": content,
+                        "size": st.st_size,
+                        "is_markdown": allowed_p.suffix.lower() in (".md", ".markdown"),
+                        "is_project_file": True,
+                    })
+            except PermissionError as pe:
+                return error("forbidden", str(pe), 403)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -1226,6 +1267,9 @@ async def read_artifact(request):
         "name": clean_name,
         "path": str(doc_path),
         "content": content,
+        "size": doc_path.stat().st_size,
+        "is_markdown": doc_path.suffix.lower() in (".md", ".markdown"),
+        "is_project_file": False,
     })
 
 

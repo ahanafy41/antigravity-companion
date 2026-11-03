@@ -426,11 +426,13 @@
 
     let messages = [];
     let artifacts = [];
+    let project_files = [];
     let total_tokens = 0;
 
     if (legacy && Array.isArray(legacy.messages) && legacy.messages.length > 0) {
       messages = legacy.messages;
       artifacts = legacy.artifacts || [];
+      project_files = legacy.project_files || [];
       total_tokens = legacy.total_tokens || 0;
     } else if (current.sessionId) {
       try {
@@ -469,6 +471,7 @@
       id: id,
       messages: messages,
       artifacts: artifacts,
+      project_files: project_files,
       total_tokens: total_tokens,
       active_run: activeRun,
       session_id: activeRun?.session_id || current.sessionId || null

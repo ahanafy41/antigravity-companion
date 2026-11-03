@@ -752,9 +752,29 @@ await window.mainV1.ready;
     const btnViewerProceed = document.getElementById('btn-viewer-proceed');
     const btnCloseViewer = document.getElementById('btn-close-viewer');
     const btnCloseViewerTop = document.getElementById('btn-close-viewer-top');
+    const tabBtnArtifacts = document.getElementById('tab-btn-artifacts');
+    const tabBtnProjectFiles = document.getElementById('tab-btn-project-files');
+    const tabArtifactsCount = document.getElementById('tab-artifacts-count');
+    const tabProjectFilesCount = document.getElementById('tab-project-files-count');
+    const tabPanelArtifacts = document.getElementById('tab-panel-artifacts');
+    const tabPanelProjectFiles = document.getElementById('tab-panel-project-files');
+    const projectSessionFilesList = document.getElementById('project-session-files-list');
+    const sessionFilesCountBadge = document.getElementById('session-files-count-badge');
+    const btnBrowserGoUp = document.getElementById('btn-browser-go-up');
+    const btnRefreshProjectBrowser = document.getElementById('btn-refresh-project-browser');
+    const projectBrowserCurrentPath = document.getElementById('project-browser-current-path');
+    const projectBrowserItems = document.getElementById('project-browser-items');
+    const artifactViewerTypeBadge = document.getElementById('artifact-viewer-type-badge');
+    const artifactViewerSizeBadge = document.getElementById('artifact-viewer-size-badge');
+    const artifactViewerPath = document.getElementById('artifact-viewer-path');
+    const btnCopyViewerPath = document.getElementById('btn-copy-viewer-path');
+    const btnSendViewerToPrompt = document.getElementById('btn-send-viewer-to-prompt');
     const knownArtifacts = new Map();
+    const knownProjectFiles = new Map();
     let currentViewerArtifact = null;
     let artifactViewerRequestId = 0;
+    let currentProjectBrowserDir = '';
+    let currentProjectParentDir = '';
 
     // Conversation History & System Resources elements
     const btnOpenConversations = document.getElementById('btn-open-conversations');
@@ -1019,7 +1039,8 @@ await window.mainV1.ready;
         const isEdit = toolName === 'edit_file';
         cardHtml += '<div class="tool-card-header file-header">' +
           '<span>' + (isEdit ? '✏️ تعديل ملف:' : '📝 إنشاء/كتابة ملف:') + ' <code>' + escapeHtml(p || 'ملف') + '</code></span>' +
-          '<div style="display:flex;gap:4px;">' +
+          '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
+            (p ? '<button type="button" class="btn btn-sm btn-view-file-direct" data-path="' + escapeHtml(p) + '" aria-label="عرض وفتح الملف ' + escapeHtml(p) + '">📖 عرض الملف</button>' : '') +
             (p ? '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(p) + '" aria-label="نسخ مسار الملف">📋 نسخ المسار</button>' : '') +
             '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(strOutput) + '" aria-label="نسخ التفاصيل">📋 نسخ التفاصيل</button>' +
           '</div>' +
@@ -1287,6 +1308,14 @@ await window.mainV1.ready;
         const cleanPath = rawHref.replace(/^file:\/\//, '').replace(/^["']|["']$/g, '');
         const cleanName = cleanPath.split('/').pop().replace(/^["']|["']$/g, '');
         openArtifactViewer(cleanName, cleanPath, '', false, currentActiveConversationId || '');
+        return;
+      }
+      const viewFileDirectBtn = e.target.closest('.btn-view-file-direct');
+      if (viewFileDirectBtn) {
+        e.preventDefault();
+        const fPath = (viewFileDirectBtn.getAttribute('data-path') || '').replace(/^["']|["']$/g, '');
+        const fName = fPath.split('/').pop().replace(/^["']|["']$/g, '') || fPath;
+        openArtifactViewer(fName, fPath, 'ملف تم إنشاؤه أو تعديله بواسطة الوكيل في هذا المشروع', false, currentActiveConversationId || '');
         return;
       }
       const copyCodeBtn = e.target.closest('.btn-copy-code');
@@ -4142,15 +4171,44 @@ await window.mainV1.ready;
     }
 
     // ==========================================
-    // ANTIGRAVITY ARTIFACTS CONTROLLER
+    // ANTIGRAVITY ARTIFACTS & PROJECT FILES CONTROLLER
     // ==========================================
+    function getFileInfo(filename) {
+      const ext = (filename.split('.').pop() || '').toLowerCase();
+      const map = {
+        'md': { icon: '📄', label: 'مستند Markdown', isMd: true, lang: 'markdown', mime: 'text/markdown' },
+        'markdown': { icon: '📄', label: 'مستند Markdown', isMd: true, lang: 'markdown', mime: 'text/markdown' },
+        'py': { icon: '🐍', label: 'كود بايثون', isMd: false, lang: 'python', mime: 'text/x-python' },
+        'js': { icon: '💻', label: 'كود جافاسكريبت', isMd: false, lang: 'javascript', mime: 'application/javascript' },
+        'cjs': { icon: '💻', label: 'كود جافاسكريبت CJS', isMd: false, lang: 'javascript', mime: 'application/javascript' },
+        'mjs': { icon: '💻', label: 'كود جافاسكريبت MJS', isMd: false, lang: 'javascript', mime: 'application/javascript' },
+        'ts': { icon: '💻', label: 'كود تايب سكريبت', isMd: false, lang: 'typescript', mime: 'application/typescript' },
+        'json': { icon: '⚙️', label: 'بيانات JSON', isMd: false, lang: 'json', mime: 'application/json' },
+        'sh': { icon: '📜', label: 'سكربت Bash', isMd: false, lang: 'bash', mime: 'text/x-sh' },
+        'bash': { icon: '📜', label: 'سكربت Bash', isMd: false, lang: 'bash', mime: 'text/x-sh' },
+        'lua': { icon: '🌙', label: 'سكربت Lua', isMd: false, lang: 'lua', mime: 'text/x-lua' },
+        'java': { icon: '☕', label: 'كود Java', isMd: false, lang: 'java', mime: 'text/x-java-source' },
+        'kt': { icon: '☕', label: 'كود Kotlin', isMd: false, lang: 'kotlin', mime: 'text/x-kotlin' },
+        'html': { icon: '🌐', label: 'صفحة HTML', isMd: false, lang: 'html', mime: 'text/html' },
+        'css': { icon: '🎨', label: 'تنسيقات CSS', isMd: false, lang: 'css', mime: 'text/css' },
+        'txt': { icon: '📄', label: 'ملف نصي', isMd: false, lang: 'text', mime: 'text/plain' },
+        'xml': { icon: '📑', label: 'ملف XML', isMd: false, lang: 'xml', mime: 'text/xml' },
+        'gradle': { icon: '🐘', label: 'ملف Gradle', isMd: false, lang: 'groovy', mime: 'text/plain' },
+        'yml': { icon: '⚙️', label: 'إعدادات YAML', isMd: false, lang: 'yaml', mime: 'text/yaml' },
+        'yaml': { icon: '⚙️', label: 'إعدادات YAML', isMd: false, lang: 'yaml', mime: 'text/yaml' },
+        'toml': { icon: '⚙️', label: 'إعدادات TOML', isMd: false, lang: 'toml', mime: 'text/plain' },
+        'sql': { icon: '🗄️', label: 'استعلامات SQL', isMd: false, lang: 'sql', mime: 'text/plain' },
+      };
+      return map[ext] || { icon: '📄', label: ext ? `${ext.toUpperCase()} ملف` : 'ملف نصي', isMd: false, lang: 'text', mime: 'text/plain' };
+    }
+
     function updateArtifactsUI(count) {
-      const cnt = count !== undefined ? count : knownArtifacts.size;
+      const cnt = count !== undefined ? count : (knownArtifacts.size + knownProjectFiles.size);
       if (headerArtifactsBadge) headerArtifactsBadge.textContent = cnt;
       if (valArtifactsCountDrawer) valArtifactsCountDrawer.textContent = cnt;
       if (btnHeaderArtifacts) {
         btnHeaderArtifacts.style.display = cnt > 0 ? 'inline-flex' : 'none';
-        btnHeaderArtifacts.setAttribute('aria-label', `عرض مستندات وخطط المحادثة (${cnt} مستند)`);
+        btnHeaderArtifacts.setAttribute('aria-label', `عرض المستندات وملفات المشروع (${cnt})`);
       }
     }
 
@@ -4159,17 +4217,33 @@ await window.mainV1.ready;
       artName = (artName || '').trim().replace(/^["']|["']$/g, '');
       artPath = (artPath || '').trim().replace(/^["']|["']$/g, '');
       artConversationId = (artConversationId || '').trim().replace(/^["']|["']$/g, '');
+      const fileInfo = getFileInfo(artName || artPath);
+
       currentViewerArtifact = {
         name: artName,
         path: artPath,
         summary: artSummary,
         requestFeedback: requestFeedback,
-        conversation_id: artConversationId
+        conversation_id: artConversationId,
+        fileInfo: fileInfo
       };
-      if (artifactViewerTitle) artifactViewerTitle.textContent = `📄 ${artName}`;
-      if (artifactViewerSummary) artifactViewerSummary.textContent = artSummary || '';
+
+      if (artifactViewerTitle) artifactViewerTitle.textContent = `${fileInfo.icon} ${artName || 'عرض الملف'}`;
+      if (artifactViewerTypeBadge) {
+        artifactViewerTypeBadge.textContent = fileInfo.label;
+        artifactViewerTypeBadge.style.display = 'inline-block';
+      }
+      if (artifactViewerSizeBadge) artifactViewerSizeBadge.textContent = '';
+      if (artifactViewerPath) {
+        artifactViewerPath.textContent = artPath || '';
+        artifactViewerPath.title = artPath || '';
+      }
+      if (artifactViewerSummary) {
+        artifactViewerSummary.textContent = artSummary || '';
+        artifactViewerSummary.style.display = artSummary ? 'block' : 'none';
+      }
       if (artifactViewerContent) {
-        artifactViewerContent.innerHTML = '<p>⏳ جاري تحميل محتوى المستند...</p>';
+        artifactViewerContent.innerHTML = '<p>⏳ جاري تحميل محتوى الملف...</p>';
       }
 
       if (btnViewerProceed) {
@@ -4177,7 +4251,7 @@ await window.mainV1.ready;
       }
 
       artifactViewerDialog.showModal();
-      announce(`تم فتح مستند: ${artName}`);
+      announce(`تم فتح: ${artName}`);
 
       const currentReqId = ++artifactViewerRequestId;
       try {
@@ -4191,11 +4265,38 @@ await window.mainV1.ready;
         if (!res.ok) throw new Error(`رمز الخطأ ${res.status}`);
         const data = await res.json();
         if (currentReqId !== artifactViewerRequestId) return;
-        if (!currentViewerArtifact || currentViewerArtifact.name !== artName) return;
+        if (!currentViewerArtifact || (artName && currentViewerArtifact.name !== artName)) return;
+
         const rawContent = data.content || '';
         currentViewerArtifact.content = rawContent;
+        if (data.path && !currentViewerArtifact.path) {
+          currentViewerArtifact.path = data.path;
+          if (artifactViewerPath) artifactViewerPath.textContent = data.path;
+        }
+
+        const sizeKb = (data.size ? (data.size / 1024) : (new Blob([rawContent]).size / 1024)).toFixed(1);
+        const lines = rawContent.split(/\r\n|\r|\n/).length;
+        if (artifactViewerSizeBadge) {
+          artifactViewerSizeBadge.textContent = `${sizeKb} KB • ${lines} سطر`;
+        }
+
+        const isMarkdown = Boolean(data.is_markdown || fileInfo.isMd || (artName && artName.endsWith('.md')));
+
         if (artifactViewerContent) {
-          artifactViewerContent.innerHTML = renderMarkdown(rawContent);
+          if (isMarkdown) {
+            artifactViewerContent.innerHTML = renderMarkdown(rawContent);
+          } else {
+            // Render structured code container
+            artifactViewerContent.innerHTML = `
+              <div class="code-view-container" style="background:var(--bg-card); border:1px solid var(--border-main); border-radius:8px; overflow:hidden;">
+                <div class="code-view-header" style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.35); padding:8px 14px; font-size:0.85rem; color:var(--text-muted); border-bottom:1px solid var(--border-main);">
+                  <span>سطور الكود: ${lines} سطر (${sizeKb} KB)</span>
+                  <button type="button" class="btn btn-sm btn-copy-code" data-code="${encodeURIComponent(rawContent)}" style="padding:4px 10px; font-size:0.8rem; background:rgba(255,255,255,0.08);">📋 نسخ الكود</button>
+                </div>
+                <pre style="margin:0; padding:14px; overflow-x:auto; font-family:monospace; font-size:0.92rem; line-height:1.6; direction:ltr; text-align:left; white-space:pre;"><code class="language-${fileInfo.lang}">${escapeHtml(rawContent)}</code></pre>
+              </div>
+            `;
+          }
           setTimeout(() => {
             artifactViewerContent.focus();
           }, 50);
@@ -4203,7 +4304,7 @@ await window.mainV1.ready;
       } catch (err) {
         if (currentReqId !== artifactViewerRequestId) return;
         if (artifactViewerContent) {
-          artifactViewerContent.innerHTML = `<div style="color:var(--accent-red); padding:10px;">تعذر قراءة المستند: ${escapeHtml(err.message)}</div>`;
+          artifactViewerContent.innerHTML = `<div style="color:var(--accent-red); padding:12px;">تعذر قراءة محتوى الملف: ${escapeHtml(err.message)}</div>`;
         }
       }
     }
@@ -4286,6 +4387,76 @@ await window.mainV1.ready;
       return card;
     }
 
+    async function loadProjectBrowserDirectory(targetPath) {
+      if (!projectBrowserItems) return;
+      projectBrowserItems.innerHTML = '<p style="color:var(--text-muted); font-size:0.9rem; padding:8px;">جاري تحميل ملفات المشروع...</p>';
+      try {
+        const url = '/api/fs/list' + (targetPath ? '?path=' + encodeURIComponent(targetPath) : '');
+        const res = await (window.mainV1Fetch ? window.mainV1Fetch(url) : fetch(url));
+        if (!res.ok) throw new Error('تعذر تحميل مجلد المشروع');
+        const data = await res.json();
+        currentProjectBrowserDir = data.current_dir || targetPath || '';
+        currentProjectParentDir = data.parent_dir || '';
+
+        if (projectBrowserCurrentPath) {
+          projectBrowserCurrentPath.textContent = currentProjectBrowserDir;
+          projectBrowserCurrentPath.title = currentProjectBrowserDir;
+        }
+
+        const items = data.items || [];
+        const dirs = items.filter(it => it.is_dir).sort((a, b) => a.name.localeCompare(b.name, undefined, {sensitivity: 'base'}));
+        const files = items.filter(it => !it.is_dir).sort((a, b) => a.name.localeCompare(b.name, undefined, {sensitivity: 'base'}));
+
+        projectBrowserItems.innerHTML = '';
+        if (dirs.length === 0 && files.length === 0) {
+          projectBrowserItems.innerHTML = '<p style="color:var(--text-muted); font-size:0.9rem; padding:8px;">المجلد فارغ</p>';
+          return;
+        }
+
+        // Folders
+        dirs.forEach(d => {
+          const btnDir = document.createElement('button');
+          btnDir.type = 'button';
+          btnDir.className = 'btn btn-sm';
+          btnDir.setAttribute('role', 'listitem');
+          btnDir.style.cssText = 'display:flex; justify-content:space-between; align-items:center; width:100%; text-align:right; padding:8px 12px; background:var(--bg-card); border:1px solid var(--border-main); border-radius:6px; cursor:pointer;';
+          btnDir.innerHTML = `<span>📁 ${escapeHtml(d.name)}</span><span style="font-size:0.8rem; color:var(--text-muted);">مجلد</span>`;
+          btnDir.addEventListener('click', () => loadProjectBrowserDirectory(d.path));
+          projectBrowserItems.appendChild(btnDir);
+        });
+
+        // Files
+        files.forEach(f => {
+          const fInfo = getFileInfo(f.name);
+          const sizeKb = f.size > 1048576 ? (f.size / 1048576).toFixed(1) + ' MB' : (f.size / 1024).toFixed(1) + ' KB';
+          const fileRow = document.createElement('div');
+          fileRow.className = 'file-browser-row';
+          fileRow.setAttribute('role', 'listitem');
+          fileRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:8px; width:100%; padding:6px 12px; background:var(--bg-card-header); border:1px solid var(--border-main); border-radius:6px;';
+          fileRow.innerHTML = `
+            <button type="button" class="btn-open-proj-file" style="flex:1; display:flex; justify-content:space-between; align-items:center; background:none; border:none; color:var(--text-main); font-family:inherit; font-size:0.9rem; text-align:right; cursor:pointer;" aria-label="عرض وفتح الملف ${escapeHtml(f.name)}">
+              <span>${fInfo.icon} ${escapeHtml(f.name)}</span>
+              <span style="font-size:0.8rem; color:var(--text-muted); margin-left:8px;">${sizeKb}</span>
+            </button>
+            <button type="button" class="btn btn-sm btn-open-art-view" aria-label="فتح ملف ${escapeHtml(f.name)}" style="background:var(--accent-purple); color:#fff; padding:4px 8px; font-size:0.8rem; border-radius:4px;">📖 فتح</button>
+          `;
+
+          const triggerOpen = () => {
+            if (artifactsDialog) artifactsDialog.close();
+            openArtifactViewer(f.name, f.path, 'ملف من مساحة عمل المشروع', false, currentActiveConversationId || '');
+          };
+
+          const openBtn = fileRow.querySelector('.btn-open-proj-file');
+          const viewBtn = fileRow.querySelector('.btn-open-art-view');
+          if (openBtn) openBtn.addEventListener('click', triggerOpen);
+          if (viewBtn) viewBtn.addEventListener('click', triggerOpen);
+          projectBrowserItems.appendChild(fileRow);
+        });
+      } catch(e) {
+        projectBrowserItems.innerHTML = `<p style="color:var(--accent-red); font-size:0.9rem; padding:8px;">تعذر استعراض المجلد: ${escapeHtml(e.message)}</p>`;
+      }
+    }
+
     async function loadArtifactsList() {
       if (!artifactsListContainer) return;
       artifactsListContainer.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:20px;">جاري تحميل المستندات والخطط...</div>';
@@ -4295,50 +4466,203 @@ await window.mainV1.ready;
         if (!res.ok) throw new Error('فشل جلب المستندات');
         const data = await res.json();
         const arts = data.artifacts || [];
+        const sessFiles = data.session_files || [];
+
+        // 1. Render Artifacts Tab
         artifactsListContainer.innerHTML = '';
         if (arts.length === 0) {
           artifactsListContainer.innerHTML = '<div style="text-align:center; color:var(--text-muted); padding:20px;">لا توجد مستندات أو خطط منشأة في هذه المحادثة حتى الآن.</div>';
-          updateArtifactsUI(0);
-          return;
+        } else {
+          arts.forEach(art => {
+            knownArtifacts.set(art.name, art);
+            const item = document.createElement('div');
+            item.className = 'conversation-item';
+            item.setAttribute('role', 'listitem');
+            item.style.cssText = 'padding:12px; border:1px solid var(--border-main); border-radius:8px; background:var(--bg-card); display:flex; flex-direction:column; gap:8px;';
+            const sizeKb = art.size ? (art.size / 1024).toFixed(1) + ' KB' : '';
+            item.innerHTML = `
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <strong style="color:var(--accent-purple); font-size:1rem;">📄 ${escapeHtml(art.name)}</strong>
+                <span style="font-size:0.8rem; color:var(--text-muted);">${sizeKb}</span>
+              </div>
+              <p style="margin:0; font-size:0.9rem; color:var(--text-main); line-height:1.5;">${escapeHtml(art.summary || 'بدون ملخص')}</p>
+              <div style="display:flex; gap:8px; margin-top:4px;">
+                <button type="button" class="btn btn-sm btn-art-list-view" aria-label="عرض ${escapeHtml(art.name)}" style="background:var(--accent-purple); color:#fff; font-size:0.88rem; padding:6px 12px; border-radius:6px; cursor:pointer;">
+                  عرض المستند
+                </button>
+              </div>
+            `;
+            const vBtn = item.querySelector('.btn-art-list-view');
+            if (vBtn) {
+              vBtn.addEventListener('click', () => {
+                if (artifactsDialog) artifactsDialog.close();
+                openArtifactViewer(art.name, art.path, art.summary, art.requestFeedback, art.conversation_id);
+              });
+            }
+            artifactsListContainer.appendChild(item);
+          });
         }
-        updateArtifactsUI(arts.length);
-        arts.forEach(art => {
-          knownArtifacts.set(art.name, art);
-          const item = document.createElement('div');
-          item.className = 'conversation-item';
-          item.setAttribute('role', 'listitem');
-          item.style.cssText = 'padding:12px; border:1px solid var(--border-main); border-radius:8px; background:var(--bg-card); display:flex; flex-direction:column; gap:8px;';
-          const sizeKb = art.size ? (art.size / 1024).toFixed(1) + ' KB' : '';
-          item.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <strong style="color:var(--accent-purple); font-size:1rem;">📄 ${escapeHtml(art.name)}</strong>
-              <span style="font-size:0.8rem; color:var(--text-muted);">${sizeKb}</span>
-            </div>
-            <p style="margin:0; font-size:0.9rem; color:var(--text-main); line-height:1.5;">${escapeHtml(art.summary || 'بدون ملخص')}</p>
-            <div style="display:flex; gap:8px; margin-top:4px;">
-              <button type="button" class="btn btn-sm btn-art-list-view" aria-label="عرض ${escapeHtml(art.name)}" style="background:var(--accent-purple); color:#fff; font-size:0.88rem; padding:6px 12px; border-radius:6px; cursor:pointer;">
-                عرض المستند
-              </button>
-            </div>
-          `;
-          const vBtn = item.querySelector('.btn-art-list-view');
-          if (vBtn) {
-            vBtn.addEventListener('click', () => {
-              if (artifactsDialog) artifactsDialog.close();
-              openArtifactViewer(art.name, art.path, art.summary, art.requestFeedback, art.conversation_id);
+
+        // 2. Render Session Files List
+        knownProjectFiles.clear();
+        if (projectSessionFilesList) {
+          projectSessionFilesList.innerHTML = '';
+          if (sessFiles.length === 0) {
+            projectSessionFilesList.innerHTML = '<p style="color:var(--text-muted); font-size:0.9rem; padding:8px;">لا توجد ملفات معدلة في هذه الجلسة حتى الآن.</p>';
+          } else {
+            sessFiles.forEach(f => {
+              knownProjectFiles.set(f.path, f);
+              const fInfo = getFileInfo(f.name);
+              const sizeKb = f.size ? (f.size / 1024).toFixed(1) + ' KB' : '';
+              const actionLabel = f.action === 'created' ? '✨ تم الإنشاء' : (f.action === 'edited' ? '✏️ تم التعديل' : '👁️ تم الفحص');
+              const actionColor = f.action === 'created' ? 'var(--accent-green)' : (f.action === 'edited' ? 'var(--accent-purple)' : 'var(--text-muted)');
+
+              const fileCard = document.createElement('div');
+              fileCard.className = 'session-file-card';
+              fileCard.setAttribute('role', 'listitem');
+              fileCard.style.cssText = 'padding:10px 12px; border:1px solid var(--border-main); border-radius:8px; background:var(--bg-card); display:flex; flex-direction:column; gap:6px;';
+              fileCard.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
+                  <strong style="color:var(--text-main); font-size:0.95rem;">${fInfo.icon} ${escapeHtml(f.name)}</strong>
+                  <div style="display:flex; gap:6px; align-items:center;">
+                    <span class="badge" style="background:${actionColor}; color:#000; font-size:0.75rem; padding:2px 6px; border-radius:4px; font-weight:bold;">${actionLabel}</span>
+                    <span style="font-size:0.8rem; color:var(--text-muted);">${sizeKb}</span>
+                  </div>
+                </div>
+                <div style="font-size:0.8rem; color:var(--text-muted); direction:ltr; text-align:left; word-break:break-all;">${escapeHtml(f.path)}</div>
+                <div style="display:flex; gap:8px; margin-top:4px; flex-wrap:wrap;">
+                  <button type="button" class="btn btn-sm btn-session-file-view" aria-label="عرض وقراءة الملف ${escapeHtml(f.name)}" style="background:var(--accent-purple); color:#fff; font-size:0.85rem; padding:5px 10px; border-radius:6px; cursor:pointer;">
+                    📖 عرض وقراءة الملف
+                  </button>
+                  <button type="button" class="btn btn-sm btn-session-file-copy" aria-label="نسخ مسار ${escapeHtml(f.name)}" style="background:rgba(255,255,255,0.08); font-size:0.85rem; padding:5px 10px; border-radius:6px; cursor:pointer;">
+                    📋 نسخ المسار
+                  </button>
+                </div>
+              `;
+
+              const vBtn = fileCard.querySelector('.btn-session-file-view');
+              if (vBtn) {
+                vBtn.addEventListener('click', () => {
+                  if (artifactsDialog) artifactsDialog.close();
+                  openArtifactViewer(f.name, f.path, `ملف مشروع (${actionLabel})`, false, currentActiveConversationId || '');
+                });
+              }
+
+              const cpBtn = fileCard.querySelector('.btn-session-file-copy');
+              if (cpBtn) {
+                cpBtn.addEventListener('click', () => {
+                  if (navigator.clipboard) {
+                    navigator.clipboard.writeText(f.path).then(() => {
+                      playBeep(880, 0.08);
+                      announce('تم نسخ مسار الملف');
+                      cpBtn.textContent = '✓ تم النسخ';
+                      setTimeout(() => { cpBtn.textContent = '📋 نسخ المسار'; }, 2000);
+                    });
+                  }
+                });
+              }
+
+              projectSessionFilesList.appendChild(fileCard);
             });
           }
-          artifactsListContainer.appendChild(item);
-        });
+        }
+
+        // 3. Update Badges
+        if (tabArtifactsCount) tabArtifactsCount.textContent = arts.length;
+        if (tabProjectFilesCount) tabProjectFilesCount.textContent = sessFiles.length;
+        if (sessionFilesCountBadge) sessionFilesCountBadge.textContent = sessFiles.length;
+        updateArtifactsUI(arts.length + sessFiles.length);
+
       } catch (err) {
         artifactsListContainer.innerHTML = `<div style="color:var(--accent-red); padding:12px;">تعذر تحميل المستندات: ${escapeHtml(err.message)}</div>`;
       }
     }
 
+    // Tab switching handlers
+    if (tabBtnArtifacts && tabBtnProjectFiles) {
+      tabBtnArtifacts.addEventListener('click', () => {
+        tabBtnArtifacts.classList.add('active');
+        tabBtnArtifacts.setAttribute('aria-selected', 'true');
+        tabBtnArtifacts.style.background = 'var(--accent-purple)';
+        tabBtnArtifacts.style.color = '#fff';
+
+        tabBtnProjectFiles.classList.remove('active');
+        tabBtnProjectFiles.setAttribute('aria-selected', 'false');
+        tabBtnProjectFiles.style.background = 'var(--bg-card)';
+        tabBtnProjectFiles.style.color = 'var(--text-main)';
+
+        if (tabPanelArtifacts) tabPanelArtifacts.style.display = 'block';
+        if (tabPanelProjectFiles) tabPanelProjectFiles.style.display = 'none';
+        announce('تبويب وثائق وخطط العمل');
+      });
+
+      tabBtnProjectFiles.addEventListener('click', () => {
+        tabBtnProjectFiles.classList.add('active');
+        tabBtnProjectFiles.setAttribute('aria-selected', 'true');
+        tabBtnProjectFiles.style.background = 'var(--accent-purple)';
+        tabBtnProjectFiles.style.color = '#fff';
+
+        tabBtnArtifacts.classList.remove('active');
+        tabBtnArtifacts.setAttribute('aria-selected', 'false');
+        tabBtnArtifacts.style.background = 'var(--bg-card)';
+        tabBtnArtifacts.style.color = 'var(--text-main)';
+
+        if (tabPanelArtifacts) tabPanelArtifacts.style.display = 'none';
+        if (tabPanelProjectFiles) tabPanelProjectFiles.style.display = 'block';
+        announce('تبويب ملفات وتعديلات المشروع ومستكشف مساحة العمل');
+
+        if (!currentProjectBrowserDir) {
+          loadProjectBrowserDirectory('');
+        }
+      });
+    }
+
+    if (btnBrowserGoUp) {
+      btnBrowserGoUp.addEventListener('click', () => {
+        if (currentProjectParentDir && currentProjectParentDir !== currentProjectBrowserDir) {
+          loadProjectBrowserDirectory(currentProjectParentDir);
+        }
+      });
+    }
+
+    if (btnRefreshProjectBrowser) {
+      btnRefreshProjectBrowser.addEventListener('click', () => {
+        loadProjectBrowserDirectory(currentProjectBrowserDir || '');
+      });
+    }
+
+    if (btnCopyViewerPath) {
+      btnCopyViewerPath.addEventListener('click', () => {
+        if (!currentViewerArtifact || !currentViewerArtifact.path) return;
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(currentViewerArtifact.path).then(() => {
+            playBeep(880, 0.08);
+            announce('تم نسخ مسار الملف بالكامل');
+            btnCopyViewerPath.textContent = '✓ تم النسخ';
+            setTimeout(() => { btnCopyViewerPath.textContent = '📋 نسخ المسار'; }, 2000);
+          });
+        }
+      });
+    }
+
+    if (btnSendViewerToPrompt) {
+      btnSendViewerToPrompt.addEventListener('click', () => {
+        if (!currentViewerArtifact) return;
+        const p = currentViewerArtifact.path || currentViewerArtifact.name;
+        if (artifactViewerDialog) artifactViewerDialog.close();
+        if (aiInput && p) {
+          aiInput.value = (aiInput.value ? aiInput.value + ' ' : '') + p;
+          aiInput.focus();
+          playSuccessChime();
+          announce('تم إدراج مسار الملف في طلب الوكيل');
+        }
+      });
+    }
+
     if (btnHeaderArtifacts && artifactsDialog) {
       btnHeaderArtifacts.addEventListener('click', async () => {
         artifactsDialog.showModal();
-        announce('تم فتح نافذة مستندات وخطط المحادثة');
+        announce('تم فتح نافذة المستندات وملفات المشروع');
         await loadArtifactsList();
       });
     }
@@ -4347,7 +4671,7 @@ await window.mainV1.ready;
         const drawer = document.getElementById('antigravity-drawer');
         if (drawer && drawer.close) drawer.close();
         artifactsDialog.showModal();
-        announce('تم فتح نافذة مستندات وخطط المحادثة');
+        announce('تم فتح نافذة المستندات وملفات المشروع');
         await loadArtifactsList();
       });
     }
@@ -4371,7 +4695,7 @@ await window.mainV1.ready;
             await navigator.clipboard.writeText(currentViewerArtifact.content);
           }
           playBeep(880, 0.1);
-          announce('تم نسخ نص المستند كاملاً إلى الحافظة');
+          announce('تم نسخ محتوى الملف كاملاً إلى الحافظة');
         } catch(err) {
           announce('تعذر النسخ: ' + err.message);
         }
@@ -4389,19 +4713,20 @@ await window.mainV1.ready;
       btnDownloadArtifact.addEventListener('click', () => {
         if (!currentViewerArtifact || !currentViewerArtifact.content) return;
         try {
-          const blob = new Blob([currentViewerArtifact.content], { type: 'text/markdown;charset=utf-8' });
+          const info = currentViewerArtifact.fileInfo || getFileInfo(currentViewerArtifact.name || 'file.txt');
+          const blob = new Blob([currentViewerArtifact.content], { type: (info.mime || 'text/plain') + ';charset=utf-8' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = currentViewerArtifact.name || 'artifact.md';
+          a.download = currentViewerArtifact.name || 'document.txt';
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
           playBeep(880, 0.1);
-          announce('تم بدء تنزيل المستند');
+          announce('تم بدء تنزيل الملف');
         } catch(e) {
-          announce('تعذر تنزيل المستند: ' + e.message);
+          announce('تعذر تنزيل الملف: ' + e.message);
         }
       });
     }
