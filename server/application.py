@@ -20,6 +20,7 @@ from local_tasks import LocalTasks
 from voice_agent import VoiceAgent
 from voice_planner import VoicePlanner
 from legacy_conversations import LegacyConversations
+from media_service import serve_raw_file
 from conversation_metadata import ConversationMetadataStore
 from security import COOKIE, Pairing, error, isolation
 from sessions import RunConflict, Sessions, TERMINAL
@@ -179,6 +180,7 @@ def register_routes(application):
         web.post("/api/ai/permission", handle_permission),
         web.get("/api/v1/artifacts", list_artifacts),
         web.get("/api/v1/artifacts/content", read_artifact),
+        web.get("/api/v1/files/raw", serve_raw_file),
         web.get("/api/v1/files", list_files),
         web.get("/api/v1/file", read_file),
         web.post("/api/v1/directories", create_directory),
@@ -1708,7 +1710,8 @@ async def response_headers(request, response):
         "default-src 'self' https://appassets.androidplatform.net; "
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://appassets.androidplatform.net; "
         "style-src 'self' 'unsafe-inline' https://appassets.androidplatform.net; "
-        "img-src 'self' data: https://appassets.androidplatform.net; "
+        "img-src 'self' data: blob: https://appassets.androidplatform.net; "
+        "media-src 'self' data: blob: https://appassets.androidplatform.net; "
         "connect-src 'self' http://127.0.0.1:* http://localhost:* https://appassets.androidplatform.net; "
         "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     )
