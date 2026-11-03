@@ -2866,3 +2866,40 @@ dialog.accessible-dialog::backdrop {
   flex-direction: column;
   gap: 6px;
 }
+
+/* Accessible Multimedia Viewer Styling */
+.media-audio-card,
+.media-video-card,
+.media-image-card {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  transition: border-color 0.2s ease;
+}
+
+.media-audio-card:focus-within,
+.media-video-card:focus-within,
+.media-image-card:focus-within {
+  border-color: var(--accent-purple, #a371f7) !important;
+  outline: 2px solid var(--accent-purple, #a371f7);
+}
+
+.media-controls-toolbar button:focus,
+.media-controls-toolbar a:focus,
+.media-image-card button:focus,
+.media-image-card a:focus {
+  outline: 2px solid var(--accent-cyan, #56b6c2);
+  outline-offset: 2px;
+}
+
+.media-audio-element {
+  min-height: 48px;
+}
+
+.chat-inline-media {
+  max-width: 100%;
+  animation: fadeInMedia 0.25s ease-out;
+}
+
+@keyframes fadeInMedia {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

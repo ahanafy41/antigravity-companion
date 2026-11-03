@@ -1622,6 +1622,9 @@ await window.mainV1.ready;
           if (aiContentDiv) {
             aiContentDiv.innerHTML = renderMarkdown(accumulatedText);
             lastRenderedText = accumulatedText;
+            if (window.MediaViewer && window.MediaViewer.enhanceContainer) {
+              window.MediaViewer.enhanceContainer(aiContentDiv);
+            }
           }
           lastRenderTime = performance.now();
           scrollChatIfNearBottom();
@@ -4052,6 +4055,10 @@ await window.mainV1.ready;
           }
         } catch (e) {}
 
+        if (window.MediaViewer && window.MediaViewer.enhanceContainer && aiChatFeed) {
+          window.MediaViewer.enhanceContainer(aiChatFeed);
+        }
+
         if (data.active_run && data.active_run.state === 'running') {
           announce('تمت استعادة الاتصال بالمهمة الجارية، الوكيل يعمل الآن...');
           sendAiPrompt('', {
@@ -4252,6 +4259,21 @@ await window.mainV1.ready;
 
       artifactViewerDialog.showModal();
       announce(`تم فتح: ${artName}`);
+
+      // Modular Media Viewer Hook (Images, Audio, Video)
+      const mediaCheck = window.MediaViewer ? window.MediaViewer.isMediaFile(artName || artPath) : null;
+      if (mediaCheck && mediaCheck.isMedia) {
+        if (artifactViewerContent) {
+          window.MediaViewer.render(artifactViewerContent, {
+            name: artName,
+            path: artPath,
+            conversation_id: artConversationId || currentActiveConversationId || '',
+            category: mediaCheck.category,
+            summary: artSummary
+          });
+        }
+        return;
+      }
 
       const currentReqId = ++artifactViewerRequestId;
       try {

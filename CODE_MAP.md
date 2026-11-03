@@ -185,6 +185,7 @@ This matrix catalogs all production source files, their primary responsibilities
 | `android_client.py` | Direct Termux-to-Android helper; executes `am start` and Android broadcast commands if Termux:API is present. Key symbols: `send_broadcast()`, `launch_activity()`. | `subprocess` | `application.py` |
 | `legacy_conversations.py` | Data migration adapter converting legacy JSON chat history into the modern session format. Key symbols: `import_legacy_chats()`, `adapt_history_schema()`. | `storage.py` | `sessions.py` |
 | `conversation_metadata.py` | Metadata persistence store for conversation titles, pinning state, and soft deletion. Key symbols: `ConversationMetadataStore`, `update()`, `mark_deleted()`. | `storage.py`, `json` | `legacy_conversations.py`, `application.py` |
+| `media_service.py` | Raw media streaming and partial content serving with HTTP Range requests and token authentication. Key symbols: `serve_raw_file()`. | `mimetypes`, `security.py`, `application.py` | `application.py` |
 | `version.json` | JSON metadata defining current server release name, semantic version, build timestamp, and Git commit SHA. | Read by `application.py` | Diagnostic endpoints |
 | `launch_server.sh` | Shell script launching the daemonized Python server in Termux; redirects logs to `~/.antigravity-companion/server.log`. | Spawns `server.py` | Termux `RUN_COMMAND` |
 | `stop_server.sh` | Shell script stopping the running daemon by sending `SIGTERM` to the PID recorded in `.server.pid`. | Uses `kill` | Termux `RUN_COMMAND`, `MainActivity` |
@@ -202,6 +203,7 @@ This matrix catalogs all production source files, their primary responsibilities
 | `start.html` | First-run / fallback onboarding page displayed when server is offline or initializing. | `start-ui.css`, `start-ui.js`, `native.js` |
 | `main-ui.js` | UI state controller; manages message DOM rendering, markdown formatting, auto-scrolling, accessibility focus traps, keyboard shortcuts (`Ctrl+Enter`), and WebAudio feedback. | `index.html`, `api.js`, `history.js`, `state.js` |
 | `main-ui.css` | Accessible CSS design system; RTL layouts, high contrast dark/light themes, WCAG AA compliant contrast ratios, fluid responsiveness. | `index.html` |
+| `media-viewer.js` | Modular accessible multimedia renderer; image preview with zoom, accessible HTML5 audio player (-10s, +10s, speed, download), video player, and automatic chat turn inline media enhancement. Key symbols: `window.MediaViewer`, `isMediaFile()`, `buildMediaUrl()`, `render()`, `enhanceContainer()`. | `index.html`, `main-ui.js`, `main-ui.css` |
 | `native.js` | Modern native bridge client; encapsulates `Companion.native.request(action, args)` using AndroidX WebMessage listener (`CompanionNative.postMessage`). | `index.html`, `start.html`, `main-ui.js`, `MainActivity.java` |
 | `state.js` | Shared frontend reactive state container; manages active session metadata, model presets, and UI connection flags. | `main-ui.js`, `api.js` |
 | `main-v1-adapter.js` | Compatibility adapter bridging legacy v1 chat endpoints with the modern streaming API. | `main-ui.js`, `api.js` |
@@ -219,6 +221,7 @@ This matrix catalogs all production source files, their primary responsibilities
 | `run_legacy_native_tests.cjs` | Test suite validating legacy bridge compatibility and fallback behavior. | Node.js test harness |
 | `run_main_ui_tests.cjs` | Headless DOM tests for UI element binding, ARIA updates, and chat rendering. | Node.js test harness |
 | `run_mentions_tests.cjs` | Tests parsing of @-mentions and tool scoping in the prompt textarea. | Node.js test harness |
+| `run_media_viewer_tests.cjs` | Unit tests for MediaViewer file classification, URL resolution, and accessible HTML generator. | Node.js test harness |
 | `run_tests.cjs` | Master Node.js runner executing all client-side unit test suites. | Web CI / Node.js |
 | `run_ui_tests.cjs` | Tests for UI interaction states, dark mode toggle, and settings panel. | Node.js test harness |
 | `vendor/` | Directory containing vendored libraries: `alpine-csp.min.js`, `marked.umd.js`, `purify.min.js`, `tailwind.min.css`. | `index.html` |
@@ -262,6 +265,9 @@ This matrix catalogs all production source files, their primary responsibilities
 | `test_code_map_integrity.py` | Automated integrity test for `CODE_MAP.md`; verifies sections, recipes, and 100% dynamic file indexing. | Self-referential test gate. |
 | `test_conversation_metadata.py` | Unit tests for conversation metadata persistence and pinning. | Metadata test suite. |
 | `test_conversation_resilience_and_management.py` | Integration tests for conversation management and tool telemetry resilience. | Resilience test suite. |
+| `test_active_run_reconnection.py` | Unit tests for active session task reconnection and state recovery. | Active run reconnection suite. |
+| `test_artifact_discovery.py` | Unit tests for universal workspace spec, plan, and unindexed brain artifact auto-discovery. | Artifact discovery suite. |
+| `test_media_service.py` | Unit tests for raw media streaming with HTTP Range requests, path security, and token auth. | Media streaming suite. |
 | `test_legacy_conversations_tools.py` | Tests for tool parsing and status extraction from transcripts. | Transcript parsing suite. |
 | `test_streaming_resilience.py` | Unit tests for stream recovery and retry without error alerts. | Streaming resilience suite. |
 
