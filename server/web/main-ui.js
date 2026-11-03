@@ -4181,7 +4181,7 @@ await window.mainV1.ready;
     // ANTIGRAVITY ARTIFACTS & PROJECT FILES CONTROLLER
     // ==========================================
     function getFileInfo(filename) {
-      const ext = (filename.split('.').pop() || '').toLowerCase();
+      const ext = ((filename || '').split('.').pop() || '').toLowerCase();
       const map = {
         'md': { icon: '📄', label: 'مستند Markdown', isMd: true, lang: 'markdown', mime: 'text/markdown' },
         'markdown': { icon: '📄', label: 'مستند Markdown', isMd: true, lang: 'markdown', mime: 'text/markdown' },
@@ -4205,6 +4205,28 @@ await window.mainV1.ready;
         'yaml': { icon: '⚙️', label: 'إعدادات YAML', isMd: false, lang: 'yaml', mime: 'text/yaml' },
         'toml': { icon: '⚙️', label: 'إعدادات TOML', isMd: false, lang: 'toml', mime: 'text/plain' },
         'sql': { icon: '🗄️', label: 'استعلامات SQL', isMd: false, lang: 'sql', mime: 'text/plain' },
+        // Audio formats
+        'wav': { icon: '🎧', label: 'مقطع صوتي (WAV)', isMedia: true, category: 'audio', mime: 'audio/wav' },
+        'mp3': { icon: '🎧', label: 'مقطع صوتي (MP3)', isMedia: true, category: 'audio', mime: 'audio/mpeg' },
+        'ogg': { icon: '🎧', label: 'مقطع صوتي (OGG)', isMedia: true, category: 'audio', mime: 'audio/ogg' },
+        'm4a': { icon: '🎧', label: 'مقطع صوتي (M4A)', isMedia: true, category: 'audio', mime: 'audio/mp4' },
+        'aac': { icon: '🎧', label: 'مقطع صوتي (AAC)', isMedia: true, category: 'audio', mime: 'audio/aac' },
+        'flac': { icon: '🎧', label: 'مقطع صوتي (FLAC)', isMedia: true, category: 'audio', mime: 'audio/flac' },
+        'opus': { icon: '🎧', label: 'مقطع صوتي (Opus)', isMedia: true, category: 'audio', mime: 'audio/opus' },
+        // Video formats
+        'mp4': { icon: '🎬', label: 'مقطع فيديو (MP4)', isMedia: true, category: 'video', mime: 'video/mp4' },
+        'webm': { icon: '🎬', label: 'مقطع فيديو (WebM)', isMedia: true, category: 'video', mime: 'video/webm' },
+        'mkv': { icon: '🎬', label: 'مقطع فيديو (MKV)', isMedia: true, category: 'video', mime: 'video/x-matroska' },
+        'mov': { icon: '🎬', label: 'مقطع فيديو (MOV)', isMedia: true, category: 'video', mime: 'video/quicktime' },
+        // Image formats
+        'png': { icon: '🖼️', label: 'صورة (PNG)', isMedia: true, category: 'image', mime: 'image/png' },
+        'jpg': { icon: '🖼️', label: 'صورة (JPG)', isMedia: true, category: 'image', mime: 'image/jpeg' },
+        'jpeg': { icon: '🖼️', label: 'صورة (JPEG)', isMedia: true, category: 'image', mime: 'image/jpeg' },
+        'gif': { icon: '🖼️', label: 'صورة متحركة (GIF)', isMedia: true, category: 'image', mime: 'image/gif' },
+        'webp': { icon: '🖼️', label: 'صورة (WebP)', isMedia: true, category: 'image', mime: 'image/webp' },
+        'svg': { icon: '🖼️', label: 'رسم متجهي (SVG)', isMedia: true, category: 'image', mime: 'image/svg+xml' },
+        'bmp': { icon: '🖼️', label: 'صورة (BMP)', isMedia: true, category: 'image', mime: 'image/bmp' },
+        'ico': { icon: '🖼️', label: 'أيقونة (ICO)', isMedia: true, category: 'image', mime: 'image/x-icon' },
       };
       return map[ext] || { icon: '📄', label: ext ? `${ext.toUpperCase()} ملف` : 'ملف نصي', isMd: false, lang: 'text', mime: 'text/plain' };
     }
@@ -4289,6 +4311,19 @@ await window.mainV1.ready;
         if (currentReqId !== artifactViewerRequestId) return;
         if (!currentViewerArtifact || (artName && currentViewerArtifact.name !== artName)) return;
 
+        if (data.is_media) {
+          if (artifactViewerContent && window.MediaViewer) {
+            window.MediaViewer.render(artifactViewerContent, {
+              name: data.name || artName,
+              path: data.path || artPath,
+              conversation_id: data.conversation_id || artConversationId || currentActiveConversationId || '',
+              category: data.media_type || (window.MediaViewer.isMediaFile(data.name || artName).category),
+              summary: artSummary
+            });
+          }
+          return;
+        }
+
         const rawContent = data.content || '';
         currentViewerArtifact.content = rawContent;
         if (data.path && !currentViewerArtifact.path) {
@@ -4334,31 +4369,49 @@ await window.mainV1.ready;
     function createArtifactCard(art) {
       const card = document.createElement('div');
       card.className = 'artifact-card';
+
+      const fInfo = getFileInfo(art.name || art.path || '');
+      const mediaCheck = window.MediaViewer ? window.MediaViewer.isMediaFile(art.name || art.path) : null;
+      const isMedia = Boolean(fInfo.isMedia || (mediaCheck && mediaCheck.isMedia) || art.is_media);
+      const mediaCategory = (mediaCheck && mediaCheck.category) || fInfo.category || art.media_type || (fInfo.mime && fInfo.mime.startsWith('audio/') ? 'audio' : (fInfo.mime && fInfo.mime.startsWith('video/') ? 'video' : 'image'));
+
+      const typeLabel = isMedia ? (mediaCategory === 'audio' ? 'مقطع صوتي' : (mediaCategory === 'video' ? 'مقطع فيديو' : 'صورة')) : 'مستند / خطة';
+      const badgeText = isMedia ? (mediaCategory === 'audio' ? '🎧 مقطع صوتي' : (mediaCategory === 'video' ? '🎬 مقطع فيديو' : '🖼️ صورة')) : 'وثيقة عمل (Artifact)';
+      const icon = fInfo.icon || (mediaCategory === 'audio' ? '🎧' : (mediaCategory === 'video' ? '🎬' : (mediaCategory === 'image' ? '🖼️' : '📄')));
+      const downloadUrl = isMedia && window.MediaViewer ? window.MediaViewer.buildMediaUrl(art.path || art.name, null, art.conversation_id) : '';
+
       card.setAttribute('role', 'region');
-      card.setAttribute('aria-label', `مستند: ${art.name}`);
+      card.setAttribute('aria-label', `${typeLabel}: ${art.name}`);
       card.style.cssText = 'background:rgba(163, 113, 247, 0.08); border:2px solid var(--accent-purple); border-radius:10px; padding:14px; margin:12px 0;';
 
-      const summaryText = art.summary || 'مستند تم إنشاؤه بواسطة الوكيل الذكي';
+      const summaryText = art.summary || (isMedia ? `ملف وسائط جاهز للاستماع والعرض: ${art.name}` : 'مستند تم إنشاؤه بواسطة الوكيل الذكي');
       const isFeedback = Boolean(art.requestFeedback);
 
       card.innerHTML = `
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
           <div style="display:flex; align-items:center; gap:8px; font-weight:bold; color:var(--accent-purple); font-size:1.05rem;">
-            <span aria-hidden="true" style="font-size:1.3rem;">📄</span>
-            <span>مستند / خطة: <strong class="artifact-name">${escapeHtml(art.name)}</strong></span>
+            <span aria-hidden="true" style="font-size:1.3rem;">${icon}</span>
+            <span>${typeLabel}: <strong class="artifact-name">${escapeHtml(art.name)}</strong></span>
           </div>
-          <span class="badge" style="background:var(--accent-purple); color:#fff; border-radius:6px; padding:2px 8px; font-size:0.8rem;">وثيقة عمل (Artifact)</span>
+          <span class="badge" style="background:${isMedia ? 'var(--accent-cyan)' : 'var(--accent-purple)'}; color:${isMedia ? '#000' : '#fff'}; border-radius:6px; padding:2px 8px; font-size:0.8rem; font-weight:bold;">${badgeText}</span>
         </div>
         <p class="artifact-summary" style="margin:6px 0 12px 0; color:var(--text-main); font-size:0.95rem; line-height:1.6; background:rgba(0,0,0,0.35); padding:10px 12px; border-radius:6px; border-right:4px solid var(--accent-purple);">
           ${escapeHtml(summaryText)}
         </p>
+        ${isMedia ? `<div class="card-media-player-container" style="margin:10px 0;"></div>` : ''}
         <div class="artifact-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
-          <button type="button" class="btn btn-sm btn-view-art" aria-label="فتح وقراءة المستند ${escapeHtml(art.name)}" style="background:var(--accent-purple); color:#fff; font-weight:bold; border-radius:6px; padding:8px 14px; cursor:pointer;">
-            📖 فتح وقراءة المستند
+          <button type="button" class="btn btn-sm btn-view-art" aria-label="${isMedia ? 'عرض في نافذة مستقلة' : 'فتح وقراءة المستند'} ${escapeHtml(art.name)}" style="background:var(--accent-purple); color:#fff; font-weight:bold; border-radius:6px; padding:8px 14px; cursor:pointer;">
+            ${isMedia ? '🔎 عرض في نافذة مستقلة' : '📖 فتح وقراءة المستند'}
           </button>
-          <button type="button" class="btn btn-sm btn-copy-art" aria-label="نسخ محتوى المستند ${escapeHtml(art.name)}" style="background:var(--bg-card); color:var(--text-main); border:1px solid var(--border-main); border-radius:6px; padding:8px 14px; cursor:pointer;">
-            📋 نسخ المحتوى
-          </button>
+          ${isMedia ? `
+            <a class="btn btn-sm btn-download-art" href="${downloadUrl || '#'}" download="${escapeHtml(art.name)}" aria-label="تنزيل ${escapeHtml(art.name)}" style="background:var(--bg-card); color:var(--accent-cyan); border:1px solid var(--border-main); border-radius:6px; padding:8px 14px; text-decoration:none; display:inline-flex; align-items:center; gap:6px; font-weight:bold;">
+              ⬇️ تنزيل الملف
+            </a>
+          ` : `
+            <button type="button" class="btn btn-sm btn-copy-art" aria-label="نسخ محتوى المستند ${escapeHtml(art.name)}" style="background:var(--bg-card); color:var(--text-main); border:1px solid var(--border-main); border-radius:6px; padding:8px 14px; cursor:pointer;">
+              📋 نسخ المحتوى
+            </button>
+          `}
           ${isFeedback ? `
             <button type="button" class="btn btn-sm btn-proceed-art" aria-label="موافقة ومتابعة تنفيذ الخطة (Proceed)" style="background:var(--accent-green); color:#000; font-weight:bold; border-radius:6px; padding:8px 14px; cursor:pointer;">
               🚀 موافقة ومتابعة (Proceed)
@@ -4366,6 +4419,19 @@ await window.mainV1.ready;
           ` : ''}
         </div>
       `;
+
+      if (isMedia && window.MediaViewer) {
+        const playerBox = card.querySelector('.card-media-player-container');
+        if (playerBox) {
+          window.MediaViewer.render(playerBox, {
+            name: art.name,
+            path: art.path,
+            conversation_id: art.conversation_id || currentActiveConversationId || '',
+            category: mediaCategory,
+            summary: art.summary
+          });
+        }
+      }
 
       const btnView = card.querySelector('.btn-view-art');
       if (btnView) {
@@ -4501,16 +4567,22 @@ await window.mainV1.ready;
             item.className = 'conversation-item';
             item.setAttribute('role', 'listitem');
             item.style.cssText = 'padding:12px; border:1px solid var(--border-main); border-radius:8px; background:var(--bg-card); display:flex; flex-direction:column; gap:8px;';
+            const fInfo = getFileInfo(art.name);
+            const mediaCheck = window.MediaViewer ? window.MediaViewer.isMediaFile(art.name) : null;
+            const isMedia = Boolean(fInfo.isMedia || (mediaCheck && mediaCheck.isMedia) || art.is_media);
+            const mediaCategory = (mediaCheck && mediaCheck.category) || fInfo.category || art.media_type || 'audio';
+            const icon = fInfo.icon || (mediaCategory === 'audio' ? '🎧' : (mediaCategory === 'video' ? '🎬' : (mediaCategory === 'image' ? '🖼️' : '📄')));
+            const viewBtnLabel = isMedia ? (mediaCategory === 'audio' ? '🎧 تشغيل الصوت' : (mediaCategory === 'video' ? '🎬 تشغيل الفيديو' : '🖼️ عرض الصورة')) : '📖 عرض المستند';
             const sizeKb = art.size ? (art.size / 1024).toFixed(1) + ' KB' : '';
             item.innerHTML = `
               <div style="display:flex; justify-content:space-between; align-items:center;">
-                <strong style="color:var(--accent-purple); font-size:1rem;">📄 ${escapeHtml(art.name)}</strong>
+                <strong style="color:var(--accent-purple); font-size:1rem;">${icon} ${escapeHtml(art.name)}</strong>
                 <span style="font-size:0.8rem; color:var(--text-muted);">${sizeKb}</span>
               </div>
               <p style="margin:0; font-size:0.9rem; color:var(--text-main); line-height:1.5;">${escapeHtml(art.summary || 'بدون ملخص')}</p>
               <div style="display:flex; gap:8px; margin-top:4px;">
-                <button type="button" class="btn btn-sm btn-art-list-view" aria-label="عرض ${escapeHtml(art.name)}" style="background:var(--accent-purple); color:#fff; font-size:0.88rem; padding:6px 12px; border-radius:6px; cursor:pointer;">
-                  عرض المستند
+                <button type="button" class="btn btn-sm btn-art-list-view" aria-label="${viewBtnLabel}: ${escapeHtml(art.name)}" style="background:var(--accent-purple); color:#fff; font-size:0.88rem; padding:6px 12px; border-radius:6px; cursor:pointer;">
+                  ${viewBtnLabel}
                 </button>
               </div>
             `;

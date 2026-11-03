@@ -20,6 +20,7 @@ from local_tasks import LocalTasks
 from voice_agent import VoiceAgent
 from voice_planner import VoicePlanner
 from legacy_conversations import LegacyConversations
+from media_service import serve_raw_file
 from conversation_metadata import ConversationMetadataStore
 from security import COOKIE, Pairing, error, isolation
 from sessions import RunConflict, Sessions, TERMINAL
@@ -36,6 +37,11 @@ from storage import (
 VERSION = json.loads(
     Path(__file__).with_name("version.json").read_text(encoding="utf-8")
 )["version_name"]
+
+AUDIO_EXTENSIONS = {".wav", ".mp3", ".ogg", ".m4a", ".aac", ".flac", ".opus"}
+VIDEO_EXTENSIONS = {".mp4", ".webm", ".mkv", ".mov"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"}
+MEDIA_EXTENSIONS = AUDIO_EXTENSIONS | VIDEO_EXTENSIONS | IMAGE_EXTENSIONS
 
 
 @web.middleware
@@ -179,6 +185,7 @@ def register_routes(application):
         web.post("/api/ai/permission", handle_permission),
         web.get("/api/v1/artifacts", list_artifacts),
         web.get("/api/v1/artifacts/content", read_artifact),
+        web.get("/api/v1/files/raw", serve_raw_file),
         web.get("/api/v1/files", list_files),
         web.get("/api/v1/file", read_file),
         web.post("/api/v1/directories", create_directory),
@@ -1121,10 +1128,13 @@ async def list_artifacts(request):
                     except Exception:
                         pass
                     st = doc_path.stat()
+                    suf = doc_path.suffix.lower()
+                    is_media = suf in MEDIA_EXTENSIONS
+                    media_type = "audio" if suf in AUDIO_EXTENSIONS else ("video" if suf in VIDEO_EXTENSIONS else ("image" if is_media else None))
                     artifacts.append({
                         "name": base_name,
                         "conversation_id": clean_cid,
-                        "summary": mdata.get("summary", "") or mdata.get("Summary", ""),
+                        "summary": mdata.get("summary", "") or mdata.get("Summary", "") or (f"ملف وسائط ({media_type.upper()}): {base_name}" if is_media else ""),
                         "requestFeedback": bool(
                             mdata.get("requestFeedback", False)
                             or mdata.get("RequestFeedback", False)
@@ -1138,12 +1148,121 @@ async def list_artifacts(request):
                         "mtime": st.st_mtime,
                         "size": st.st_size,
                         "path": str(doc_path),
+                        "is_media": is_media,
+                        "media_type": media_type,
                     })
             artifacts.sort(key=lambda x: x.get("mtime", 0), reverse=True)
+
+    seen_paths = {art.get("path") for art in artifacts if art.get("path")}
+
+    # Also discover unindexed files in brain target_dir (Markdown AND Media)
+    if cid and BRAIN_DIR.is_dir():
+        clean_cid = Path(cid).name
+        target_dir = (BRAIN_DIR / clean_cid).resolve()
+        if target_dir.is_dir() and BRAIN_DIR.resolve() in target_dir.parents:
+            for f in target_dir.iterdir():
+                suf = f.suffix.lower()
+                is_media = suf in MEDIA_EXTENSIONS
+                is_doc = suf in (".md", ".markdown")
+                if f.is_file() and (is_doc or is_media) and not f.name.endswith(".metadata.json"):
+                    f_res = str(f.resolve())
+                    if f_res not in seen_paths and f.name not in (".", ".."):
+                        st = f.stat()
+                        media_type = "audio" if suf in AUDIO_EXTENSIONS else ("video" if suf in VIDEO_EXTENSIONS else ("image" if is_media else None))
+                        title = f"ملف وسائط ({media_type.upper()}): {f.name}" if is_media else f.name
+                        if is_doc:
+                            try:
+                                first_lines = f.read_text(encoding="utf-8", errors="ignore").splitlines()[:5]
+                                for l in first_lines:
+                                    l_strip = l.strip().lstrip("#").strip()
+                                    if l_strip:
+                                        title = l_strip
+                                        break
+                            except Exception:
+                                pass
+                        artifacts.append({
+                            "name": f.name,
+                            "conversation_id": clean_cid,
+                            "summary": title,
+                            "requestFeedback": any(k in f.name.lower() for k in ("plan", "spec", "task")),
+                            "userFacing": True,
+                            "updatedAt": "",
+                            "mtime": st.st_mtime,
+                            "size": st.st_size,
+                            "path": f_res,
+                            "is_media": is_media,
+                            "media_type": media_type,
+                        })
+                        seen_paths.add(f_res)
+
+    # Universal Workspace Auto-Discovery for all users:
+    try:
+        ws_paths = workspaces(request)
+        for root_path in ws_paths.roots:
+            p_root = Path(root_path).resolve()
+            if not p_root.is_dir():
+                continue
+            candidates = []
+            specs_dir = p_root / "docs" / "superpowers" / "specs"
+            if specs_dir.is_dir():
+                candidates.extend(specs_dir.glob("*.md"))
+            plans_dir = p_root / "docs" / "superpowers" / "plans"
+            if plans_dir.is_dir():
+                candidates.extend(plans_dir.glob("*.md"))
+            for extra in ("task.md", "tasks.md", "project_state.md"):
+                candidate_extra = p_root / extra
+                if candidate_extra.is_file():
+                    candidates.append(candidate_extra)
+            
+            for doc_file in candidates:
+                if not doc_file.is_file():
+                    continue
+                doc_res = str(doc_file.resolve())
+                if doc_res in seen_paths:
+                    continue
+                st = doc_file.stat()
+                title = doc_file.name
+                try:
+                    first_lines = doc_file.read_text(encoding="utf-8", errors="ignore").splitlines()[:5]
+                    for l in first_lines:
+                        l_strip = l.strip().lstrip("#").strip()
+                        if l_strip:
+                            title = l_strip
+                            break
+                except Exception:
+                    pass
+                artifacts.append({
+                    "name": doc_file.name,
+                    "conversation_id": cid or "",
+                    "summary": title,
+                    "requestFeedback": True if any(k in doc_file.name.lower() for k in ("plan", "spec", "task")) else False,
+                    "userFacing": True,
+                    "updatedAt": "",
+                    "mtime": st.st_mtime,
+                    "size": st.st_size,
+                    "path": doc_res,
+                    "is_project_file": True,
+                })
+                seen_paths.add(doc_res)
+    except Exception:
+        pass
+
+    artifacts.sort(key=lambda x: x.get("mtime", 0), reverse=True)
+
+    session_files = []
+    legacy = request.app.get("legacy")
+    if legacy and cid:
+        try:
+            conv_data = await asyncio.to_thread(legacy.get_conversation, cid)
+            session_files = conv_data.get("project_files", [])
+        except Exception:
+            pass
+
     return web.json_response({
         "status": "ok",
         "conversation_id": cid,
         "artifacts": artifacts,
+        "session_files": session_files,
     })
 
 
@@ -1152,19 +1271,71 @@ async def read_artifact(request):
     name = request.query.get("name", "").strip().strip('"').strip("'")
     req_path = request.query.get("path", "").strip().strip('"').strip("'")
 
-    # 1. If direct path is provided, validate it resides within BRAIN_DIR
+    # 1. If direct path is provided
     if req_path:
         try:
             resolved_p = Path(req_path).resolve()
+            # A) Inside BRAIN_DIR
             if BRAIN_DIR.resolve() in resolved_p.parents and resolved_p.is_file():
-                content = resolved_p.read_text(encoding="utf-8", errors="ignore")
+                suf = resolved_p.suffix.lower()
+                is_media = suf in MEDIA_EXTENSIONS
+                mtype = "audio" if suf in AUDIO_EXTENSIONS else ("video" if suf in VIDEO_EXTENSIONS else ("image" if is_media else None))
+                content = "" if is_media else resolved_p.read_text(encoding="utf-8", errors="ignore")
                 return web.json_response({
                     "status": "ok",
                     "conversation_id": resolved_p.parent.name,
                     "name": resolved_p.name,
                     "path": str(resolved_p),
                     "content": content,
+                    "size": resolved_p.stat().st_size,
+                    "is_markdown": suf in (".md", ".markdown"),
+                    "is_media": is_media,
+                    "media_type": mtype,
+                    "is_project_file": False,
                 })
+
+            # B) Inside allowed workspace roots
+            try:
+                allowed_p = api_path(request, req_path)
+                if allowed_p.is_file():
+                    st = allowed_p.stat()
+                    suf = allowed_p.suffix.lower()
+                    is_media = suf in MEDIA_EXTENSIONS
+                    mtype = "audio" if suf in AUDIO_EXTENSIONS else ("video" if suf in VIDEO_EXTENSIONS else ("image" if is_media else None))
+                    if is_media:
+                        return web.json_response({
+                            "status": "ok",
+                            "conversation_id": cid or "",
+                            "name": allowed_p.name,
+                            "path": str(allowed_p),
+                            "content": "",
+                            "size": st.st_size,
+                            "is_markdown": False,
+                            "is_media": True,
+                            "media_type": mtype,
+                            "is_project_file": True,
+                        })
+                    if st.st_size > 2 * 1024 * 1024:
+                        return error("file_too_large", "الملف يتجاوز حد الحجم الأقصى (2 ميجابايت)", 413)
+                    try:
+                        content = allowed_p.read_text(encoding="utf-8-sig")
+                    except UnicodeDecodeError:
+                        content = allowed_p.read_text(encoding="utf-8", errors="replace")
+                    return web.json_response({
+                        "status": "ok",
+                        "conversation_id": cid or "",
+                        "name": allowed_p.name,
+                        "path": str(allowed_p),
+                        "content": content,
+                        "size": st.st_size,
+                        "is_markdown": allowed_p.suffix.lower() in (".md", ".markdown"),
+                        "is_media": False,
+                        "is_project_file": True,
+                    })
+            except PermissionError as pe:
+                return error("forbidden", str(pe), 403)
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -1219,13 +1390,21 @@ async def read_artifact(request):
     if not (BRAIN_DIR.resolve() in doc_path.parents and doc_path.is_file()):
         return error("not_found", f"Artifact {clean_name} not found", 404)
 
-    content = doc_path.read_text(encoding="utf-8", errors="ignore")
+    suf = doc_path.suffix.lower()
+    is_media = suf in MEDIA_EXTENSIONS
+    mtype = "audio" if suf in AUDIO_EXTENSIONS else ("video" if suf in VIDEO_EXTENSIONS else ("image" if is_media else None))
+    content = "" if is_media else doc_path.read_text(encoding="utf-8", errors="ignore")
     return web.json_response({
         "status": "ok",
         "conversation_id": clean_cid,
         "name": clean_name,
         "path": str(doc_path),
         "content": content,
+        "size": doc_path.stat().st_size,
+        "is_markdown": suf in (".md", ".markdown"),
+        "is_media": is_media,
+        "media_type": mtype,
+        "is_project_file": False,
     })
 
 
@@ -1575,7 +1754,8 @@ async def response_headers(request, response):
         "default-src 'self' https://appassets.androidplatform.net; "
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://appassets.androidplatform.net; "
         "style-src 'self' 'unsafe-inline' https://appassets.androidplatform.net; "
-        "img-src 'self' data: https://appassets.androidplatform.net; "
+        "img-src 'self' data: blob: https://appassets.androidplatform.net; "
+        "media-src 'self' data: blob: https://appassets.androidplatform.net; "
         "connect-src 'self' http://127.0.0.1:* http://localhost:* https://appassets.androidplatform.net; "
         "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     )

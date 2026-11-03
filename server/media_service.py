@@ -47,17 +47,28 @@ async def serve_raw_file(request):
         except PermissionError as pe:
             return error("forbidden", str(pe), 403)
         except Exception:
-            return error("invalid_path", "Path could not be resolved", 400)
+            resolved = None
 
-    # 2. Resolve via name and cid in BRAIN_DIR
-    elif name and cid:
-        if any(c in name for c in ("/", "\\", "..")) or any(c in cid for c in ("/", "\\", "..")):
-            return error("invalid_request", "Invalid artifact name or conversation ID", 400)
-        clean_name = Path(name).name
-        clean_cid = Path(cid).name
-        cand = (BRAIN_DIR / clean_cid / clean_name).resolve()
-        if BRAIN_DIR.resolve() in cand.parents and cand.is_file():
-            resolved = cand
+    # 2. Resolve via name or req_path in BRAIN_DIR
+    target_name = name or (Path(req_path).name if req_path and not resolved else "")
+    if not resolved and target_name:
+        if not any(c in target_name for c in ("/", "\\", "..")):
+            # If conversation_id is provided
+            if cid and not any(c in cid for c in ("/", "\\", "..")):
+                cand = (BRAIN_DIR / Path(cid).name / target_name).resolve()
+                if BRAIN_DIR.resolve() in cand.parents and cand.is_file():
+                    resolved = cand
+            # If still not resolved, search subdirectories in BRAIN_DIR
+            if not resolved and BRAIN_DIR.is_dir():
+                try:
+                    for subdir in BRAIN_DIR.iterdir():
+                        if subdir.is_dir():
+                            cand = (subdir / target_name).resolve()
+                            if BRAIN_DIR.resolve() in cand.parents and cand.is_file():
+                                resolved = cand
+                                break
+                except Exception:
+                    pass
 
     if not resolved or not resolved.is_file():
         return error("not_found", "File not found", 404)

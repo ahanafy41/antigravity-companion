@@ -63,6 +63,9 @@
     const activeToken = token || getActiveToken();
     const params = new URLSearchParams();
     params.set('path', cleanPath);
+    if (!cleanPath.includes('/') && !cleanPath.includes('\\')) {
+      params.set('name', cleanPath);
+    }
     if (activeToken) params.set('token', activeToken);
     if (cid) params.set('conversation_id', cid);
 
@@ -233,7 +236,7 @@
     if (!container) return;
     const info = isMediaFile(opts.name || opts.path);
     const category = opts.category || info.category || 'image';
-    const streamUrl = opts.url || buildMediaUrl(opts.path, null, opts.conversation_id);
+    const streamUrl = opts.url || buildMediaUrl(opts.path || opts.name, null, opts.conversation_id);
 
     const renderOpts = {
       name: opts.name || 'ملف وسائط',

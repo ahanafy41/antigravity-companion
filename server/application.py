@@ -38,6 +38,11 @@ VERSION = json.loads(
     Path(__file__).with_name("version.json").read_text(encoding="utf-8")
 )["version_name"]
 
+AUDIO_EXTENSIONS = {".wav", ".mp3", ".ogg", ".m4a", ".aac", ".flac", ".opus"}
+VIDEO_EXTENSIONS = {".mp4", ".webm", ".mkv", ".mov"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico"}
+MEDIA_EXTENSIONS = AUDIO_EXTENSIONS | VIDEO_EXTENSIONS | IMAGE_EXTENSIONS
+
 
 @web.middleware
 async def failures(request, handler):
@@ -1123,10 +1128,13 @@ async def list_artifacts(request):
                     except Exception:
                         pass
                     st = doc_path.stat()
+                    suf = doc_path.suffix.lower()
+                    is_media = suf in MEDIA_EXTENSIONS
+                    media_type = "audio" if suf in AUDIO_EXTENSIONS else ("video" if suf in VIDEO_EXTENSIONS else ("image" if is_media else None))
                     artifacts.append({
                         "name": base_name,
                         "conversation_id": clean_cid,
-                        "summary": mdata.get("summary", "") or mdata.get("Summary", ""),
+                        "summary": mdata.get("summary", "") or mdata.get("Summary", "") or (f"ملف وسائط ({media_type.upper()}): {base_name}" if is_media else ""),
                         "requestFeedback": bool(
                             mdata.get("requestFeedback", False)
                             or mdata.get("RequestFeedback", False)
@@ -1140,31 +1148,38 @@ async def list_artifacts(request):
                         "mtime": st.st_mtime,
                         "size": st.st_size,
                         "path": str(doc_path),
+                        "is_media": is_media,
+                        "media_type": media_type,
                     })
             artifacts.sort(key=lambda x: x.get("mtime", 0), reverse=True)
 
     seen_paths = {art.get("path") for art in artifacts if art.get("path")}
 
-    # Also discover unindexed .md files in brain target_dir
+    # Also discover unindexed files in brain target_dir (Markdown AND Media)
     if cid and BRAIN_DIR.is_dir():
         clean_cid = Path(cid).name
         target_dir = (BRAIN_DIR / clean_cid).resolve()
         if target_dir.is_dir() and BRAIN_DIR.resolve() in target_dir.parents:
             for f in target_dir.iterdir():
-                if f.is_file() and f.suffix.lower() in (".md", ".markdown") and not f.name.endswith(".metadata.json"):
+                suf = f.suffix.lower()
+                is_media = suf in MEDIA_EXTENSIONS
+                is_doc = suf in (".md", ".markdown")
+                if f.is_file() and (is_doc or is_media) and not f.name.endswith(".metadata.json"):
                     f_res = str(f.resolve())
                     if f_res not in seen_paths and f.name not in (".", ".."):
                         st = f.stat()
-                        title = f.name
-                        try:
-                            first_lines = f.read_text(encoding="utf-8", errors="ignore").splitlines()[:5]
-                            for l in first_lines:
-                                l_strip = l.strip().lstrip("#").strip()
-                                if l_strip:
-                                    title = l_strip
-                                    break
-                        except Exception:
-                            pass
+                        media_type = "audio" if suf in AUDIO_EXTENSIONS else ("video" if suf in VIDEO_EXTENSIONS else ("image" if is_media else None))
+                        title = f"ملف وسائط ({media_type.upper()}): {f.name}" if is_media else f.name
+                        if is_doc:
+                            try:
+                                first_lines = f.read_text(encoding="utf-8", errors="ignore").splitlines()[:5]
+                                for l in first_lines:
+                                    l_strip = l.strip().lstrip("#").strip()
+                                    if l_strip:
+                                        title = l_strip
+                                        break
+                            except Exception:
+                                pass
                         artifacts.append({
                             "name": f.name,
                             "conversation_id": clean_cid,
@@ -1175,6 +1190,8 @@ async def list_artifacts(request):
                             "mtime": st.st_mtime,
                             "size": st.st_size,
                             "path": f_res,
+                            "is_media": is_media,
+                            "media_type": media_type,
                         })
                         seen_paths.add(f_res)
 
@@ -1260,7 +1277,10 @@ async def read_artifact(request):
             resolved_p = Path(req_path).resolve()
             # A) Inside BRAIN_DIR
             if BRAIN_DIR.resolve() in resolved_p.parents and resolved_p.is_file():
-                content = resolved_p.read_text(encoding="utf-8", errors="ignore")
+                suf = resolved_p.suffix.lower()
+                is_media = suf in MEDIA_EXTENSIONS
+                mtype = "audio" if suf in AUDIO_EXTENSIONS else ("video" if suf in VIDEO_EXTENSIONS else ("image" if is_media else None))
+                content = "" if is_media else resolved_p.read_text(encoding="utf-8", errors="ignore")
                 return web.json_response({
                     "status": "ok",
                     "conversation_id": resolved_p.parent.name,
@@ -1268,7 +1288,9 @@ async def read_artifact(request):
                     "path": str(resolved_p),
                     "content": content,
                     "size": resolved_p.stat().st_size,
-                    "is_markdown": resolved_p.suffix.lower() in (".md", ".markdown"),
+                    "is_markdown": suf in (".md", ".markdown"),
+                    "is_media": is_media,
+                    "media_type": mtype,
                     "is_project_file": False,
                 })
 
@@ -1277,6 +1299,22 @@ async def read_artifact(request):
                 allowed_p = api_path(request, req_path)
                 if allowed_p.is_file():
                     st = allowed_p.stat()
+                    suf = allowed_p.suffix.lower()
+                    is_media = suf in MEDIA_EXTENSIONS
+                    mtype = "audio" if suf in AUDIO_EXTENSIONS else ("video" if suf in VIDEO_EXTENSIONS else ("image" if is_media else None))
+                    if is_media:
+                        return web.json_response({
+                            "status": "ok",
+                            "conversation_id": cid or "",
+                            "name": allowed_p.name,
+                            "path": str(allowed_p),
+                            "content": "",
+                            "size": st.st_size,
+                            "is_markdown": False,
+                            "is_media": True,
+                            "media_type": mtype,
+                            "is_project_file": True,
+                        })
                     if st.st_size > 2 * 1024 * 1024:
                         return error("file_too_large", "الملف يتجاوز حد الحجم الأقصى (2 ميجابايت)", 413)
                     try:
@@ -1291,6 +1329,7 @@ async def read_artifact(request):
                         "content": content,
                         "size": st.st_size,
                         "is_markdown": allowed_p.suffix.lower() in (".md", ".markdown"),
+                        "is_media": False,
                         "is_project_file": True,
                     })
             except PermissionError as pe:
@@ -1351,7 +1390,10 @@ async def read_artifact(request):
     if not (BRAIN_DIR.resolve() in doc_path.parents and doc_path.is_file()):
         return error("not_found", f"Artifact {clean_name} not found", 404)
 
-    content = doc_path.read_text(encoding="utf-8", errors="ignore")
+    suf = doc_path.suffix.lower()
+    is_media = suf in MEDIA_EXTENSIONS
+    mtype = "audio" if suf in AUDIO_EXTENSIONS else ("video" if suf in VIDEO_EXTENSIONS else ("image" if is_media else None))
+    content = "" if is_media else doc_path.read_text(encoding="utf-8", errors="ignore")
     return web.json_response({
         "status": "ok",
         "conversation_id": clean_cid,
@@ -1359,7 +1401,9 @@ async def read_artifact(request):
         "path": str(doc_path),
         "content": content,
         "size": doc_path.stat().st_size,
-        "is_markdown": doc_path.suffix.lower() in (".md", ".markdown"),
+        "is_markdown": suf in (".md", ".markdown"),
+        "is_media": is_media,
+        "media_type": mtype,
         "is_project_file": False,
     })
 
