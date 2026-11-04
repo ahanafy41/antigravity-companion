@@ -226,6 +226,7 @@ def register_routes(application):
         "main-ui.js",
         "main-ui.css",
         "main-v1-adapter.js",
+        "media-viewer.js",
         "start-ui.js",
         "start-ui.css",
         "api.js",

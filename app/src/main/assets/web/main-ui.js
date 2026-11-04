@@ -4283,16 +4283,51 @@ await window.mainV1.ready;
       announce(`تم فتح: ${artName}`);
 
       // Modular Media Viewer Hook (Images, Audio, Video)
+      const fInfo = getFileInfo(artName || artPath || '');
       const mediaCheck = window.MediaViewer ? window.MediaViewer.isMediaFile(artName || artPath) : null;
-      if (mediaCheck && mediaCheck.isMedia) {
+      const isMedia = Boolean(fInfo.isMedia || (mediaCheck && mediaCheck.isMedia));
+      const mediaCategory = (mediaCheck && mediaCheck.category) || fInfo.category || 'audio';
+
+      if (isMedia) {
         if (artifactViewerContent) {
-          window.MediaViewer.render(artifactViewerContent, {
-            name: artName,
-            path: artPath,
-            conversation_id: artConversationId || currentActiveConversationId || '',
-            category: mediaCheck.category,
-            summary: artSummary
-          });
+          if (window.MediaViewer && typeof window.MediaViewer.render === 'function') {
+            window.MediaViewer.render(artifactViewerContent, {
+              name: artName,
+              path: artPath,
+              conversation_id: artConversationId || currentActiveConversationId || '',
+              category: mediaCategory,
+              summary: artSummary
+            });
+          } else {
+            const rawUrl = `/api/v1/files/raw?name=${encodeURIComponent(artName || '')}&path=${encodeURIComponent(artPath || '')}&conversation_id=${encodeURIComponent(artConversationId || currentActiveConversationId || '')}`;
+            if (mediaCategory === 'audio') {
+              artifactViewerContent.innerHTML = `
+                <div style="padding:16px; background:var(--bg-card); border-radius:10px; display:flex; flex-direction:column; gap:12px;">
+                  <strong style="color:var(--accent-purple); font-size:1.05rem;">🎧 ${escapeHtml(artName)}</strong>
+                  <audio controls autoplay style="width:100%; border-radius:6px;" src="${rawUrl}" aria-label="مشغل الصوت: ${escapeHtml(artName)}"></audio>
+                  <div style="display:flex; justify-content:flex-end;">
+                    <a href="${rawUrl}" download="${escapeHtml(artName)}" class="btn btn-sm" style="color:var(--accent-cyan); text-decoration:none; padding:6px 12px; background:rgba(255,255,255,0.08); border-radius:6px;">⬇️ تنزيل الملف</a>
+                  </div>
+                </div>
+              `;
+            } else if (mediaCategory === 'video') {
+              artifactViewerContent.innerHTML = `
+                <div style="padding:16px; background:var(--bg-card); border-radius:10px; display:flex; flex-direction:column; gap:12px;">
+                  <strong style="color:var(--accent-cyan); font-size:1.05rem;">🎬 ${escapeHtml(artName)}</strong>
+                  <video controls autoplay style="width:100%; max-height:60vh; border-radius:6px; background:#000;" src="${rawUrl}" aria-label="مشغل الفيديو: ${escapeHtml(artName)}"></video>
+                  <div style="display:flex; justify-content:flex-end;">
+                    <a href="${rawUrl}" download="${escapeHtml(artName)}" class="btn btn-sm" style="color:var(--accent-cyan); text-decoration:none; padding:6px 12px; background:rgba(255,255,255,0.08); border-radius:6px;">⬇️ تنزيل الفيديو</a>
+                  </div>
+                </div>
+              `;
+            } else {
+              artifactViewerContent.innerHTML = `
+                <div style="padding:16px; text-align:center;">
+                  <img src="${rawUrl}" alt="${escapeHtml(artName)}" style="max-width:100%; max-height:70vh; border-radius:8px;" />
+                </div>
+              `;
+            }
+          }
         }
         return;
       }
@@ -4312,14 +4347,26 @@ await window.mainV1.ready;
         if (!currentViewerArtifact || (artName && currentViewerArtifact.name !== artName)) return;
 
         if (data.is_media) {
-          if (artifactViewerContent && window.MediaViewer) {
-            window.MediaViewer.render(artifactViewerContent, {
-              name: data.name || artName,
-              path: data.path || artPath,
-              conversation_id: data.conversation_id || artConversationId || currentActiveConversationId || '',
-              category: data.media_type || (window.MediaViewer.isMediaFile(data.name || artName).category),
-              summary: artSummary
-            });
+          if (artifactViewerContent) {
+            if (window.MediaViewer && typeof window.MediaViewer.render === 'function') {
+              window.MediaViewer.render(artifactViewerContent, {
+                name: data.name || artName,
+                path: data.path || artPath,
+                conversation_id: data.conversation_id || artConversationId || currentActiveConversationId || '',
+                category: data.media_type || (window.MediaViewer.isMediaFile(data.name || artName).category),
+                summary: artSummary
+              });
+            } else {
+              const rawUrl = `/api/v1/files/raw?name=${encodeURIComponent(data.name || artName || '')}&path=${encodeURIComponent(data.path || artPath || '')}&conversation_id=${encodeURIComponent(data.conversation_id || artConversationId || currentActiveConversationId || '')}`;
+              const cat = data.media_type || 'audio';
+              if (cat === 'audio') {
+                artifactViewerContent.innerHTML = `<div style="padding:16px;"><audio controls autoplay style="width:100%;" src="${rawUrl}"></audio></div>`;
+              } else if (cat === 'video') {
+                artifactViewerContent.innerHTML = `<div style="padding:16px;"><video controls autoplay style="width:100%; max-height:60vh;" src="${rawUrl}"></video></div>`;
+              } else {
+                artifactViewerContent.innerHTML = `<div style="padding:16px; text-align:center;"><img src="${rawUrl}" alt="${escapeHtml(data.name || artName)}" style="max-width:100%; border-radius:8px;" /></div>`;
+              }
+            }
           }
           return;
         }
