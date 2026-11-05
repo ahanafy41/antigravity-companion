@@ -54,6 +54,7 @@ public final class MainActivity extends AppCompatActivity {
     private boolean activityVisible = true;
     private volatile String lastTermuxFailure = "";
     private volatile int reportedServerPort;
+    private LiveVoiceEngine liveVoice;
     private interface NativeAction { void execute(NativeRequest request); }
     private static final int REQUEST_TERMUX_RUN_COMMAND = 2001;
     private static final class NativeRequest {
@@ -67,6 +68,22 @@ public final class MainActivity extends AppCompatActivity {
         origins = new OriginPolicy(NativeSecrets.serverPort(this));
         updates = new AppUpdateManager(this); server = new ServerConnection(this);
         buildViews(); configureWebView(); registerActions();
+        liveVoice = new LiveVoiceEngine(this, new LiveVoiceEngine.VoiceListener() {
+            @Override public void onStateChanged(String state) {
+                JsonObject payload = new JsonObject(); payload.addProperty("state", state);
+                emit("live-voice-state", payload, pageGeneration);
+            }
+            @Override public void onTranscriptReceived(String role, String text, boolean isFinal) {
+                JsonObject payload = new JsonObject(); payload.addProperty("role", role);
+                payload.addProperty("text", text); payload.addProperty("is_final", isFinal);
+                emit("live-voice-transcript", payload, pageGeneration);
+            }
+            @Override public void onError(String message) {
+                JsonObject payload = new JsonObject(); payload.addProperty("error", message);
+                emit("live-voice-error", payload, pageGeneration);
+                showStatus(message);
+            }
+        });
         installBackHandler();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                 && checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) {
@@ -228,6 +245,28 @@ public final class MainActivity extends AppCompatActivity {
         });
         actions.put("stop_server", this::stopServer);
         actions.put("sync_server", this::syncServer);
+        actions.put("toggle_live_voice", this::toggleLiveVoice);
+        actions.put("get_live_voice_status", request -> {
+            JsonObject status = new JsonObject();
+            status.addProperty("active", liveVoice != null && liveVoice.isActive());
+            reply(request, status);
+        });
+    }
+    private void toggleLiveVoice(NativeRequest request) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, 104);
+            reply(request, flag("requesting_permission", true));
+            return;
+        }
+        if (liveVoice != null) {
+            if (liveVoice.isActive()) liveVoice.stop(); else liveVoice.start();
+            JsonObject status = new JsonObject();
+            status.addProperty("active", liveVoice.isActive());
+            reply(request, status);
+        } else {
+            reply(request, error("محرك الصوت غير متوفر"));
+        }
     }
     private JsonObject connectionStatus() {
         JsonObject connection = new JsonObject();
@@ -659,7 +698,7 @@ public final class MainActivity extends AppCompatActivity {
     @Override protected void onPause() { activityVisible = false; reportVisibility(); super.onPause(); }
     private static JsonObject error(String message) { JsonObject failure = new JsonObject(); failure.addProperty("error", message); return failure; }
     @Override protected void onDestroy() {
-        destroyed = true; TermuxBridge.cancelRequests(this); updates.close(); server.close(); connectionExecutor.shutdownNow();
+        destroyed = true; if (liveVoice != null) liveVoice.stop(); TermuxBridge.cancelRequests(this); updates.close(); server.close(); connectionExecutor.shutdownNow();
         if (bridgeSupported) WebViewCompat.removeWebMessageListener(webView, "CompanionNative");
         if (legacyScript != null) legacyScript.remove();
         webView.stopLoading(); webView.setWebViewClient(new WebViewClient()); webView.destroy(); super.onDestroy();

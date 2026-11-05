@@ -7717,6 +7717,54 @@ await window.mainV1.ready;
       }
     });
 
+    const liveVoiceButton = document.getElementById('btn-live-voice');
+    const liveVoiceLabel = document.getElementById('live-voice-label');
+    let liveVoiceActive = false;
+
+    function updateLiveVoiceUI(active) {
+      if (!liveVoiceButton) return;
+      liveVoiceButton.setAttribute('aria-pressed', String(active));
+      liveVoiceButton.setAttribute('aria-label', active ? 'محادثة صوتية: إيقاف' : 'محادثة صوتية: بدء');
+      if (liveVoiceLabel) liveVoiceLabel.textContent = active ? 'إيقاف الصوت' : 'صوت حي';
+      if (active) {
+        liveVoiceButton.classList.add('live-voice-active');
+        announce('المحادثة الصوتية الحية مفعلة. استمع وتحدث بحرية.');
+      } else {
+        liveVoiceButton.classList.remove('live-voice-active');
+        announce('تم إيقاف المحادثة الصوتية.');
+      }
+    }
+
+    liveVoiceButton?.addEventListener('click', async () => {
+      if (window.Companion?.native?.available()) {
+        try {
+          const res = await window.Companion.native.request('toggle_live_voice');
+          liveVoiceActive = res && res.active === true;
+          updateLiveVoiceUI(liveVoiceActive);
+        } catch (err) {
+          announce('تعذر تفعيل الصوت: ' + (err.message || 'خطأ'));
+        }
+      } else {
+        announce('وضع الصوت المباشر متاح عبر تطبيق الرفيق على أندرويد.');
+      }
+    });
+
+    window.addEventListener('live-voice-state', (e) => {
+      const state = e.detail?.state;
+      if (state === 'listening' || state === 'speaking' || state === 'working') {
+        updateLiveVoiceUI(true);
+      } else if (state === 'idle') {
+        updateLiveVoiceUI(false);
+      }
+    });
+
+    window.addEventListener('live-voice-transcript', (e) => {
+      const detail = e.detail || {};
+      if (detail.text && detail.text.trim()) {
+        announce((detail.role === 'user' ? 'أنت: ' : 'الوكيل: ') + detail.text);
+      }
+    });
+
     // Report immediately on load
     reportVisibility(document.visibilityState === 'visible');
     (async () => {
