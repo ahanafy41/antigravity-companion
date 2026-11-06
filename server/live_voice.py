@@ -519,6 +519,7 @@ class LiveVoiceGateway:
 
         upstream_session = None
         upstream_task = None
+        keepalive_task = None
 
         try:
             # If API key available, connect to Gemini Live API
@@ -555,6 +556,32 @@ class LiveVoiceGateway:
                 upstream_task = asyncio.create_task(
                     self.forward_upstream_to_client(self.upstream_ws, client_ws)
                 )
+
+                # Keepalive task: send periodic comfort frames so Gemini Live never closes due to inactivity
+                async def upstream_keepalive():
+                    try:
+                        while True:
+                            await asyncio.sleep(12.0)
+                            if self.upstream_ws and not self.upstream_ws.closed:
+                                silence = b'\x00' * 3200
+                                silence_b64 = base64.b64encode(silence).decode('ascii')
+                                keepalive_payload = {
+                                    "realtimeInput": {
+                                        "mediaChunks": [
+                                            {
+                                                "mimeType": "audio/pcm;rate=16000",
+                                                "data": silence_b64
+                                            }
+                                        ]
+                                    }
+                                }
+                                await self.upstream_ws.send_str(json.dumps(keepalive_payload))
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception as k_err:
+                        LOGGER.debug("Live keepalive loop ended: %s", k_err)
+
+                keepalive_task = asyncio.create_task(upstream_keepalive())
 
                 # Send proactive greeting so model immediately speaks aloud to the user
                 greeting_turn = {
@@ -666,6 +693,8 @@ class LiveVoiceGateway:
                     "message": f"خطأ في الاتصال بالبث الصوتي: {str(err)}"
                 }))
         finally:
+            if keepalive_task and not keepalive_task.done():
+                keepalive_task.cancel()
             if upstream_task and not upstream_task.done():
                 upstream_task.cancel()
             if self.upstream_ws and not self.upstream_ws.closed:

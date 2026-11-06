@@ -7783,7 +7783,6 @@ await window.mainV1.ready;
       constructor() {
         this.ws = null;
         this.audioCtx = null;
-        this.recCtx = null;
         this.mediaStream = null;
         this.processor = null;
         this.sourceNode = null;
@@ -7955,21 +7954,11 @@ await window.mainV1.ready;
           if (this.dialog && typeof this.dialog.showModal === 'function') {
             this.dialog.showModal();
           }
-          this.updateStatus('جاري الاتصال بخادم البث الصوتي (Gemini 3.8 Live)...');
+          this.updateStatus('جاري تفعيل الميكروفون والاتصال بالبث الصوتي...');
           playStartChime();
 
-          // Initialize output AudioContext immediately inside user gesture
-          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-          if (!this.audioCtx) {
-            try {
-              this.audioCtx = new AudioContextClass({ sampleRate: 24000 });
-            } catch (e) {
-              this.audioCtx = new AudioContextClass();
-            }
-          }
-          if (this.audioCtx.state === 'suspended') {
-            try { await this.audioCtx.resume(); } catch (e) {}
-          }
+          // 1. Initialize Microphone and AudioContext immediately inside the user click gesture!
+          await this.initMicrophone();
 
           let csrf = '';
           try {
@@ -7986,10 +7975,10 @@ await window.mainV1.ready;
           this.ws = new WebSocket(wsUrl);
           this.ws.binaryType = 'arraybuffer';
 
-          this.ws.onopen = async () => {
+          this.ws.onopen = () => {
             this.isConnected = true;
             this.updateButtons(true);
-            await this.initMicrophone();
+            this.updateStatus('متصل بخادم البث الصوتي (Gemini 3.8 Live)...');
           };
 
           this.ws.onmessage = (event) => {
@@ -8027,26 +8016,26 @@ await window.mainV1.ready;
           this.mediaStream = stream;
 
           const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-          let recCtx;
-          try {
-            recCtx = new AudioContextClass({ sampleRate: 16000 });
-          } catch (e) {
-            recCtx = new AudioContextClass();
+          if (!this.audioCtx) {
+            try {
+              this.audioCtx = new AudioContextClass({ sampleRate: 24000 });
+            } catch (e) {
+              this.audioCtx = new AudioContextClass();
+            }
+          }
+          if (this.audioCtx.state === 'suspended') {
+            try { await this.audioCtx.resume(); } catch (e) {}
           }
 
-          if (recCtx.state === 'suspended') {
-            try { await recCtx.resume(); } catch (e) {}
-          }
-
-          const source = recCtx.createMediaStreamSource(stream);
-          const processor = recCtx.createScriptProcessor(2048, 1, 1);
-          const muteGain = recCtx.createGain();
+          const source = this.audioCtx.createMediaStreamSource(stream);
+          const processor = this.audioCtx.createScriptProcessor(2048, 1, 1);
+          const muteGain = this.audioCtx.createGain();
           muteGain.gain.value = 0;
 
           processor.onaudioprocess = (e) => {
             if (!this.isConnected || this.isMuted) return;
             const inputData = e.inputBuffer.getChannelData(0);
-            const pcm16 = this.downsampleTo16k(inputData, recCtx.sampleRate, 16000);
+            const pcm16 = this.downsampleTo16k(inputData, this.audioCtx.sampleRate, 16000);
             if (this.ws && this.ws.readyState === WebSocket.OPEN && pcm16 && pcm16.length > 0) {
               this.ws.send(this.formatAudioFrame(pcm16));
             }
@@ -8054,15 +8043,15 @@ await window.mainV1.ready;
 
           source.connect(processor);
           processor.connect(muteGain);
-          muteGain.connect(recCtx.destination);
+          muteGain.connect(this.audioCtx.destination);
 
           this.sourceNode = source;
           this.processor = processor;
-          this.recCtx = recCtx;
         } catch (mErr) {
           console.warn('Microphone permission or hardware error:', mErr);
           this.updateStatus('يرجى منح الإذن للوصول إلى الميكروفون للتحدث.');
           announce('يرجى منح الإذن للوصول إلى الميكروفون للتحدث.');
+          throw mErr;
         }
       }
 
@@ -8224,10 +8213,6 @@ await window.mainV1.ready;
         if (this.mediaStream) {
           this.mediaStream.getTracks().forEach(t => t.stop());
           this.mediaStream = null;
-        }
-        if (this.recCtx) {
-          try { this.recCtx.close(); } catch (e) {}
-          this.recCtx = null;
         }
         if (this.ws) {
           this.ws.close();
