@@ -514,6 +514,13 @@ class LiveVoiceGateway:
                         }
                         await upstream_ws.send_str(json.dumps(tool_resp_msg))
 
+                        # Immediately signal turnComplete so model generates spoken audio response!
+                        await upstream_ws.send_str(json.dumps({
+                            "clientContent": {
+                                "turnComplete": True
+                            }
+                        }))
+
                     # 5. Voice activity detection events from model
                     va = data.get("voiceActivity")
                     if va and not client_ws.closed:
@@ -523,6 +530,15 @@ class LiveVoiceGateway:
                         }))
 
                 elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
+                    close_code = getattr(msg, "data", None)
+                    close_extra = getattr(msg, "extra", None)
+                    LOGGER.info("Upstream Gemini Live closed: code=%s, extra=%s", close_code, close_extra)
+                    if not client_ws.closed:
+                        await client_ws.send_bytes(format_control_frame({
+                            "type": "status",
+                            "state": "upstream_closed",
+                            "message": f"انتهت جلسة البث الصوتي ({close_code or 'إغلاق الخادم'})."
+                        }))
                     break
         except asyncio.CancelledError:
             pass
@@ -704,8 +720,12 @@ class LiveVoiceGateway:
                             elif c_type == "audio_stream_end":
                                 # Hybrid VAD end of turn signal
                                 if self.upstream_ws and not self.upstream_ws.closed:
-                                    # Signal turn complete
-                                    pass
+                                    LOGGER.info("Forwarding audioStreamEnd to Gemini Live upstream.")
+                                    await self.upstream_ws.send_str(json.dumps({
+                                        "realtimeInput": {
+                                            "audioStreamEnd": True
+                                        }
+                                    }))
 
                     except Exception as err:
                         LOGGER.error("Error processing client binary frame: %s", err)

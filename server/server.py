@@ -92,6 +92,17 @@ def main():
     options = parser.parse_args()
     try:
         options.port = options.port or configured_port(options.data_dir)
+        import logging
+        log_file = options.data_dir / "server.log"
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            handlers=[
+                logging.FileHandler(str(log_file), mode="a", encoding="utf-8"),
+                logging.StreamHandler(sys.stdout)
+            ],
+            force=True
+        )
         with server_lock(options.data_dir):
             pid_file = options.data_dir / "server.pid"
             pid_file.write_text(str(os.getpid()), encoding="utf-8")

@@ -7795,6 +7795,7 @@ await window.mainV1.ready;
         this.btnHeader = document.getElementById('btn-header-voice');
         this.btnBottom = document.getElementById('btn-live-voice');
         this.btnMute = document.getElementById('btn-live-voice-mute');
+        this.btnDoneSpeaking = document.getElementById('btn-live-voice-done-speaking');
         this.btnClose = document.getElementById('btn-close-live-voice');
         this.btnEnd = document.getElementById('btn-live-voice-end');
         this.statusText = document.getElementById('live-voice-status-text');
@@ -7869,6 +7870,11 @@ await window.mainV1.ready;
             announce(this.isMuted ? 'تم كتم الميكروفون' : 'تم تفعيل الميكروفون');
           });
         }
+        if (this.btnDoneSpeaking) {
+          this.btnDoneSpeaking.addEventListener('click', () => {
+            this.finishSpeaking();
+          });
+        }
         if (this.voiceSelect) {
           this.voiceSelect.addEventListener('change', (e) => {
             this.activeVoice = e.target.value;
@@ -7894,6 +7900,13 @@ await window.mainV1.ready;
         const frame = this.formatControlFrame({ type: 'text', text: text });
         this.ws.send(frame);
         announce('تم إرسال: ' + text);
+      }
+
+      finishSpeaking() {
+        if (!this.isConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        const frame = this.formatControlFrame({ type: 'audio_stream_end' });
+        this.ws.send(frame);
+        announce('تم إرسال إشارة اكتمال الكلام، الوكيل يجهز الرد الصوتي...');
       }
 
       formatControlFrame(obj) {
@@ -8032,9 +8045,39 @@ await window.mainV1.ready;
           const muteGain = this.audioCtx.createGain();
           muteGain.gain.value = 0;
 
+          let speechDetected = false;
+          let silenceStart = 0;
+          const SILENCE_MS = 1000;
+          const SPEECH_THRESHOLD = 0.015;
+
           processor.onaudioprocess = (e) => {
             if (!this.isConnected || this.isMuted) return;
             const inputData = e.inputBuffer.getChannelData(0);
+
+            // Client-side Hybrid VAD: measure RMS energy to detect when user stops speaking
+            let sumSq = 0;
+            for (let i = 0; i < inputData.length; i++) {
+              sumSq += inputData[i] * inputData[i];
+            }
+            const rms = Math.sqrt(sumSq / inputData.length);
+            const now = Date.now();
+
+            if (rms > SPEECH_THRESHOLD) {
+              speechDetected = true;
+              silenceStart = 0;
+            } else if (speechDetected) {
+              if (silenceStart === 0) {
+                silenceStart = now;
+              } else if (now - silenceStart > SILENCE_MS) {
+                speechDetected = false;
+                silenceStart = 0;
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                  const endFrame = this.formatControlFrame({ type: 'audio_stream_end' });
+                  this.ws.send(endFrame);
+                }
+              }
+            }
+
             const pcm16 = this.downsampleTo16k(inputData, this.audioCtx.sampleRate, 16000);
             if (this.ws && this.ws.readyState === WebSocket.OPEN && pcm16 && pcm16.length > 0) {
               this.ws.send(this.formatAudioFrame(pcm16));
@@ -8124,6 +8167,12 @@ await window.mainV1.ready;
 
       handleControlMessage(data) {
         if (data.type === 'status') {
+          if (data.state === 'upstream_closed') {
+            this.updateStatus(data.message || 'انتهت جلسة البث الصوتي.');
+            announce(data.message || 'انتهت جلسة البث الصوتي.');
+            return;
+          }
+
           if (data.has_api_key === false) {
             if (this.apiKeyBanner) this.apiKeyBanner.style.display = 'block';
           } else if (data.has_api_key === true) {
@@ -8235,13 +8284,15 @@ await window.mainV1.ready;
         announce('تم إنهاء المحادثة الصوتية.');
       }
 
-      handleDisconnect() {
+      handleDisconnect(reason) {
         this.isConnected = false;
         this.updateButtons(false);
         if (this.dialog) {
           this.dialog.classList.remove('active-listening', 'active-speaking');
         }
-        this.updateStatus('تم إنهاء جلسة البث الصوتي.');
+        if (!this.statusText || !this.statusText.textContent.includes('انتهت')) {
+          this.updateStatus(reason || 'تم إنهاء جلسة البث الصوتي.');
+        }
       }
     }
 
