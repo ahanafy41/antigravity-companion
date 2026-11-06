@@ -3066,6 +3066,8 @@ await window.mainV1.ready;
           tones_enabled: raw.tones_enabled !== undefined ? !!raw.tones_enabled : true,
           haptic_enabled: raw.haptic_enabled !== undefined ? !!raw.haptic_enabled : true,
           speech_enabled: raw.speech_enabled !== undefined ? !!raw.speech_enabled : false,
+          gemini_api_key: raw.gemini_api_key || '',
+          live_voice_name: raw.live_voice_name || 'Puck',
           trustedWorkspaces: Array.isArray(raw.trustedWorkspaces) ? [...raw.trustedWorkspaces] : []
         };
       }
@@ -3175,6 +3177,37 @@ await window.mainV1.ready;
 
           container.appendChild(label);
           container.appendChild(select);
+          container.appendChild(hint);
+          return container;
+        }
+
+        if (f.type === 'text' || f.type === 'password') {
+          const label = document.createElement('label');
+          label.htmlFor = f.id;
+          label.className = 'form-label';
+          label.textContent = f.label;
+
+          const input = document.createElement('input');
+          input.type = f.type;
+          input.id = f.id;
+          input.className = 'form-control';
+          input.value = this.state[f.key] || '';
+          if (f.placeholder) input.placeholder = f.placeholder;
+          input.setAttribute('aria-describedby', `${f.id}-hint`);
+
+          input.addEventListener('input', (e) => {
+            this.state[f.key] = e.target.value.trim();
+            this.dirtyFields.add(f.key);
+            this.debouncedSave();
+          });
+
+          const hint = document.createElement('p');
+          hint.id = `${f.id}-hint`;
+          hint.className = 'form-hint';
+          hint.textContent = f.hint;
+
+          container.appendChild(label);
+          container.appendChild(input);
           container.appendChild(hint);
           return container;
         }
@@ -3583,7 +3616,7 @@ await window.mainV1.ready;
           'model', 'agent', 'effort', 'mode', 'sandbox', 'autopilot', 'safe_mode',
           'allowNonWorkspaceAccess', 'allow_commands', 'allow_write', 'allow_web',
           'allow_subagent', 'allow_schedule', 'tones_enabled', 'haptic_enabled',
-          'speech_enabled', 'trustedWorkspaces', 'whitelist'
+          'speech_enabled', 'gemini_api_key', 'live_voice_name', 'trustedWorkspaces', 'whitelist'
         ];
         const payload = JSON.parse(JSON.stringify(Object.fromEntries([...this.dirtyFields]
           .filter(key => writable.includes(key)).map(key => [key, this.state[key]]))));
@@ -7771,6 +7804,9 @@ await window.mainV1.ready;
         this.transcriptUser = document.getElementById('live-voice-transcript-user');
         this.transcriptModel = document.getElementById('live-voice-transcript-model');
         this.toolNotify = document.getElementById('live-voice-tool-notify');
+        this.apiKeyBanner = document.getElementById('live-voice-apikey-banner');
+        this.apiKeyInput = document.getElementById('live-voice-apikey-input');
+        this.btnSaveApiKey = document.getElementById('btn-save-voice-apikey');
         this.bindEvents();
       }
 
@@ -7779,6 +7815,35 @@ await window.mainV1.ready;
         if (this.btnBottom) this.btnBottom.addEventListener('click', () => this.toggle());
         if (this.btnClose) this.btnClose.addEventListener('click', () => this.stop());
         if (this.btnEnd) this.btnEnd.addEventListener('click', () => this.stop());
+        if (this.btnSaveApiKey && this.apiKeyInput) {
+          this.btnSaveApiKey.addEventListener('click', async () => {
+            const keyVal = (this.apiKeyInput.value || '').trim();
+            if (!keyVal) return;
+            this.btnSaveApiKey.disabled = true;
+            this.btnSaveApiKey.textContent = 'جاري الحفظ...';
+            try {
+              const res = await window.mainV1Fetch('/api/ai/settings', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ gemini_api_key: keyVal })
+              });
+              if (res.ok) {
+                if (this.apiKeyBanner) this.apiKeyBanner.style.display = 'none';
+                if (typeof playSuccessChime === 'function') playSuccessChime();
+                announce('تم حفظ المفتاح بنجاح. جاري الاتصال بالبث الصوتي الفائق...');
+                this.stop();
+                setTimeout(() => this.start(), 400);
+              } else {
+                announce('تعذر حفظ المفتاح.');
+              }
+            } catch (err) {
+              console.error('Error saving API key from voice dialog:', err);
+            } finally {
+              this.btnSaveApiKey.disabled = false;
+              this.btnSaveApiKey.textContent = 'حفظ وتوصيل';
+            }
+          });
+        }
         if (this.btnMute) {
           this.btnMute.addEventListener('click', () => {
             this.isMuted = !this.isMuted;
@@ -7985,13 +8050,19 @@ await window.mainV1.ready;
 
       handleControlMessage(data) {
         if (data.type === 'status') {
+          if (data.has_api_key === false) {
+            if (this.apiKeyBanner) this.apiKeyBanner.style.display = 'block';
+          } else if (data.has_api_key === true) {
+            if (this.apiKeyBanner) this.apiKeyBanner.style.display = 'none';
+          }
+
           if (data.state === 'ready') {
             this.updateStatus('متصل وجاهز - تحدث مع الوكيل الآن 🎙️');
             if (this.dialog) this.dialog.classList.add('active-listening');
             announce('المحادثة الصوتية جاهزة. تحدث بحرية للتحكم بالوكيل واستدعاء الأدوات.');
           } else if (data.state === 'ready_fallback') {
-            this.updateStatus('جاهز - يرجى إضافة مفتاح Gemini API في الإعدادات لتفعيل البث الفائق.');
-            announce('المحادثة الصوتية جاهزة بالنمط الاحتياطي.');
+            this.updateStatus('جاهز - يرجى إضافة مفتاح Gemini API أعلاه لتفعيل البث الفائق.');
+            announce('المحادثة الصوتية تعمل بالنمط الاحتياطي.');
           }
         } else if (data.type === 'transcript') {
           if (data.role === 'user') {

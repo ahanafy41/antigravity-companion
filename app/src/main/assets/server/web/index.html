@@ -942,6 +942,15 @@
           </div>
         </div>
 
+        <div id="live-voice-apikey-banner" class="live-voice-apikey-banner" style="display:none; background:rgba(255,255,255,0.04); border:1px solid rgba(229,192,123,0.3); border-radius:8px; padding:10px 14px;">
+          <label for="live-voice-apikey-input" class="form-label" style="font-size:0.9rem; font-weight:bold; color:#e5c07b;">مفتاح Gemini API Key (لتفعيل البث الصوتي الفائق):</label>
+          <div style="display:flex; gap:8px; align-items:center; margin-top:4px;">
+            <input type="password" id="live-voice-apikey-input" class="form-control" style="flex:1; padding:6px 10px; border-radius:6px; background:var(--bg-tertiary,#21252b); color:#fff; border:1px solid rgba(255,255,255,0.2);" placeholder="ألصق مفتاح AIzaSy... هنا" aria-label="أدخل مفتاح Gemini API">
+            <button type="button" id="btn-save-voice-apikey" class="btn btn-primary btn-sm" style="white-space:nowrap; padding:6px 14px;">حفظ وتوصيل</button>
+          </div>
+          <p class="form-hint" style="margin-top:6px; font-size:0.8rem; color:#abb2bf; margin-bottom:0;">يمكنك جلب مفتاح مجاني بضغطة واحدة من <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--accent-cyan,#56b6c2); text-decoration:underline;">Google AI Studio</a>، أو تركها فارغة للعمل في النمط الاحتياطي.</p>
+        </div>
+
         <div class="live-voice-controls-row">
           <div class="form-group voice-select-group">
             <label for="live-voice-select">الصوت الطبيعي:</label>
