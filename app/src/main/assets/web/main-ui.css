@@ -2903,3 +2903,183 @@ dialog.accessible-dialog::backdrop {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ==========================================================================
+   Native Live Voice Mode (Gemini 3.8 Live) Styling & Accessible Audio States
+   ========================================================================== */
+
+.btn-header-voice,
+.btn-live-voice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(163, 113, 247, 0.12);
+  border: 1px solid var(--accent-purple, #a371f7);
+  color: var(--accent-purple, #a371f7);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-header-voice:hover,
+.btn-live-voice:hover {
+  background: var(--accent-purple, #a371f7);
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(163, 113, 247, 0.4);
+}
+
+.btn-header-voice.active,
+.btn-live-voice.active {
+  background: #e06c75 !important;
+  border-color: #e06c75 !important;
+  color: #ffffff !important;
+  animation: pulseLiveVoice 1.8s infinite;
+}
+
+@keyframes pulseLiveVoice {
+  0% { box-shadow: 0 0 0 0 rgba(224, 108, 117, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(224, 108, 117, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(224, 108, 117, 0); }
+}
+
+.live-voice-dialog {
+  max-width: 600px;
+  width: 95%;
+  border-radius: 14px;
+  border: 1px solid var(--accent-purple, #a371f7);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65);
+}
+
+.live-voice-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 0;
+}
+
+.live-voice-status-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.live-voice-waveform {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 4px;
+}
+
+.wave-bar {
+  width: 4px;
+  height: 8px;
+  background: var(--accent-purple, #a371f7);
+  border-radius: 2px;
+  transition: height 0.15s ease;
+}
+
+.live-voice-dialog.active-listening .wave-bar {
+  animation: wavePulse 0.8s ease-in-out infinite alternate;
+}
+
+.live-voice-dialog.active-speaking .wave-bar {
+  background: var(--accent-cyan, #56b6c2);
+  animation: wavePulse 0.4s ease-in-out infinite alternate;
+}
+
+.wave-bar:nth-child(2) { animation-delay: 0.15s; }
+.wave-bar:nth-child(3) { animation-delay: 0.3s; }
+.wave-bar:nth-child(4) { animation-delay: 0.45s; }
+.wave-bar:nth-child(5) { animation-delay: 0.6s; }
+
+@keyframes wavePulse {
+  0% { height: 6px; }
+  100% { height: 26px; }
+}
+
+.live-voice-status-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.live-voice-hint {
+  font-size: 0.85rem;
+  color: var(--text-muted, #abb2bf);
+}
+
+.live-voice-controls-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.voice-select-group {
+  flex: 1;
+  min-width: 220px;
+  margin-bottom: 0;
+}
+
+.live-voice-select {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--bg-tertiary, #21252b);
+  color: var(--text-primary, #ffffff);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.live-voice-transcript-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.live-transcript-bubble {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.user-bubble {
+  background: rgba(97, 175, 239, 0.12);
+  border-left: 3px solid #61afef;
+  color: #abb2bf;
+}
+
+.model-bubble {
+  background: rgba(152, 195, 121, 0.12);
+  border-left: 3px solid #98c379;
+  color: #e5c07b;
+}
+
+.bubble-role {
+  font-weight: bold;
+  margin-right: 6px;
+}
+
+.live-tool-notify {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(229, 192, 123, 0.15);
+  border: 1px dashed #e5c07b;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  color: #e5c07b;
+}
+

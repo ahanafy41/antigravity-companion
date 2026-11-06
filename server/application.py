@@ -19,6 +19,7 @@ from task_runtime import TaskRuntime
 from local_tasks import LocalTasks
 from voice_agent import VoiceAgent
 from voice_planner import VoicePlanner
+from live_voice import live_voice_endpoint
 from legacy_conversations import LegacyConversations
 from media_service import serve_raw_file
 from conversation_metadata import ConversationMetadataStore
@@ -158,6 +159,7 @@ def register_routes(application):
         web.post(
             "/api/v1/voice/requests/{request_id}/cancel", cancel_voice_request
         ),
+        web.get("/api/v1/voice/live", live_voice_endpoint),
         web.get("/api/v1/voice/runs", list_voice_runs),
         web.post("/api/v1/voice/runs", start_voice_agent),
         web.get("/api/v1/voice/runs/{voice_id}", voice_detail),

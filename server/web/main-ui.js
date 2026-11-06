@@ -2945,6 +2945,32 @@ await window.mainV1.ready;
                 label: 'النطق الصوتي للمتصفح (Speech)',
                 hint: 'قراءة الردود صوتياً بمحرك المتصفح. ⚠️ يُفضل إيقافه إن كنت تستخدم TalkBack أو Jieshuo.',
                 default: false
+              },
+              {
+                id: 'field-gemini-api-key',
+                key: 'gemini_api_key',
+                type: 'text',
+                label: 'مفتاح Gemini API Key (للمحادثة الصوتية الحية)',
+                hint: 'مفتاحك من Google AI Studio لتشغيل البث الصوتي الفائق Gemini 3.8 Live.',
+                default: ''
+              },
+              {
+                id: 'field-live-voice-name',
+                key: 'live_voice_name',
+                type: 'select',
+                label: 'الصوت الطبيعي المفضل (Gemini Live)',
+                hint: 'اختر الصوت الذي يجيبك في المحادثة الصوتية الحية.',
+                options: [
+                  { value: 'Puck', label: 'Puck (حيوي ومرح - افتراضي)' },
+                  { value: 'Charon', label: 'Charon (رزين وهادئ - ممتاز للأكواد)' },
+                  { value: 'Kore', label: 'Kore (حازم ودقيق)' },
+                  { value: 'Sulafat', label: 'Sulafat (دافئ ومريح للأذن)' },
+                  { value: 'Achird', label: 'Achird (ودود وعفوي)' },
+                  { value: 'Aoede', label: 'Aoede (عذب وخفيف)' },
+                  { value: 'Fenrir', label: 'Fenrir (حماسي وسريع)' },
+                  { value: 'Zephyr', label: 'Zephyr (مشرق وسريع)' }
+                ],
+                default: 'Puck'
               }
             ]
           },
@@ -7716,6 +7742,359 @@ await window.mainV1.ready;
         if (newEnabled) playStartChime();
       }
     });
+
+    // =========================================================================
+    // NATIVE LIVE VOICE ENGINE (Gemini 3.8 Live WebSocket Streaming)
+    // =========================================================================
+    class LiveVoiceClient {
+      constructor() {
+        this.ws = null;
+        this.audioCtx = null;
+        this.recCtx = null;
+        this.mediaStream = null;
+        this.processor = null;
+        this.sourceNode = null;
+        this.activeSources = new Set();
+        this.nextStartTime = 0;
+        this.isMuted = false;
+        this.isConnected = false;
+        this.activeVoice = 'Puck';
+        this.dialog = document.getElementById('live-voice-dialog');
+        this.btnHeader = document.getElementById('btn-header-voice');
+        this.btnBottom = document.getElementById('btn-live-voice');
+        this.btnMute = document.getElementById('btn-live-voice-mute');
+        this.btnClose = document.getElementById('btn-close-live-voice');
+        this.btnEnd = document.getElementById('btn-live-voice-end');
+        this.statusText = document.getElementById('live-voice-status-text');
+        this.hintText = document.getElementById('live-voice-hint');
+        this.voiceSelect = document.getElementById('live-voice-select');
+        this.transcriptUser = document.getElementById('live-voice-transcript-user');
+        this.transcriptModel = document.getElementById('live-voice-transcript-model');
+        this.toolNotify = document.getElementById('live-voice-tool-notify');
+        this.bindEvents();
+      }
+
+      bindEvents() {
+        if (this.btnHeader) this.btnHeader.addEventListener('click', () => this.toggle());
+        if (this.btnBottom) this.btnBottom.addEventListener('click', () => this.toggle());
+        if (this.btnClose) this.btnClose.addEventListener('click', () => this.stop());
+        if (this.btnEnd) this.btnEnd.addEventListener('click', () => this.stop());
+        if (this.btnMute) {
+          this.btnMute.addEventListener('click', () => {
+            this.isMuted = !this.isMuted;
+            this.btnMute.setAttribute('aria-pressed', String(this.isMuted));
+            this.btnMute.textContent = this.isMuted ? 'إلغاء الكتم' : 'كتم المايك';
+            this.btnMute.classList.toggle('btn-danger', this.isMuted);
+            announce(this.isMuted ? 'تم كتم الميكروفون' : 'تم تفعيل الميكروفون');
+          });
+        }
+        if (this.voiceSelect) {
+          this.voiceSelect.addEventListener('change', (e) => {
+            this.activeVoice = e.target.value;
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+              const initFrame = this.formatControlFrame({ type: 'init', voiceName: this.activeVoice });
+              this.ws.send(initFrame);
+            }
+            announce('تم اختيار الصوت: ' + this.activeVoice);
+          });
+        }
+      }
+
+      async toggle() {
+        if (this.isConnected) {
+          this.stop();
+        } else {
+          await this.start();
+        }
+      }
+
+      formatControlFrame(obj) {
+        const jsonStr = JSON.stringify(obj);
+        const encoder = new TextEncoder();
+        const jsonBytes = encoder.encode(jsonStr);
+        const framed = new Uint8Array(2 + jsonBytes.length);
+        framed[0] = 0xAA;
+        framed[1] = 0x02;
+        framed.set(jsonBytes, 2);
+        return framed.buffer;
+      }
+
+      formatAudioFrame(int16Array) {
+        const byteLen = int16Array.byteLength;
+        const framed = new Uint8Array(2 + byteLen);
+        framed[0] = 0xAA;
+        framed[1] = 0x01;
+        framed.set(new Uint8Array(int16Array.buffer, int16Array.byteOffset, byteLen), 2);
+        return framed.buffer;
+      }
+
+      async start() {
+        try {
+          if (this.voiceSelect) this.activeVoice = this.voiceSelect.value;
+          if (this.dialog && typeof this.dialog.showModal === 'function') {
+            this.dialog.showModal();
+          }
+          this.updateStatus('جاري الاتصال بخادم البث الصوتي (Gemini 3.8 Live)...');
+          playStartChime();
+
+          let csrf = '';
+          try {
+            if (window.Companion && window.Companion.api) {
+              const s = await window.Companion.api.restoreSession();
+              csrf = s?.csrf_token || '';
+            }
+          } catch (e) {}
+
+          const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const sessId = (window.mainV1 && typeof window.mainV1.currentConversation === 'function') ? window.mainV1.currentConversation() : '';
+          const wsUrl = `${protocol}//${location.host}/api/v1/voice/live?session_id=${encodeURIComponent(sessId || '')}&csrf=${encodeURIComponent(csrf || '')}`;
+
+          this.ws = new WebSocket(wsUrl);
+          this.ws.binaryType = 'arraybuffer';
+
+          this.ws.onopen = async () => {
+            this.isConnected = true;
+            this.updateButtons(true);
+            await this.initMicrophone();
+          };
+
+          this.ws.onmessage = (event) => {
+            if (event.data instanceof ArrayBuffer) {
+              this.handleBinaryMessage(new Uint8Array(event.data));
+            }
+          };
+
+          this.ws.onerror = (err) => {
+            console.error('Live voice websocket error:', err);
+            this.updateStatus('خطأ في الاتصال بالبث الصوتي.');
+          };
+
+          this.ws.onclose = () => {
+            this.handleDisconnect();
+          };
+
+        } catch (err) {
+          console.error('Failed to start Live Voice:', err);
+          this.updateStatus('تعذر فتح الميكروفون: ' + err.message);
+          announce('تعذر فتح الميكروفون: ' + err.message);
+        }
+      }
+
+      async initMicrophone() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              sampleRate: 16000,
+              channelCount: 1,
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            }
+          });
+          this.mediaStream = stream;
+
+          if (!this.audioCtx) {
+            this.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+          }
+          if (this.audioCtx.state === 'suspended') {
+            await this.audioCtx.resume();
+          }
+
+          // Recording context for 16kHz
+          const recCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+          const source = recCtx.createMediaStreamSource(stream);
+          const processor = recCtx.createScriptProcessor(2048, 1, 1);
+
+          processor.onaudioprocess = (e) => {
+            if (!this.isConnected || this.isMuted) return;
+            const inputData = e.inputBuffer.getChannelData(0);
+            const pcm16 = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+              const s = Math.max(-1, Math.min(1, inputData[i]));
+              pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+              this.ws.send(this.formatAudioFrame(pcm16));
+            }
+          };
+
+          source.connect(processor);
+          processor.connect(recCtx.destination);
+          this.sourceNode = source;
+          this.processor = processor;
+          this.recCtx = recCtx;
+        } catch (mErr) {
+          console.warn('Microphone permission or hardware error:', mErr);
+          this.updateStatus('يرجى منح الإذن للوصول إلى الميكروفون للتحدث.');
+          announce('يرجى منح الإذن للوصول إلى الميكروفون للتحدث.');
+        }
+      }
+
+      handleBinaryMessage(bytes) {
+        if (bytes.length < 2 || bytes[0] !== 0xAA) return;
+        const opcode = bytes[1];
+        const payload = bytes.subarray(2);
+
+        if (opcode === 0x01) {
+          this.playPcmChunk(payload);
+        } else if (opcode === 0x02) {
+          try {
+            const decoder = new TextDecoder('utf-8');
+            const data = JSON.parse(decoder.decode(payload));
+            this.handleControlMessage(data);
+          } catch (e) {
+            console.error('Failed to parse control message:', e);
+          }
+        }
+      }
+
+      playPcmChunk(pcmBytes) {
+        if (!this.audioCtx) return;
+        if (this.dialog) {
+          this.dialog.classList.remove('active-listening');
+          this.dialog.classList.add('active-speaking');
+        }
+
+        const int16 = new Int16Array(pcmBytes.buffer, pcmBytes.byteOffset, pcmBytes.byteLength / 2);
+        const float32 = new Float32Array(int16.length);
+        for (let i = 0; i < int16.length; i++) {
+          float32[i] = int16[i] / 32768.0;
+        }
+
+        const buffer = this.audioCtx.createBuffer(1, float32.length, 24000);
+        buffer.getChannelData(0).set(float32);
+
+        const source = this.audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(this.audioCtx.destination);
+
+        const now = this.audioCtx.currentTime;
+        const startTime = Math.max(now, this.nextStartTime);
+        source.start(startTime);
+        this.nextStartTime = startTime + buffer.duration;
+
+        this.activeSources.add(source);
+        source.onended = () => {
+          this.activeSources.delete(source);
+          if (this.activeSources.size === 0 && this.dialog) {
+            this.dialog.classList.remove('active-speaking');
+            this.dialog.classList.add('active-listening');
+          }
+        };
+      }
+
+      handleControlMessage(data) {
+        if (data.type === 'status') {
+          if (data.state === 'ready') {
+            this.updateStatus('متصل وجاهز - تحدث مع الوكيل الآن 🎙️');
+            if (this.dialog) this.dialog.classList.add('active-listening');
+            announce('المحادثة الصوتية جاهزة. تحدث بحرية للتحكم بالوكيل واستدعاء الأدوات.');
+          } else if (data.state === 'ready_fallback') {
+            this.updateStatus('جاهز - يرجى إضافة مفتاح Gemini API في الإعدادات لتفعيل البث الفائق.');
+            announce('المحادثة الصوتية جاهزة بالنمط الاحتياطي.');
+          }
+        } else if (data.type === 'transcript') {
+          if (data.role === 'user') {
+            if (this.transcriptUser) {
+              this.transcriptUser.style.display = 'block';
+              const textSpan = this.transcriptUser.querySelector('.bubble-text');
+              if (textSpan) textSpan.textContent = data.text;
+            }
+          } else if (data.role === 'model') {
+            if (this.transcriptModel) {
+              this.transcriptModel.style.display = 'block';
+              const textSpan = this.transcriptModel.querySelector('.bubble-text');
+              if (textSpan) textSpan.textContent = data.text;
+            }
+          }
+        } else if (data.type === 'interrupted') {
+          this.stopAudioPlayback();
+          if (this.dialog) {
+            this.dialog.classList.remove('active-speaking');
+            this.dialog.classList.add('active-listening');
+          }
+        } else if (data.type === 'tool_call') {
+          if (this.toolNotify) {
+            this.toolNotify.style.display = 'inline-flex';
+            const toolSpan = this.toolNotify.querySelector('.tool-text');
+            if (toolSpan) toolSpan.textContent = `جاري تنفيذ أداة: ${data.name}...`;
+          }
+          announce(`جاري تنفيذ الأداة: ${data.name}`);
+        } else if (data.type === 'earcon') {
+          if (data.name === 'tool_start') playToolChime();
+          else if (data.name === 'connect') playSuccessChime();
+          else if (data.name === 'mute') playBeep(330, 0.05);
+        } else if (data.type === 'error') {
+          this.updateStatus('تنبيه: ' + data.message);
+          announce('تنبيه البث الصوتي: ' + data.message);
+        }
+      }
+
+      stopAudioPlayback() {
+        for (const src of this.activeSources) {
+          try { src.stop(); } catch (e) {}
+        }
+        this.activeSources.clear();
+        if (this.audioCtx) {
+          this.nextStartTime = this.audioCtx.currentTime;
+        }
+      }
+
+      updateStatus(text) {
+        if (this.statusText) this.statusText.textContent = text;
+      }
+
+      updateButtons(active) {
+        if (this.btnHeader) {
+          this.btnHeader.classList.toggle('active', active);
+          this.btnHeader.setAttribute('aria-pressed', String(active));
+        }
+        if (this.btnBottom) {
+          this.btnBottom.classList.toggle('active', active);
+          this.btnBottom.setAttribute('aria-pressed', String(active));
+        }
+      }
+
+      stop() {
+        this.stopAudioPlayback();
+        if (this.processor) {
+          try { this.processor.disconnect(); } catch (e) {}
+          this.processor = null;
+        }
+        if (this.sourceNode) {
+          try { this.sourceNode.disconnect(); } catch (e) {}
+          this.sourceNode = null;
+        }
+        if (this.mediaStream) {
+          this.mediaStream.getTracks().forEach(t => t.stop());
+          this.mediaStream = null;
+        }
+        if (this.recCtx) {
+          try { this.recCtx.close(); } catch (e) {}
+          this.recCtx = null;
+        }
+        if (this.ws) {
+          this.ws.close();
+          this.ws = null;
+        }
+        this.handleDisconnect();
+        if (this.dialog && this.dialog.open) {
+          this.dialog.close();
+        }
+        announce('تم إنهاء المحادثة الصوتية.');
+      }
+
+      handleDisconnect() {
+        this.isConnected = false;
+        this.updateButtons(false);
+        if (this.dialog) {
+          this.dialog.classList.remove('active-listening', 'active-speaking');
+        }
+        this.updateStatus('تم إنهاء جلسة البث الصوتي.');
+      }
+    }
+
+    window.liveVoiceClient = new LiveVoiceClient();
 
     // Report immediately on load
     reportVisibility(document.visibilityState === 'visible');
