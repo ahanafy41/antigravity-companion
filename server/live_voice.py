@@ -480,6 +480,14 @@ class LiveVoiceGateway:
                         }
                         await upstream_ws.send_str(json.dumps(tool_resp_msg))
 
+                    # 5. Voice activity detection events from model
+                    va = data.get("voiceActivity")
+                    if va and not client_ws.closed:
+                        await client_ws.send_bytes(format_control_frame({
+                            "type": "voice_activity",
+                            "state": va.get("state")
+                        }))
+
                 elif msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR):
                     break
         except asyncio.CancelledError:
@@ -567,12 +575,10 @@ class LiveVoiceGateway:
                                 silence_b64 = base64.b64encode(silence).decode('ascii')
                                 keepalive_payload = {
                                     "realtimeInput": {
-                                        "mediaChunks": [
-                                            {
-                                                "mimeType": "audio/pcm;rate=16000",
-                                                "data": silence_b64
-                                            }
-                                        ]
+                                        "audio": {
+                                            "mimeType": "audio/pcm;rate=16000",
+                                            "data": silence_b64
+                                        }
                                     }
                                 }
                                 await self.upstream_ws.send_str(json.dumps(keepalive_payload))
@@ -609,17 +615,15 @@ class LiveVoiceGateway:
                         self.last_audio_timestamp = time.time()
 
                         if opcode == OPCODE_AUDIO:
-                            # Forward 16kHz PCM audio chunk to Gemini Live API
+                            # Forward 16kHz PCM audio chunk to Gemini Live API using current audio object format
                             if self.upstream_ws and not self.upstream_ws.closed:
                                 audio_b64 = base64.b64encode(payload).decode("ascii")
                                 audio_payload = {
                                     "realtimeInput": {
-                                        "mediaChunks": [
-                                            {
-                                                "mimeType": "audio/pcm;rate=16000",
-                                                "data": audio_b64
-                                            }
-                                        ]
+                                        "audio": {
+                                            "mimeType": "audio/pcm;rate=16000",
+                                            "data": audio_b64
+                                        }
                                     }
                                 }
                                 await self.upstream_ws.send_str(json.dumps(audio_payload))

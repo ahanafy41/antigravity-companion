@@ -8169,6 +8169,16 @@ await window.mainV1.ready;
           if (data.name === 'tool_start') playToolChime();
           else if (data.name === 'connect') playSuccessChime();
           else if (data.name === 'mute') playBeep(330, 0.05);
+        } else if (data.type === 'voice_activity') {
+          if (data.state === 'ACTIVITY_DETECTION_STATE_SPEECH_STARTED') {
+            if (this.dialog) {
+              this.dialog.classList.remove('active-speaking');
+              this.dialog.classList.add('active-listening');
+            }
+            this.updateStatus('الوكيل يستمع لصوتك الآن 🎙️...');
+          } else if (data.state === 'ACTIVITY_DETECTION_STATE_SPEECH_ENDED') {
+            this.updateStatus('جاري معالجة الرد الصوتي ⚡...');
+          }
         } else if (data.type === 'error') {
           this.updateStatus('تنبيه: ' + data.message);
           announce('تنبيه البث الصوتي: ' + data.message);
