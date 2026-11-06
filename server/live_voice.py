@@ -419,8 +419,9 @@ class LiveVoiceGateway:
         """Receive events & audio from Gemini Live WebSocket and push to client."""
         try:
             async for msg in upstream_ws:
-                if msg.type == WSMsgType.TEXT:
-                    data = json.loads(msg.data)
+                if msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
+                    raw_str = msg.data.decode("utf-8") if isinstance(msg.data, (bytes, bytearray)) else msg.data
+                    data = json.loads(raw_str)
                     server_content = data.get("serverContent")
 
                     if server_content:
@@ -531,9 +532,13 @@ class LiveVoiceGateway:
                 await self.upstream_ws.send_str(json.dumps(setup_data))
 
                 # Wait for setup completion
-                first_resp = await asyncio.wait_for(self.upstream_ws.receive_str(), timeout=10.0)
-                first_json = json.loads(first_resp)
-                LOGGER.info("Gemini Live API connected successfully: %s", list(first_json.keys()))
+                first_msg = await asyncio.wait_for(self.upstream_ws.receive(), timeout=10.0)
+                if first_msg.type in (WSMsgType.TEXT, WSMsgType.BINARY):
+                    first_raw = first_msg.data.decode("utf-8") if isinstance(first_msg.data, (bytes, bytearray)) else first_msg.data
+                    first_json = json.loads(first_raw)
+                    LOGGER.info("Gemini Live API connected successfully: %s", list(first_json.keys()))
+                else:
+                    raise RuntimeError(f"Unexpected response from Gemini Live API: {first_msg.type}")
 
                 # Notify client of ready state
                 await client_ws.send_bytes(
