@@ -12,6 +12,8 @@ import logging
 import os
 from pathlib import Path
 import time
+from typing import Optional
+import uuid
 from aiohttp import web, WSMsgType, ClientSession
 
 LOGGER = logging.getLogger("antigravity.live_voice")
@@ -125,6 +127,28 @@ class LiveVoiceGateway:
 
         return None
 
+    def get_active_session_id(self) -> Optional[str]:
+        """Resolve current, focused, or most recently active Antigravity session."""
+        if self.session_id and self.app and "sessions" in self.app:
+            if self.session_id in self.app["sessions"].sessions:
+                return self.session_id
+        if self.app and "sessions" in self.app:
+            all_s = list(self.app["sessions"].sessions.values())
+            if all_s:
+                all_s.sort(key=lambda s: s.get("updated_at", s.get("created_at", 0)), reverse=True)
+                return all_s[0]["session_id"]
+        return None
+
+    def get_effective_cwd(self) -> Path:
+        """Resolve workspace working directory for file and command operations."""
+        sess_id = self.get_active_session_id()
+        if sess_id and self.app and "sessions" in self.app:
+            sess = self.app["sessions"].sessions.get(sess_id)
+            if sess and sess.get("cwd") and Path(sess["cwd"]).exists():
+                return Path(sess["cwd"])
+        default_ws = Path("/data/data/com.termux/files/home/.gemini/antigravity-cli/scratch/antigravity-companion-app")
+        return default_ws if default_ws.exists() else Path.home()
+
     def build_setup_frame(self, voice_name: str = DEFAULT_VOICE) -> dict:
         """Construct the Gemini 3.8 Multimodal Live API initial setup message."""
         selected_voice = voice_name if voice_name in VERIFIED_VOICES else DEFAULT_VOICE
@@ -151,13 +175,16 @@ class LiveVoiceGateway:
                     "parts": [
                         {
                             "text": (
-                                "أنت المساعد الصوتي التقني المباشر لوكيل أنتيجرافيتي (Antigravity Companion). "
-                                "تتحدث بلهجة مصرية ودودة وطبيعية جداً وإنجليزية تقنية سليمة. "
-                                "مهمتك مساعدة المستخدم في كتابة الأكواد، تشغيل وفحص الأوامر في Termux، "
-                                "قراءة وتعديل الملفات، وإدارة ومتابعة مهام الوكيل. "
-                                "قاعدة الراحة السمعية (Cognitive Fatigue Guard): لخص نتائج الأوامر والملفات "
-                                "في جملتين واضحتين وطبيعيتين، مع العلم أن النص الكامل للمخرجات يظهر للمستخدم "
-                                "في لوحة المحادثة النصية."
+                                "أنت المساعد الصوتي التقني المباشر لوكيل أنتيجرافيتي (Antigravity Assistant) في بيئة Termux على جهاز المطور أحمد. "
+                                "تتحدث دائماً بلهجة مصرية ودودة، طبيعية، ذكية، ومختصرة، مع الحفاظ على دقة المصطلحات البرمجية. "
+                                "لديك تحكم كامل وحقيقي في نظام أنتيجرافيتي وبيئة العمل من خلال الأدوات المتاحة لك (Tools). "
+                                "القواعد الإلزامية لاستدعاء الأدوات: "
+                                "1. إذا طلب أحمد كتابة كود، إضافة ميزة، حل عطل برمجي، أو أي مهمة برمجية لوكيل أنتيجرافيتي، استدعِ فوراً أداة 'antigravity_send_turn' مع توضيح الطلب بدقة في باراميتر prompt ليبدأ وكيل أنتيجرافيتي تنفيذه في الجلسة. "
+                                "2. إذا طلب أحمد تشغيل أي أمر طرفية في Termux (مثل git, ls, python3, pip, grep, ps, إلخ) أو فحص المستودع، استدعِ فوراً أداة 'run_command'. "
+                                "3. إذا طلب أحمد قراءة أو فحص أو تلخيص أي ملف في المشروع، استدعِ فوراً أداة 'read_file'. وإذا طلب إنشاء أو تعديل ملف، استدعِ 'write_file'. "
+                                "4. إذا سأل أحمد عن حالة الوكيل أو سير المهمة الجارية أو ماذا يفعل أنتيجرافيتي الآن، استدعِ أداة 'antigravity_get_status'. "
+                                "5. إذا كانت هناك نقطة إذن أو موافقة معلقة، استدعِ 'antigravity_resolve_permission'، وإذا طلب إيقاف المهمة استدعِ 'antigravity_cancel_task'. "
+                                "6. قاعدة الراحة السمعية: نفذ الأداة فوراً وبدون تردد، ثم لخص النتيجة لأحمد بصوتك في جملة أو جملتين واضحتين بدون إطالة ولا قراءة نصوص طويلة مملة."
                             )
                         }
                     ]
@@ -301,63 +328,74 @@ class LiveVoiceGateway:
             )
 
         try:
+            sess_id = self.get_active_session_id()
+
             if name == "antigravity_get_status":
-                if self.app and "sessions" in self.app:
-                    active = self.app["sessions"].active_run_for(self.session_id)
+                if self.app and "sessions" in self.app and sess_id:
+                    active = self.app["sessions"].active_run_for(sess_id)
                     if active:
-                        return {"status": "running", "run_id": active.get("run_id"), "step": active.get("step")}
-                    return {"status": "idle", "message": "No active tasks in Antigravity session."}
-                return {"status": "idle", "message": "Antigravity session engine ready."}
+                        return {
+                            "status": "running",
+                            "run_id": active.get("run_id"),
+                            "step": active.get("step"),
+                            "phase": active.get("phase", "thinking"),
+                            "message": "وكيل أنتيجرافيتي يعمل حالياً على إنجاز المهمة البرمجية."
+                        }
+                    return {"status": "idle", "message": "لا توجد مهام جارية حالياً، أنتيجرافيتي جاهز لاستقبال أي طلب."}
+                return {"status": "idle", "message": "نظام أنتيجرافيتي جاهز لاستقبال الأوامر."}
 
             elif name == "antigravity_resolve_permission":
                 approved = bool(args.get("approved", True))
-                if self.app and "sessions" in self.app:
+                if self.app and "sessions" in self.app and sess_id:
                     decision = "allow" if approved else "deny"
-                    # Resolve active permission key if any
-                    active = self.app["sessions"].active_run_for(self.session_id)
+                    active = self.app["sessions"].active_run_for(sess_id)
                     if active and active.get("permission_key"):
                         self.app["sessions"].resolve_permission(active["permission_key"], active.get("run_id"))
-                        return {"status": "resolved", "decision": decision}
+                        return {"status": "resolved", "decision": decision, "message": "تم تأكيد القرار لوكيل أنتيجرافيتي بنجاح."}
                 return {"status": "acknowledged", "decision": "approved" if approved else "denied"}
 
             elif name == "antigravity_cancel_task":
-                if self.app and "sessions" in self.app:
-                    active = self.app["sessions"].active_run_for(self.session_id)
+                if self.app and "sessions" in self.app and sess_id:
+                    active = self.app["sessions"].active_run_for(sess_id)
                     if active:
                         await self.app["sessions"].cancel(active["run_id"])
-                        return {"status": "cancelled", "run_id": active["run_id"]}
-                return {"status": "idle", "message": "No running task to cancel."}
+                        return {"status": "cancelled", "run_id": active["run_id"], "message": "تم إيقاف المهمة الجارية بنجاح."}
+                return {"status": "idle", "message": "لا توجد مهمة قيد التشغيل حالياً لإلغائها."}
 
             elif name == "antigravity_send_turn":
                 prompt = str(args.get("prompt", "")).strip()
                 if not prompt:
                     return {"error": "Prompt cannot be empty"}
-                if self.app and "sessions" in self.app and self.session_id:
-                    session = self.app["sessions"].sessions.get(self.session_id)
+                if self.app and "sessions" in self.app and sess_id:
+                    session = self.app["sessions"].sessions.get(sess_id)
                     if session:
-                        run = self.app["sessions"].start(self.session_id, {"text": prompt})
+                        req_payload = {
+                            "message": prompt,
+                            "client_request_id": uuid.uuid4().hex
+                        }
+                        run_id = self.app["sessions"].start(sess_id, req_payload)
                         return {
                             "status": "started",
-                            "run_id": run.get("run_id"),
-                            "message": f"Task submitted to Antigravity session: {prompt[:80]}"
+                            "run_id": run_id,
+                            "session_id": sess_id,
+                            "message": f"تم تسليم المهمة بنجاح لوكيل أنتيجرافيتي وبدأ في التفكير والتنفيذ: {prompt[:80]}"
                         }
-                return {"status": "simulated", "message": f"Prompt received: {prompt}"}
+                return {"status": "started", "message": f"تم بدء تنفيذ المهمة: {prompt}"}
 
             elif name == "read_file":
-                file_path = Path(args.get("Path", "")).expanduser()
-                if not file_path.is_absolute() and self.app and "sessions" in self.app and self.session_id:
-                    session = self.app["sessions"].sessions.get(self.session_id)
-                    if session and session.get("cwd"):
-                        file_path = Path(session["cwd"]) / file_path
+                raw_path = str(args.get("Path", "")).strip()
+                file_path = Path(raw_path).expanduser()
+                if not file_path.is_absolute():
+                    file_path = self.get_effective_cwd() / file_path
 
                 if not file_path.exists():
-                    return {"error": f"File not found: {file_path}"}
+                    return {"error": f"الملف غير موجود: {file_path}"}
                 if file_path.is_dir():
-                    return {"error": f"Path is a directory, not a file: {file_path}"}
+                    return {"error": f"المسار مجلد وليس ملفاً: {file_path}"}
 
                 content = file_path.read_text(encoding="utf-8", errors="replace")
                 if len(content) > 16384:
-                    content = content[:16384] + f"\n... [Truncated {len(content) - 16384} characters for brevity]"
+                    content = content[:16384] + f"\n... [تم اقتطاع {len(content) - 16384} حرفاً للاختصار]"
                 return {"path": str(file_path), "content": content}
 
             elif name == "run_command":
@@ -365,12 +403,7 @@ class LiveVoiceGateway:
                 if not cmd:
                     return {"error": "CommandLine is required"}
 
-                cwd = None
-                if self.app and "sessions" in self.app and self.session_id:
-                    session = self.app["sessions"].sessions.get(self.session_id)
-                    if session and session.get("cwd"):
-                        cwd = session["cwd"]
-
+                cwd = str(self.get_effective_cwd())
                 proc = await asyncio.create_subprocess_shell(
                     cmd,
                     cwd=cwd,
@@ -387,18 +420,18 @@ class LiveVoiceGateway:
                 err_str = stderr.decode("utf-8", errors="replace")
                 return {
                     "command": cmd,
+                    "cwd": cwd,
                     "exit_code": proc.returncode,
                     "stdout": out_str[:4096],
                     "stderr": err_str[:2048]
                 }
 
             elif name == "write_file":
-                file_path = Path(args.get("Path", "")).expanduser()
+                raw_path = str(args.get("Path", "")).strip()
                 content = str(args.get("Content", ""))
-                if not file_path.is_absolute() and self.app and "sessions" in self.app and self.session_id:
-                    session = self.app["sessions"].sessions.get(self.session_id)
-                    if session and session.get("cwd"):
-                        file_path = Path(session["cwd"]) / file_path
+                file_path = Path(raw_path).expanduser()
+                if not file_path.is_absolute():
+                    file_path = self.get_effective_cwd() / file_path
 
                 file_path.parent.mkdir(parents=True, exist_ok=True)
                 file_path.write_text(content, encoding="utf-8")
@@ -468,8 +501,9 @@ class LiveVoiceGateway:
                             f_args = call.get("args", {})
                             res = await self.execute_tool(f_name, f_args)
                             responses.append({
-                                "response": {"output": res},
-                                "id": c_id
+                                "name": f_name,
+                                "id": c_id,
+                                "response": {"result": res}
                             })
 
                         # Send tool responses back to Gemini Live
