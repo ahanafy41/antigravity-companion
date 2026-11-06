@@ -556,6 +556,24 @@ class LiveVoiceGateway:
                     self.forward_upstream_to_client(self.upstream_ws, client_ws)
                 )
 
+                # Send proactive greeting so model immediately speaks aloud to the user
+                greeting_turn = {
+                    "clientContent": {
+                        "turns": [
+                            {
+                                "role": "user",
+                                "parts": [
+                                    {
+                                        "text": "مرحباً! رحب بالمطور أحمد بلهجة مصرية ودودة جداً ومختصرة في جملة واحدة وأخبره أنك جاهز لمساعدته والتحكم في أنتيجرافيتي صوتياً."
+                                    }
+                                ]
+                            }
+                        ],
+                        "turnComplete": True
+                    }
+                }
+                await self.upstream_ws.send_str(json.dumps(greeting_turn))
+
             # Process incoming client frames
             async for msg in client_ws:
                 if msg.type == WSMsgType.BINARY:
@@ -587,6 +605,29 @@ class LiveVoiceGateway:
                                 req_voice = ctrl.get("voiceName")
                                 if req_voice in VERIFIED_VOICES:
                                     self.active_voice = req_voice
+
+                            elif c_type == "text":
+                                # Direct text message sent during live voice session
+                                user_text = str(ctrl.get("text", "")).strip()
+                                if user_text and self.upstream_ws and not self.upstream_ws.closed:
+                                    text_turn = {
+                                        "clientContent": {
+                                            "turns": [
+                                                {
+                                                    "role": "user",
+                                                    "parts": [{"text": user_text}]
+                                                }
+                                            ],
+                                            "turnComplete": True
+                                        }
+                                    }
+                                    await self.upstream_ws.send_str(json.dumps(text_turn))
+                                    if not client_ws.closed:
+                                        await client_ws.send_bytes(format_control_frame({
+                                            "type": "transcript",
+                                            "role": "user",
+                                            "text": user_text
+                                        }))
 
                             elif c_type == "interrupt":
                                 # Barge-in signal from client

@@ -7807,6 +7807,8 @@ await window.mainV1.ready;
         this.apiKeyBanner = document.getElementById('live-voice-apikey-banner');
         this.apiKeyInput = document.getElementById('live-voice-apikey-input');
         this.btnSaveApiKey = document.getElementById('btn-save-voice-apikey');
+        this.textInput = document.getElementById('live-voice-text-input');
+        this.btnSendText = document.getElementById('btn-live-voice-send-text');
         this.bindEvents();
       }
 
@@ -7815,6 +7817,21 @@ await window.mainV1.ready;
         if (this.btnBottom) this.btnBottom.addEventListener('click', () => this.toggle());
         if (this.btnClose) this.btnClose.addEventListener('click', () => this.stop());
         if (this.btnEnd) this.btnEnd.addEventListener('click', () => this.stop());
+        if (this.btnSendText && this.textInput) {
+          const doSendText = () => {
+            const txt = (this.textInput.value || '').trim();
+            if (!txt) return;
+            this.sendTextMessage(txt);
+            this.textInput.value = '';
+          };
+          this.btnSendText.addEventListener('click', doSendText);
+          this.textInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              doSendText();
+            }
+          });
+        }
         if (this.btnSaveApiKey && this.apiKeyInput) {
           this.btnSaveApiKey.addEventListener('click', async () => {
             const keyVal = (this.apiKeyInput.value || '').trim();
@@ -7873,6 +7890,13 @@ await window.mainV1.ready;
         }
       }
 
+      sendTextMessage(text) {
+        if (!text || !this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        const frame = this.formatControlFrame({ type: 'text', text: text });
+        this.ws.send(frame);
+        announce('تم إرسال: ' + text);
+      }
+
       formatControlFrame(obj) {
         const jsonStr = JSON.stringify(obj);
         const encoder = new TextEncoder();
@@ -7893,6 +7917,38 @@ await window.mainV1.ready;
         return framed.buffer;
       }
 
+      downsampleTo16k(buffer, inputRate, outputRate) {
+        if (!buffer || buffer.length === 0) return null;
+        if (inputRate === outputRate) {
+          const pcm16 = new Int16Array(buffer.length);
+          for (let i = 0; i < buffer.length; i++) {
+            const s = Math.max(-1, Math.min(1, buffer[i]));
+            pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+          }
+          return pcm16;
+        }
+        const sampleRateRatio = inputRate / outputRate;
+        const newLength = Math.round(buffer.length / sampleRateRatio);
+        const result = new Int16Array(newLength);
+        let offsetResult = 0;
+        let offsetBuffer = 0;
+        while (offsetResult < result.length) {
+          const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+          let accum = 0;
+          let count = 0;
+          for (let i = offsetBuffer; i < nextOffsetBuffer && i < buffer.length; i++) {
+            accum += buffer[i];
+            count++;
+          }
+          const sample = count > 0 ? (accum / count) : buffer[offsetBuffer];
+          const s = Math.max(-1, Math.min(1, sample));
+          result[offsetResult] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+          offsetResult++;
+          offsetBuffer = nextOffsetBuffer;
+        }
+        return result;
+      }
+
       async start() {
         try {
           if (this.voiceSelect) this.activeVoice = this.voiceSelect.value;
@@ -7901,6 +7957,19 @@ await window.mainV1.ready;
           }
           this.updateStatus('جاري الاتصال بخادم البث الصوتي (Gemini 3.8 Live)...');
           playStartChime();
+
+          // Initialize output AudioContext immediately inside user gesture
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (!this.audioCtx) {
+            try {
+              this.audioCtx = new AudioContextClass({ sampleRate: 24000 });
+            } catch (e) {
+              this.audioCtx = new AudioContextClass();
+            }
+          }
+          if (this.audioCtx.state === 'suspended') {
+            try { await this.audioCtx.resume(); } catch (e) {}
+          }
 
           let csrf = '';
           try {
@@ -7949,7 +8018,6 @@ await window.mainV1.ready;
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
             audio: {
-              sampleRate: 16000,
               channelCount: 1,
               echoCancellation: true,
               noiseSuppression: true,
@@ -7958,33 +8026,36 @@ await window.mainV1.ready;
           });
           this.mediaStream = stream;
 
-          if (!this.audioCtx) {
-            this.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-          }
-          if (this.audioCtx.state === 'suspended') {
-            await this.audioCtx.resume();
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          let recCtx;
+          try {
+            recCtx = new AudioContextClass({ sampleRate: 16000 });
+          } catch (e) {
+            recCtx = new AudioContextClass();
           }
 
-          // Recording context for 16kHz
-          const recCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+          if (recCtx.state === 'suspended') {
+            try { await recCtx.resume(); } catch (e) {}
+          }
+
           const source = recCtx.createMediaStreamSource(stream);
           const processor = recCtx.createScriptProcessor(2048, 1, 1);
+          const muteGain = recCtx.createGain();
+          muteGain.gain.value = 0;
 
           processor.onaudioprocess = (e) => {
             if (!this.isConnected || this.isMuted) return;
             const inputData = e.inputBuffer.getChannelData(0);
-            const pcm16 = new Int16Array(inputData.length);
-            for (let i = 0; i < inputData.length; i++) {
-              const s = Math.max(-1, Math.min(1, inputData[i]));
-              pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-            }
-            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            const pcm16 = this.downsampleTo16k(inputData, recCtx.sampleRate, 16000);
+            if (this.ws && this.ws.readyState === WebSocket.OPEN && pcm16 && pcm16.length > 0) {
               this.ws.send(this.formatAudioFrame(pcm16));
             }
           };
 
           source.connect(processor);
-          processor.connect(recCtx.destination);
+          processor.connect(muteGain);
+          muteGain.connect(recCtx.destination);
+
           this.sourceNode = source;
           this.processor = processor;
           this.recCtx = recCtx;
@@ -8013,8 +8084,20 @@ await window.mainV1.ready;
         }
       }
 
-      playPcmChunk(pcmBytes) {
-        if (!this.audioCtx) return;
+      async playPcmChunk(pcmBytes) {
+        if (!pcmBytes || pcmBytes.byteLength === 0) return;
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!this.audioCtx) {
+          try {
+            this.audioCtx = new AudioContextClass({ sampleRate: 24000 });
+          } catch (e) {
+            this.audioCtx = new AudioContextClass();
+          }
+        }
+        if (this.audioCtx.state === 'suspended') {
+          try { await this.audioCtx.resume(); } catch (e) {}
+        }
+
         if (this.dialog) {
           this.dialog.classList.remove('active-listening');
           this.dialog.classList.add('active-speaking');
@@ -8034,9 +8117,11 @@ await window.mainV1.ready;
         source.connect(this.audioCtx.destination);
 
         const now = this.audioCtx.currentTime;
-        const startTime = Math.max(now, this.nextStartTime);
-        source.start(startTime);
-        this.nextStartTime = startTime + buffer.duration;
+        if (this.nextStartTime < now) {
+          this.nextStartTime = now + 0.02;
+        }
+        source.start(this.nextStartTime);
+        this.nextStartTime += buffer.duration;
 
         this.activeSources.add(source);
         source.onended = () => {
