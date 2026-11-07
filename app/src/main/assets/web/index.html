@@ -36,7 +36,6 @@
       <button type="button" id="btn-header-artifacts" class="btn" style="display:none; align-items:center; gap:6px; border: 1px solid var(--accent-purple); color: var(--accent-purple);" aria-label="عرض المستندات وملفات المشروع (Artifacts & Project Files)" title="المستندات وملفات المشروع"><span aria-hidden="true">📄📁</span> المستندات والملفات <span id="header-artifacts-badge" style="background:var(--accent-purple); color:#fff; border-radius:10px; padding:1px 6px; font-size:0.75rem; font-weight:bold;">0</span></button>
       <button type="button" id="btn-new-ai-chat" class="btn btn-primary" aria-label="محادثة جديدة">جديد</button>
       <button type="button" id="btn-toggle-tones" class="btn main-style-2" aria-label="الأصوات">أصوات</button>
-      <button type="button" id="btn-header-voice" class="btn btn-header-voice" aria-label="المحادثة الصوتية الحية (Gemini 3.8 Live)" aria-pressed="false" title="بدء المحادثة الصوتية الحية"><span aria-hidden="true">🎙️</span> صوت مباشر</button>
     </div>
   </header>
 
@@ -170,7 +169,6 @@
       <form id="ai-chat-form" class="ai-chat-form main-style-10">
         <textarea id="ai-prompt-input" class="ai-prompt-input" rows="1" placeholder="اكتب رسالتك هنا..." aria-label="اكتب رسالتك"></textarea>
         <button type="button" id="btn-open-files-bottom" class="btn main-style-15" aria-label="الملفات">ملفات</button>
-        <button type="button" id="btn-live-voice" class="btn btn-live-voice" aria-label="المحادثة الصوتية الحية" aria-pressed="false" title="بدء المحادثة الصوتية الحية"><span aria-hidden="true">🎙️</span> صوت</button>
         <button type="submit" id="btn-ai-send" class="btn btn-send-ai" aria-label="إرسال">إرسال</button>
         <button type="button" id="btn-ai-abort" class="btn btn-abort-ai main-style-16" aria-label="إيقاف">إيقاف</button>
       </form>
@@ -914,106 +912,6 @@
       <footer class="dialog-footer">
         <button type="button" id="btn-nexus-cancel" class="btn" aria-label="إلغاء وإرسال هروب (Escape)">إلغاء (Esc)</button>
         <button type="button" id="btn-nexus-confirm" class="btn btn-primary" aria-label="تأكيد الخيار المختار (Enter)">تأكيد (Enter)</button>
-      </footer>
-    </div>
-  </dialog>
-
-
-
-  <!-- Native Live Voice Conversation Overlay (Gemini 3.8 Live) -->
-  <dialog id="live-voice-dialog" class="accessible-dialog live-voice-dialog" role="dialog" aria-modal="true" aria-labelledby="live-voice-title" aria-describedby="live-voice-status-text">
-    <div class="dialog-content live-voice-dialog-content">
-      <header class="dialog-header">
-        <h2 id="live-voice-title" class="dialog-title"><span aria-hidden="true">🎙️</span> المحادثة الصوتية الحية مع أنتيجرافيتي (Gemini 3.8 Live)</h2>
-        <button type="button" id="btn-close-live-voice" class="btn btn-dialog-close" aria-label="إغلاق المحادثة الصوتية">✕</button>
-      </header>
-      <div class="live-voice-body">
-        <div class="live-voice-status-card" role="status" aria-live="polite">
-          <div class="live-voice-waveform" id="live-voice-waveform" aria-hidden="true">
-            <span class="wave-bar"></span>
-            <span class="wave-bar"></span>
-            <span class="wave-bar"></span>
-            <span class="wave-bar"></span>
-            <span class="wave-bar"></span>
-          </div>
-          <div class="live-voice-status-info">
-            <strong id="live-voice-status-text">جاري الاتصال بالبث الصوتي...</strong>
-            <span id="live-voice-hint" class="live-voice-hint">تحدث بصوتك وأنتيجرافيتي هينفذ الأكواد والأوامر ويجاوبك فوراً</span>
-          </div>
-        </div>
-
-        <div id="live-voice-apikey-banner" class="live-voice-apikey-banner" style="display:none; background:rgba(255,255,255,0.04); border:1px solid rgba(229,192,123,0.3); border-radius:8px; padding:10px 14px;">
-          <label for="live-voice-apikey-input" class="form-label" style="font-size:0.9rem; font-weight:bold; color:#e5c07b;">مفتاح Gemini API Key (لتفعيل البث الصوتي الفائق):</label>
-          <div style="display:flex; gap:8px; align-items:center; margin-top:4px;">
-            <input type="password" id="live-voice-apikey-input" class="form-control" style="flex:1; padding:6px 10px; border-radius:6px; background:var(--bg-tertiary,#21252b); color:#fff; border:1px solid rgba(255,255,255,0.2);" placeholder="ألصق مفتاح AIzaSy... هنا" aria-label="أدخل مفتاح Gemini API">
-            <button type="button" id="btn-save-voice-apikey" class="btn btn-primary btn-sm" style="white-space:nowrap; padding:6px 14px;">حفظ وتوصيل</button>
-          </div>
-          <p class="form-hint" style="margin-top:6px; font-size:0.8rem; color:#abb2bf; margin-bottom:0;">يمكنك جلب مفتاح مجاني بضغطة واحدة من <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--accent-cyan,#56b6c2); text-decoration:underline;">Google AI Studio</a>، أو تركها فارغة للعمل في النمط الاحتياطي.</p>
-        </div>
-
-        <div class="live-voice-controls-row">
-          <div class="form-group voice-select-group">
-            <label for="live-voice-select">الصوت الطبيعي:</label>
-            <select id="live-voice-select" class="form-select live-voice-select" aria-label="اختيار الصوت الطبيعي">
-              <optgroup label="أبرز أصوات البرمجة والاستوديو">
-                <option value="Puck" selected>Puck (حيوي ومرح - افتراضي)</option>
-                <option value="Charon">Charon (رزين وهادئ - ممتاز للأكواد)</option>
-                <option value="Kore">Kore (حازم ودقيق)</option>
-                <option value="Sulafat">Sulafat (دافئ ومريح للأذن)</option>
-                <option value="Achird">Achird (ودود وعفوي)</option>
-                <option value="Aoede">Aoede (عذب وخفيف)</option>
-                <option value="Fenrir">Fenrir (حماسي وسريع)</option>
-                <option value="Zephyr">Zephyr (مشرق وسريع)</option>
-              </optgroup>
-              <optgroup label="باقي مكتبة أصوات الاستوديو (30 صوتاً)">
-                <option value="Leda">Leda (شبابي)</option>
-                <option value="Orus">Orus (حازم وقوي)</option>
-                <option value="Callirrhoe">Callirrhoe (هادئ وسلس)</option>
-                <option value="Autonoe">Autonoe (مشرق)</option>
-                <option value="Enceladus">Enceladus (ناعم)</option>
-                <option value="Iapetus">Iapetus (واضح المعالم)</option>
-                <option value="Umbriel">Umbriel (مريح)</option>
-                <option value="Algieba">Algieba (انسيابي)</option>
-                <option value="Despina">Despina (ناعم)</option>
-                <option value="Erinome">Erinome (شديد النقاء)</option>
-                <option value="Algenib">Algenib (عميق)</option>
-                <option value="Rasalgethi">Rasalgethi (معرفي وتقني)</option>
-                <option value="Laomedeia">Laomedeia (مبهج)</option>
-                <option value="Achernar">Achernar (خافت ولطيف)</option>
-                <option value="Alnilam">Alnilam (رصين وثابت)</option>
-                <option value="Schedar">Schedar (متوازن)</option>
-                <option value="Gacrux">Gacrux (ناضج)</option>
-                <option value="Pulcherrima">Pulcherrima (مباشر)</option>
-                <option value="Zubenelgenubi">Zubenelgenubi (عفوي)</option>
-                <option value="Vindemiatrix">Vindemiatrix (لطيف ومهذب)</option>
-                <option value="Sadachbia">Sadachbia (مفعم بالحيوية)</option>
-                <option value="Sadaltager">Sadaltager (خبير ومتمكن)</option>
-              </optgroup>
-            </select>
-          </div>
-          <button type="button" id="btn-live-voice-mute" class="btn btn-secondary" aria-label="كتم الميكروفون" aria-pressed="false">كتم المايك</button>
-          <button type="button" id="btn-live-voice-done-speaking" class="btn btn-primary" aria-label="انتهيت من الكلام، إرسال فوري للوكيل">انتهيت من الكلام ✋</button>
-        </div>
-
-        <div class="live-voice-transcript-box" role="log" aria-label="سجل المحادثة الصوتية الحية" aria-live="polite">
-          <div id="live-voice-transcript-user" class="live-transcript-bubble user-bubble" style="display:none;">
-            <strong class="bubble-role">أنت:</strong> <span class="bubble-text"></span>
-          </div>
-          <div id="live-voice-transcript-model" class="live-transcript-bubble model-bubble" style="display:none;">
-            <strong class="bubble-role">الوكيل:</strong> <span class="bubble-text"></span>
-          </div>
-          <div id="live-voice-tool-notify" class="live-tool-notify" style="display:none;" role="status">
-            <span class="tool-icon" aria-hidden="true">⚙️</span> <span class="tool-text"></span>
-          </div>
-        </div>
-
-        <div class="live-voice-text-input-row" style="display:flex; gap:8px; margin-top:10px;">
-          <input type="text" id="live-voice-text-input" class="form-control" placeholder="اكتب لأنتيجرافيتي وسيرد عليك صوتياً فوراً..." aria-label="إرسال نص داخل الجلسة الصوتية" style="flex:1; padding:7px 12px; border-radius:6px; background:var(--bg-tertiary,#21252b); color:#fff; border:1px solid rgba(255,255,255,0.2);">
-          <button type="button" id="btn-live-voice-send-text" class="btn btn-secondary" aria-label="إرسال النص للمحادثة الصوتية" style="white-space:nowrap; padding:7px 14px;">إرسال 🚀</button>
-        </div>
-      </div>
-      <footer class="dialog-footer">
-        <button type="button" id="btn-live-voice-end" class="btn btn-danger" aria-label="إنهاء المحادثة الصوتية">إنهاء الجلسة الصوتية</button>
       </footer>
     </div>
   </dialog>

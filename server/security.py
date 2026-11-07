@@ -152,7 +152,7 @@ async def isolation(request, handler):
                     return error("csrf_failed", "CSRF token is required", 403)
         else:
             token = request.headers.get("X-CSRF-Token", "")
-            if request.path in ("/api/v1/files/raw", "/api/v1/voice/live"):
+            if request.path == "/api/v1/files/raw":
                 token = token or request.query.get("token", "") or request.query.get("csrf", "")
             if token and any(
                 sess[0] == token and sess[1] > time.monotonic()
