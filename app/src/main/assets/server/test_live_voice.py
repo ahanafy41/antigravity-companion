@@ -61,16 +61,12 @@ class TestLiveVoiceProtocol(unittest.TestCase):
             parse_wire_frame(truncated)
 
     def test_safe_read_only_tool_classification(self):
-        self.assertTrue(is_safe_read_only_tool("read_file"))
-        self.assertTrue(is_safe_read_only_tool("search_web"))
         self.assertTrue(is_safe_read_only_tool("antigravity_get_status"))
-        self.assertTrue(is_safe_read_only_tool("read_url_content"))
 
         # Mutating tools must not be classified as safe read-only
-        self.assertFalse(is_safe_read_only_tool("run_command"))
-        self.assertFalse(is_safe_read_only_tool("write_file"))
         self.assertFalse(is_safe_read_only_tool("antigravity_send_turn"))
         self.assertFalse(is_safe_read_only_tool("antigravity_resolve_permission"))
+        self.assertFalse(is_safe_read_only_tool("antigravity_cancel_task"))
 
     def test_setup_frame_gemini_38(self):
         gateway = LiveVoiceGateway(None, None)
@@ -86,12 +82,18 @@ class TestLiveVoiceProtocol(unittest.TestCase):
         )
         self.assertEqual(s_obj["inputAudioTranscription"]["mode"], "smart")
 
-        # Verify tool declarations have NON_BLOCKING behavior
+        # Verify tool declarations have NON_BLOCKING behavior and pure Antigravity tools
         tools = s_obj["tools"][0]["functionDeclarations"]
         tool_names = [t["name"] for t in tools]
-        self.assertIn("antigravity_send_turn", tool_names)
-        self.assertIn("run_command", tool_names)
-        self.assertIn("read_file", tool_names)
+        self.assertEqual(
+            sorted(tool_names),
+            sorted([
+                "antigravity_send_turn",
+                "antigravity_get_status",
+                "antigravity_resolve_permission",
+                "antigravity_cancel_task",
+            ])
+        )
         for t in tools:
             self.assertEqual(t.get("behavior"), "NON_BLOCKING")
 
@@ -102,28 +104,20 @@ class TestLiveVoiceProtocol(unittest.TestCase):
         self.assertIn("Kore", VERIFIED_VOICES)
         self.assertIn("Sulafat", VERIFIED_VOICES)
 
-    def test_tool_execution_read_file(self):
+    def test_tool_execution_antigravity_get_status(self):
         async def run_test():
-            with tempfile.NamedTemporaryFile("w+", delete=False, encoding="utf-8") as tf:
-                tf.write("Hello Antigravity Voice!")
-                tf_path = tf.name
-
-            try:
-                gateway = LiveVoiceGateway(None, None)
-                res = await gateway.execute_tool("read_file", {"Path": tf_path})
-                self.assertIn("content", res)
-                self.assertEqual(res["content"], "Hello Antigravity Voice!")
-            finally:
-                Path(tf_path).unlink(missing_ok=True)
+            gateway = LiveVoiceGateway(None, None)
+            res = await gateway.execute_tool("antigravity_get_status", {})
+            self.assertEqual(res.get("status"), "idle")
+            self.assertIn("جاهز", res.get("message", ""))
 
         asyncio.run(run_test())
 
-    def test_tool_execution_run_command(self):
+    def test_tool_execution_unknown_tool(self):
         async def run_test():
             gateway = LiveVoiceGateway(None, None)
-            res = await gateway.execute_tool("run_command", {"CommandLine": "echo 'voice test ok'"})
-            self.assertEqual(res.get("exit_code"), 0)
-            self.assertIn("voice test ok", res.get("stdout", ""))
+            res = await gateway.execute_tool("unknown_tool", {})
+            self.assertIn("error", res)
 
         asyncio.run(run_test())
 

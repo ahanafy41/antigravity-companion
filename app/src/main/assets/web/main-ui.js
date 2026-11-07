@@ -8211,9 +8211,28 @@ await window.mainV1.ready;
           if (this.toolNotify) {
             this.toolNotify.style.display = 'inline-flex';
             const toolSpan = this.toolNotify.querySelector('.tool-text');
-            if (toolSpan) toolSpan.textContent = `جاري تنفيذ أداة: ${data.name}...`;
+            if (toolSpan) {
+              if (data.name === 'antigravity_send_turn') {
+                const p = (data.args && data.args.prompt) ? (data.args.prompt.length > 50 ? data.args.prompt.slice(0, 50) + '...' : data.args.prompt) : '';
+                toolSpan.textContent = `جاري تسليم المهمة لأنتيجرافيتي: ${p}`;
+              } else if (data.name === 'antigravity_get_status') {
+                toolSpan.textContent = `جاري فحص حالة وسير عمل أنتيجرافيتي...`;
+              } else {
+                toolSpan.textContent = `جاري التنسيق مع أنتيجرافيتي (${data.name})...`;
+              }
+            }
           }
-          announce(`جاري تنفيذ الأداة: ${data.name}`);
+          if (data.name === 'antigravity_send_turn') {
+            const p = (data.args && data.args.prompt) ? (data.args.prompt.length > 40 ? data.args.prompt.slice(0, 40) + '...' : data.args.prompt) : '';
+            announce(`جاري تسليم المهمة لأنتيجرافيتي: ${p}`);
+          } else {
+            announce(`جاري التنسيق مع أنتيجرافيتي`);
+          }
+        } else if (data.type === 'antigravity_run_started') {
+          this.updateStatus('أنتيجرافيتي بدأ في التفكير والتنفيذ الفعلي...');
+          if (typeof loadConversationsList === 'function') {
+            loadConversationsList().catch(() => {});
+          }
         } else if (data.type === 'earcon') {
           if (data.name === 'tool_start') playToolChime();
           else if (data.name === 'connect') playSuccessChime();

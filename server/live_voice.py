@@ -16,6 +16,12 @@ from typing import Optional
 import uuid
 from aiohttp import web, WSMsgType, ClientSession
 
+try:
+    from sessions import RunConflict
+except ImportError:
+    class RunConflict(Exception):
+        pass
+
 LOGGER = logging.getLogger("antigravity.live_voice")
 
 MAGIC_BYTE = 0xAA
@@ -23,12 +29,6 @@ OPCODE_AUDIO = 0x01
 OPCODE_CONTROL = 0x02
 
 SAFE_READ_ONLY_TOOLS = {
-    "read_file",
-    "search_web",
-    "read_url_content",
-    "fetch",
-    "list_dir",
-    "view_file",
     "antigravity_get_status",
 }
 
@@ -137,6 +137,15 @@ class LiveVoiceGateway:
             if all_s:
                 all_s.sort(key=lambda s: s.get("updated_at", s.get("created_at", 0)), reverse=True)
                 return all_s[0]["session_id"]
+            try:
+                created = self.app["sessions"].create({
+                    "conversation_id": "",
+                    "cwd": str(self.get_effective_cwd())
+                })
+                self.session_id = created["session_id"]
+                return self.session_id
+            except Exception as err:
+                LOGGER.error("Failed to auto-create Antigravity session: %s", err)
         return None
 
     def get_effective_cwd(self) -> Path:
@@ -175,16 +184,21 @@ class LiveVoiceGateway:
                     "parts": [
                         {
                             "text": (
-                                "أنت المساعد الصوتي التقني المباشر لوكيل أنتيجرافيتي (Antigravity Assistant) في بيئة Termux على جهاز المطور أحمد. "
-                                "تتحدث دائماً بلهجة مصرية ودودة، طبيعية، ذكية، ومختصرة، مع الحفاظ على دقة المصطلحات البرمجية. "
-                                "لديك تحكم كامل وحقيقي في نظام أنتيجرافيتي وبيئة العمل من خلال الأدوات المتاحة لك (Tools). "
-                                "القواعد الإلزامية لاستدعاء الأدوات: "
-                                "1. إذا طلب أحمد كتابة كود، إضافة ميزة، حل عطل برمجي، أو أي مهمة برمجية لوكيل أنتيجرافيتي، استدعِ فوراً أداة 'antigravity_send_turn' مع توضيح الطلب بدقة في باراميتر prompt ليبدأ وكيل أنتيجرافيتي تنفيذه في الجلسة. "
-                                "2. إذا طلب أحمد تشغيل أي أمر طرفية في Termux (مثل git, ls, python3, pip, grep, ps, إلخ) أو فحص المستودع، استدعِ فوراً أداة 'run_command'. "
-                                "3. إذا طلب أحمد قراءة أو فحص أو تلخيص أي ملف في المشروع، استدعِ فوراً أداة 'read_file'. وإذا طلب إنشاء أو تعديل ملف، استدعِ 'write_file'. "
-                                "4. إذا سأل أحمد عن حالة الوكيل أو سير المهمة الجارية أو ماذا يفعل أنتيجرافيتي الآن، استدعِ أداة 'antigravity_get_status'. "
-                                "5. إذا كانت هناك نقطة إذن أو موافقة معلقة، استدعِ 'antigravity_resolve_permission'، وإذا طلب إيقاف المهمة استدعِ 'antigravity_cancel_task'. "
-                                "6. قاعدة الراحة السمعية: نفذ الأداة فوراً وبدون تردد، ثم لخص النتيجة لأحمد بصوتك في جملة أو جملتين واضحتين بدون إطالة ولا قراءة نصوص طويلة مملة."
+                                "أنت المساعد الصوتي التقني المباشر للمطور أحمد (Ahmed) في تطبيق رفيق أنتيجرافيتي (Antigravity Companion) على أندرويد وTermux. "
+                                "دورك الأساسي والوحيد: أنت لسان أحمد وصوته الذكي للتعامل مع 'وكيل أنتيجرافيتي' (Antigravity Agent)؛ كأنك إنسان حقيقي جالس مع أحمد ويستخدم برنامج أنتيجرافيتي نيابة عنه بتوجيهاته الصوتية! "
+                                "القواعد الفولاذية لطريقة عملك: "
+                                "1. أنت لا تقوم بكتابة الأكواد أو فحص الملفات أو تشغيل الأوامر بنفسك إطلاقاً؛ لأن 'أنتيجرافيتي' هو المهندس البرمجي الكامل المسؤول عن كافة العمليات في المشروع. "
+                                "2. كلما طلب أحمد أي طلب برمجي، فحص ملف، تشغيل سيرفر، إصلاح عطل، بناء ميزة، تشغيل اختبارات، أو سأل عن حالة المشروع وكوده: "
+                                "   - استدعِ فوراً أداة 'antigravity_send_turn' وضع طلب أحمد بدقة في باراميتر prompt. "
+                                "   - ستنتظر الأداة تلقائياً رد أنتيجرافيتي. عندما تعود النتيجة، اقرأ خلاصة إجابة وما توصل إليه أنتيجرافيتي لأحمد بصوتك بلهجة مصرية ودودة ومختصرة ومريحة للأذن. "
+                                "   - إذا كانت المهمة كبيرة ومستمرة في الخلفية، أخبر أحمد بصوتك أن أنتيجرافيتي استلم المهمة وبدأ في تنفيذها فوراً وسنتابعه. "
+                                "3. إذا سأل أحمد: 'أنتيجرافيتي بيعمل إيه؟' أو 'وصل لإيه؟' أو 'طمني على الشغل': "
+                                "   - استدعِ أداة 'antigravity_get_status' وأخبره بوضع التنفيذ الحالي أو بآخر رد من أنتيجرافيتي. "
+                                "4. إذا كان أنتيجرافيتي ينتظر موافقة أو تصريح وطلب أحمد الموافقة أو الرفض: "
+                                "   - استدعِ 'antigravity_resolve_permission'. "
+                                "5. إذا طلب أحمد إيقاف الوكيل أو إلغاء المهمة الجارية: "
+                                "   - استدعِ 'antigravity_cancel_task'. "
+                                "6. التحدث والأسلوب: تحدث مع أحمد دائماً بلهجة مصرية طبيعية، ذكية، ومحترمة (يا أحمد / يا هندسة)، دون حشو ولا لغة آلية مصطنعة، مع نطق سليم لمصطلحات البرمجة."
                             )
                         }
                     ]
@@ -194,7 +208,7 @@ class LiveVoiceGateway:
                         "functionDeclarations": [
                             {
                                 "name": "antigravity_send_turn",
-                                "description": "Send a programming task, question, or prompt to the active Antigravity session and track execution.",
+                                "description": "Send a task, coding instruction, question about the project, or request directly to Antigravity (the autonomous AI engineer). Antigravity will analyze the repository, write code, run commands, execute tests, and solve the problem. This tool waits for Antigravity's response and returns the results so you can speak them to Ahmed.",
                                 "behavior": "NON_BLOCKING",
                                 "parameters": {
                                     "type": "OBJECT",
@@ -209,7 +223,7 @@ class LiveVoiceGateway:
                             },
                             {
                                 "name": "antigravity_get_status",
-                                "description": "Get current Antigravity agent execution status, active task state, and recent step info.",
+                                "description": "Check what Antigravity is currently doing (current phase, active tool, recent thought) or get the latest completed answer from Antigravity.",
                                 "behavior": "NON_BLOCKING",
                                 "parameters": {
                                     "type": "OBJECT",
@@ -239,70 +253,6 @@ class LiveVoiceGateway:
                                     "type": "OBJECT",
                                     "properties": {}
                                 }
-                            },
-                            {
-                                "name": "run_command",
-                                "description": "Execute a shell command in the Termux workspace and return output.",
-                                "behavior": "NON_BLOCKING",
-                                "parameters": {
-                                    "type": "OBJECT",
-                                    "properties": {
-                                        "CommandLine": {
-                                            "type": "STRING",
-                                            "description": "The exact shell command to run."
-                                        }
-                                    },
-                                    "required": ["CommandLine"]
-                                }
-                            },
-                            {
-                                "name": "read_file",
-                                "description": "Read contents of a workspace file to inspect and explain to the user.",
-                                "behavior": "NON_BLOCKING",
-                                "parameters": {
-                                    "type": "OBJECT",
-                                    "properties": {
-                                        "Path": {
-                                            "type": "STRING",
-                                            "description": "File path to read."
-                                        }
-                                    },
-                                    "required": ["Path"]
-                                }
-                            },
-                            {
-                                "name": "write_file",
-                                "description": "Create or update a file in the workspace.",
-                                "behavior": "NON_BLOCKING",
-                                "parameters": {
-                                    "type": "OBJECT",
-                                    "properties": {
-                                        "Path": {
-                                            "type": "STRING",
-                                            "description": "File path to write."
-                                        },
-                                        "Content": {
-                                            "type": "STRING",
-                                            "description": "Full file content."
-                                        }
-                                    },
-                                    "required": ["Path", "Content"]
-                                }
-                            },
-                            {
-                                "name": "search_web",
-                                "description": "Search the web for programming solutions and technical documentation.",
-                                "behavior": "NON_BLOCKING",
-                                "parameters": {
-                                    "type": "OBJECT",
-                                    "properties": {
-                                        "query": {
-                                            "type": "STRING",
-                                            "description": "Search query keywords."
-                                        }
-                                    },
-                                    "required": ["query"]
-                                }
                             }
                         ]
                     }
@@ -331,18 +281,34 @@ class LiveVoiceGateway:
             sess_id = self.get_active_session_id()
 
             if name == "antigravity_get_status":
-                if self.app and "sessions" in self.app and sess_id:
-                    active = self.app["sessions"].active_run_for(sess_id)
-                    if active:
-                        return {
-                            "status": "running",
-                            "run_id": active.get("run_id"),
-                            "step": active.get("step"),
-                            "phase": active.get("phase", "thinking"),
-                            "message": "وكيل أنتيجرافيتي يعمل حالياً على إنجاز المهمة البرمجية."
-                        }
-                    return {"status": "idle", "message": "لا توجد مهام جارية حالياً، أنتيجرافيتي جاهز لاستقبال أي طلب."}
-                return {"status": "idle", "message": "نظام أنتيجرافيتي جاهز لاستقبال الأوامر."}
+                if not self.app or "sessions" not in self.app:
+                    return {"status": "idle", "message": "نظام أنتيجرافيتي جاهز لاستقبال الأوامر."}
+
+                sessions = self.app["sessions"]
+                active = sessions.active_run_for(sess_id) if sess_id else None
+                if active:
+                    run = sessions.runs.get(active.get("run_id"))
+                    resp = (run.get("response") if run else "") or ""
+                    step_msg = resp[-300:].strip() if resp else "جاري التفكير وتنفيذ خطوات المهمة."
+                    return {
+                        "status": "running",
+                        "run_id": active.get("run_id"),
+                        "message": f"وكيل أنتيجرافيتي يعمل الآن على إنجاز المهمة البرمجية. تفاصيل التقدم الحالي: {step_msg}"
+                    }
+
+                if sess_id:
+                    sess = sessions.sessions.get(sess_id)
+                    if sess and sess.get("runs"):
+                        last_run_id = sess["runs"][-1]
+                        last_run = sessions.runs.get(last_run_id)
+                        if last_run and last_run.get("response"):
+                            return {
+                                "status": "idle",
+                                "last_response": last_run["response"][:1500],
+                                "message": f"لا توجد مهام جارية حالياً. آخر رد من أنتيجرافيتي:\n{last_run['response'][:600]}"
+                            }
+
+                return {"status": "idle", "message": "لا توجد مهام جارية حالياً، أنتيجرافيتي متفرغ وجاهز لأي طلب منك."}
 
             elif name == "antigravity_resolve_permission":
                 approved = bool(args.get("approved", True))
@@ -359,87 +325,79 @@ class LiveVoiceGateway:
                     active = self.app["sessions"].active_run_for(sess_id)
                     if active:
                         await self.app["sessions"].cancel(active["run_id"])
-                        return {"status": "cancelled", "run_id": active["run_id"], "message": "تم إيقاف المهمة الجارية بنجاح."}
+                        return {"status": "cancelled", "run_id": active["run_id"], "message": "تم إيقاف مهمة أنتيجرافيتي الجارية بنجاح."}
                 return {"status": "idle", "message": "لا توجد مهمة قيد التشغيل حالياً لإلغائها."}
 
             elif name == "antigravity_send_turn":
                 prompt = str(args.get("prompt", "")).strip()
                 if not prompt:
                     return {"error": "Prompt cannot be empty"}
-                if self.app and "sessions" in self.app and sess_id:
-                    session = self.app["sessions"].sessions.get(sess_id)
-                    if session:
-                        req_payload = {
-                            "message": prompt,
-                            "client_request_id": uuid.uuid4().hex
-                        }
-                        run_id = self.app["sessions"].start(sess_id, req_payload)
-                        return {
-                            "status": "started",
-                            "run_id": run_id,
-                            "session_id": sess_id,
-                            "message": f"تم تسليم المهمة بنجاح لوكيل أنتيجرافيتي وبدأ في التفكير والتنفيذ: {prompt[:80]}"
-                        }
-                return {"status": "started", "message": f"تم بدء تنفيذ المهمة: {prompt}"}
+                sess_id = self.get_active_session_id()
+                if not sess_id or not self.app or "sessions" not in self.app:
+                    return {"error": "محرك جلسات أنتيجرافيتي غير متوفر"}
 
-            elif name == "read_file":
-                raw_path = str(args.get("Path", "")).strip()
-                file_path = Path(raw_path).expanduser()
-                if not file_path.is_absolute():
-                    file_path = self.get_effective_cwd() / file_path
+                sessions = self.app["sessions"]
+                session = sessions.sessions.get(sess_id)
+                if not session:
+                    return {"error": f"الجلسة {sess_id} غير موجودة"}
 
-                if not file_path.exists():
-                    return {"error": f"الملف غير موجود: {file_path}"}
-                if file_path.is_dir():
-                    return {"error": f"المسار مجلد وليس ملفاً: {file_path}"}
-
-                content = file_path.read_text(encoding="utf-8", errors="replace")
-                if len(content) > 16384:
-                    content = content[:16384] + f"\n... [تم اقتطاع {len(content) - 16384} حرفاً للاختصار]"
-                return {"path": str(file_path), "content": content}
-
-            elif name == "run_command":
-                cmd = str(args.get("CommandLine", "")).strip()
-                if not cmd:
-                    return {"error": "CommandLine is required"}
-
-                cwd = str(self.get_effective_cwd())
-                proc = await asyncio.create_subprocess_shell(
-                    cmd,
-                    cwd=cwd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                try:
-                    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
-                except asyncio.TimeoutError:
-                    proc.kill()
-                    return {"error": "Command timed out after 30 seconds"}
-
-                out_str = stdout.decode("utf-8", errors="replace")
-                err_str = stderr.decode("utf-8", errors="replace")
-                return {
-                    "command": cmd,
-                    "cwd": cwd,
-                    "exit_code": proc.returncode,
-                    "stdout": out_str[:4096],
-                    "stderr": err_str[:2048]
+                req_payload = {
+                    "message": prompt,
+                    "client_request_id": uuid.uuid4().hex
                 }
+                try:
+                    run_id = sessions.start(sess_id, req_payload)
+                except RunConflict:
+                    active = sessions.active_run_for(sess_id)
+                    return {
+                        "status": "busy",
+                        "run_id": active.get("run_id") if active else None,
+                        "message": "وكيل أنتيجرافيتي يعمل حالياً على مهمة سابقة في هذه الجلسة. يمكنك سؤالي 'وصل لإيه أنتيجرافيتي؟' للاطمئنان على حالة الشغل، أو قول 'ألغي المهمة' لو عايز توقفها وتبدأ طلبك الجديد فوراً."
+                    }
+                LOGGER.info("Antigravity voice turn dispatched: run_id=%s, session_id=%s, prompt=%s", run_id, sess_id, prompt)
 
-            elif name == "write_file":
-                raw_path = str(args.get("Path", "")).strip()
-                content = str(args.get("Content", ""))
-                file_path = Path(raw_path).expanduser()
-                if not file_path.is_absolute():
-                    file_path = self.get_effective_cwd() / file_path
+                # Broadcast to client so web UI updates in real-time
+                if self.client_ws and not self.client_ws.closed:
+                    await self.client_ws.send_bytes(format_control_frame({
+                        "type": "antigravity_run_started",
+                        "run_id": run_id,
+                        "session_id": sess_id,
+                        "prompt": prompt
+                    }))
 
-                file_path.parent.mkdir(parents=True, exist_ok=True)
-                file_path.write_text(content, encoding="utf-8")
-                return {"status": "success", "path": str(file_path), "bytes_written": len(content.encode("utf-8"))}
+                # Wait up to 25 seconds for Antigravity's turn to complete
+                start_t = time.time()
+                while time.time() - start_t < 25.0:
+                    run = sessions.runs.get(run_id)
+                    if not run:
+                        break
+                    state = run.get("state")
+                    if state in ("completed", "failed", "interrupted"):
+                        break
+                    await asyncio.sleep(0.5)
 
-            elif name == "search_web":
-                query = str(args.get("query", "")).strip()
-                return {"status": "simulated", "query": query, "message": f"Search simulated for: {query}"}
+                run = sessions.runs.get(run_id)
+                if run and run.get("state") == "completed":
+                    resp = run.get("response", "")
+                    return {
+                        "status": "completed",
+                        "run_id": run_id,
+                        "antigravity_response": resp[:2500],
+                        "message": f"أنتيجرافيتي أنهى العمل والرد هو:\n{resp[:2000]}"
+                    }
+                elif run and run.get("state") == "running":
+                    return {
+                        "status": "running",
+                        "run_id": run_id,
+                        "message": "استلم أنتيجرافيتي المهمة وبدأ في التفكير والتنفيذ الفعلي في الجلسة، والعملية جارية الآن في الخلفية."
+                    }
+                else:
+                    err = (run.get("error") if run else None) or "توقف التنفيذ"
+                    return {
+                        "status": "error",
+                        "error": str(err),
+                        "message": f"تنبيه من أنتيجرافيتي أثناء التنفيذ: {err}"
+                    }
 
             else:
                 return {"error": f"Unknown tool: {name}"}
