@@ -12,3 +12,4 @@ __pycache__/
 !app/keystore/antigravity-release-key.jks
 app/keystore/*.jks
 app/keystore/*.p12
+.worktrees/
