@@ -986,6 +986,221 @@ await window.mainV1.ready;
         });
       }
 
+      // Live Voice Controller tied to #btn-live-voice
+      const btnLiveVoice = document.getElementById('btn-live-voice');
+      let ws = null;
+      let audioCtx = null;
+      let mediaStream = null;
+      let isLiveActive = false;
+      let nextPlaybackTime = 0;
+      const activePlaybackSources = [];
+
+      function stopAudioPlayback() {
+        activePlaybackSources.forEach(s => {
+          try { s.stop(); } catch (_) {}
+        });
+        activePlaybackSources.length = 0;
+        if (audioCtx) nextPlaybackTime = audioCtx.currentTime;
+      }
+
+      function playPcmBytes(pcmBytes, sampleRate = 24000) {
+        if (!pcmBytes || pcmBytes.byteLength === 0) return;
+        if (!audioCtx || audioCtx.state === 'closed') return;
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        const numSamples = Math.floor(pcmBytes.byteLength / 2);
+        const dataView = new DataView(pcmBytes.buffer, pcmBytes.byteOffset, numSamples * 2);
+        const float32 = new Float32Array(numSamples);
+        for (let i = 0; i < numSamples; i++) {
+          const int16 = dataView.getInt16(i * 2, true);
+          float32[i] = int16 / 32768.0;
+        }
+
+        const buffer = audioCtx.createBuffer(1, float32.length, sampleRate);
+        buffer.copyToChannel(float32, 0);
+
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+        const startAt = Math.max(now, nextPlaybackTime);
+        source.start(startAt);
+        nextPlaybackTime = startAt + buffer.duration;
+        activePlaybackSources.push(source);
+        source.onended = () => {
+          const idx = activePlaybackSources.indexOf(source);
+          if (idx !== -1) activePlaybackSources.splice(idx, 1);
+        };
+      }
+
+      async function stopLiveVoice() {
+        if (!isLiveActive) return;
+        isLiveActive = false;
+        stopAudioPlayback();
+        if (ws) {
+          try { ws.close(); } catch (_) {}
+          ws = null;
+        }
+        if (mediaStream) {
+          try { mediaStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+          mediaStream = null;
+        }
+        if (btnLiveVoice) {
+          btnLiveVoice.setAttribute('aria-pressed', 'false');
+          btnLiveVoice.classList.remove('live-active');
+          btnLiveVoice.innerHTML = '<span aria-hidden="true">🎙️</span> المحادثة المباشرة';
+        }
+        announce('تم إيقاف المحادثة الصوتية المباشرة');
+      }
+
+      async function startLiveVoice() {
+        try {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            announce('المتصفح لا يدعم تسجيل الصوت المباشر');
+            return;
+          }
+
+          try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+              }
+            });
+          } catch (e1) {
+            console.warn('Advanced audio constraints failed, falling back to basic audio:', e1);
+            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          }
+
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          try {
+            audioCtx = new AudioContextClass({ sampleRate: 24000 });
+          } catch (eCtx) {
+            audioCtx = new AudioContextClass();
+          }
+          if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+          }
+          nextPlaybackTime = audioCtx.currentTime;
+          activePlaybackSources.length = 0;
+
+          const selectedVoice = (drawerActiveVoiceName && drawerActiveVoiceName.textContent.trim()) || 'Charon';
+          const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const wsUrl = `${proto}//${location.host}/api/v1/voice/live?voice=${encodeURIComponent(selectedVoice)}`;
+          ws = new WebSocket(wsUrl);
+          ws.binaryType = 'arraybuffer';
+
+          ws.onopen = () => {
+            isLiveActive = true;
+            if (btnLiveVoice) {
+              btnLiveVoice.setAttribute('aria-pressed', 'true');
+              btnLiveVoice.classList.add('live-active');
+              btnLiveVoice.innerHTML = '<span aria-hidden="true">🔴</span> إيقاف المحادثة';
+            }
+            announce(`تم بدء المحادثة المباشرة بصوت ${selectedVoice}، المايك يعمل الآن`);
+          };
+
+          ws.onmessage = (event) => {
+            try {
+              if (event.data instanceof ArrayBuffer) {
+                let pcm = new Uint8Array(event.data);
+                if (pcm.length > 2 && pcm[0] === 0xAA && pcm[1] === 0x01) {
+                  pcm = pcm.subarray(2);
+                }
+                playPcmBytes(pcm, 24000);
+              } else if (typeof event.data === 'string') {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'transcript') {
+                  announce(`${msg.sender === 'user' ? 'أنت' : 'النموذج'}: ${msg.text}`);
+                } else if (msg.type === 'interrupted') {
+                  stopAudioPlayback();
+                  announce('تمت مقاطعة النموذج');
+                } else if (msg.type === 'closed') {
+                  stopLiveVoice();
+                }
+              }
+            } catch (err) {
+              console.warn('Live voice message error:', err);
+            }
+          };
+
+          ws.onclose = () => {
+            if (isLiveActive) stopLiveVoice();
+          };
+
+          ws.onerror = (err) => {
+            console.error('Live voice websocket error:', err);
+            stopLiveVoice();
+          };
+
+          const inputSampleRate = audioCtx.sampleRate || 48000;
+          const source = audioCtx.createMediaStreamSource(mediaStream);
+          const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+          const muteGain = audioCtx.createGain();
+          muteGain.gain.value = 0.0;
+          source.connect(processor);
+          processor.connect(muteGain);
+          muteGain.connect(audioCtx.destination);
+
+          processor.onaudioprocess = (e) => {
+            if (!isLiveActive || !ws || ws.readyState !== WebSocket.OPEN) return;
+            const inputData = e.inputBuffer.getChannelData(0);
+
+            let sumSquares = 0;
+            for (let i = 0; i < inputData.length; i++) sumSquares += inputData[i] * inputData[i];
+            const rms = Math.sqrt(sumSquares / inputData.length);
+
+            // Acoustic Echo & Loopback Protection:
+            if (activePlaybackSources.length > 0) {
+              if (rms > 0.12) {
+                stopAudioPlayback();
+                ws.send(JSON.stringify({ type: 'interrupt' }));
+              } else {
+                return;
+              }
+            }
+
+            let samples = inputData;
+            if (inputSampleRate !== 16000) {
+              const ratio = inputSampleRate / 16000;
+              const newLength = Math.round(inputData.length / ratio);
+              const downsampled = new Float32Array(newLength);
+              for (let i = 0; i < newLength; i++) {
+                downsampled[i] = inputData[Math.min(Math.round(i * ratio), inputData.length - 1)];
+              }
+              samples = downsampled;
+            }
+            const pcm16 = new Int16Array(samples.length);
+            for (let i = 0; i < samples.length; i++) {
+              const s = Math.max(-1, Math.min(1, samples[i]));
+              pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            ws.send(pcm16.buffer);
+          };
+
+        } catch (err) {
+          console.error('Start live voice error:', err);
+          const errName = err ? (err.name || '') : '';
+          const errMsg = err ? (err.message || '') : '';
+          const detail = errName ? `${errName}: ${errMsg}` : String(err);
+          announce('تعذر بدء المحادثة المباشرة: ' + (detail || 'تأكد من منح إذن الميكروفون'));
+          stopLiveVoice();
+        }
+      }
+
+      if (btnLiveVoice) {
+        btnLiveVoice.addEventListener('click', () => {
+          if (isLiveActive) {
+            stopLiveVoice();
+          } else {
+            startLiveVoice();
+          }
+        });
+      }
+
       attachVoiceSelectHandlers();
       refreshVoiceCatalog();
     }

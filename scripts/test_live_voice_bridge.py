@@ -58,7 +58,15 @@ async def test_live_voice_websocket():
             assert sel_data.get("success") is True, f"Select not successful: {sel_data}"
             assert sel_data.get("active_voice") == "Charon", f"Expected active Charon, got {sel_data.get('active_voice')}"
 
-            print("Voice catalog and selection tests passed.")
+            # 3. Connect to live voice websocket
+            ws_url = f"http://127.0.0.1:{port}/api/v1/voice/live?voice=Charon"
+            ws = await client.ws_connect(ws_url)
+            msg = await ws.receive_json(timeout=5)
+            assert msg.get("type") == "ready", f"Expected ready message, got {msg}"
+            assert msg.get("voice") == "Charon", f"Expected voice Charon, got {msg.get('voice')}"
+            await ws.close()
+
+            print("Voice catalog, selection, and WebSocket live tests passed.")
         finally:
             await client.close()
             await runner.cleanup()

@@ -9,6 +9,7 @@ const JS_PATH = path.join(ROOT, 'server', 'web', 'main-ui.js');
 function testHtmlControls() {
   const html = fs.readFileSync(HTML_PATH, 'utf-8');
   
+  assert(html.includes('id="btn-live-voice"'), 'index.html must have #btn-live-voice button');
   assert(html.includes('id="btn-open-voice-dialog"'), 'index.html must have #btn-open-voice-dialog button in drawer');
   assert(html.includes('id="voice-picker-dialog"'), 'index.html must have #voice-picker-dialog modal');
   assert(html.includes('id="drawer-active-voice-name"'), 'index.html must have active voice badge');
