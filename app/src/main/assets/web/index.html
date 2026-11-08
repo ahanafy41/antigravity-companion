@@ -153,6 +153,19 @@
       <button type="button" id="btn-refresh-stats" class="btn-stat-refresh" aria-label="تحديث الحصص">🔄 تحديث</button>
     </div>
 
+    <!-- شريط التحكم الصوتي المباشر الأصلي لحساب Antigravity -->
+    <div id="native-voice-bar" class="native-voice-bar" role="region" aria-label="التحكم في المحادثة الصوتية المباشرة" style="display:none; margin: 8px 12px; padding: 10px 14px; background: rgba(30, 41, 59, 0.95); border: 1px solid #38bdf8; border-radius: 8px; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="pulse-indicator" aria-hidden="true" style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #22c55e;"></span>
+        <span id="native-voice-status-text" role="status" aria-live="assertive" style="font-weight: 600; font-size: 0.95rem; color: #f8fafc;">محادثة حية مباشرة بحساب Google AI Pro (جارٍ الاستماع)</span>
+        <span id="native-voice-timer" style="font-size: 0.85rem; color: #94a3b8; font-family: monospace;">00:00</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button type="button" id="btn-native-voice-mute" class="btn btn-sm" aria-label="كتم المايك" style="background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.4);">كتم المايك</button>
+        <button type="button" id="btn-native-voice-hangup" class="btn btn-sm btn-danger" aria-label="إنهاء المحادثة الصوتية الحية">إنهاء المكالمة</button>
+      </div>
+    </div>
+
     <div id="ai-chat-feed" class="ai-chat-feed" role="region" aria-label="الرسائل"></div>
 
 

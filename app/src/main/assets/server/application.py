@@ -18,6 +18,8 @@ from mcp_settings import MCPSettings
 from task_runtime import TaskRuntime
 from local_tasks import LocalTasks
 from voice_catalog import get_voice_catalog, DEFAULT_VOICE
+from live_voice_bridge import live_voice_endpoint
+from native_voice_service import NativeVoiceService
 from voice_agent import VoiceAgent
 from voice_planner import VoicePlanner
 from legacy_conversations import LegacyConversations
@@ -107,6 +109,7 @@ def create_app(data_dir, port=7681):
         VoicePlanner(application["cli"], store.root),
         application["android"],
     )
+    application["native_voice"] = NativeVoiceService()
     application["visibility"] = {}
     application["legacy"] = LegacyConversations(Path.home())
     application["conversation_metadata"] = ConversationMetadataStore(
@@ -162,6 +165,12 @@ def register_routes(application):
         web.get("/api/v1/voice/runs", list_voice_runs),
         web.get("/api/v1/voice/catalog", get_voice_catalog_endpoint),
         web.post("/api/v1/voice/select", select_voice_endpoint),
+        web.get("/api/v1/voice/live", live_voice_endpoint),
+        web.get("/api/v1/voice/native/status", native_voice_status_endpoint),
+        web.post("/api/v1/voice/native/start", native_voice_start_endpoint),
+        web.post("/api/v1/voice/native/toggle-mute", native_voice_toggle_mute_endpoint),
+        web.post("/api/v1/voice/native/stop", native_voice_stop_endpoint),
+        web.get("/api/v1/voice/native/transcript", native_voice_transcript_endpoint),
         web.post("/api/v1/voice/runs", start_voice_agent),
         web.get("/api/v1/voice/runs/{voice_id}", voice_detail),
         web.post("/api/v1/voice/runs/{voice_id}/cancel", cancel_voice_agent),
@@ -549,6 +558,39 @@ async def select_voice_endpoint(request):
     except Exception:
         pass
     return web.json_response({"success": True, "active_voice": voice})
+
+
+async def native_voice_status_endpoint(request):
+    service = request.app["native_voice"]
+    status = await service.get_status()
+    return web.json_response(status)
+
+
+async def native_voice_start_endpoint(request):
+    await object_body(request)
+    service = request.app["native_voice"]
+    status = await service.start()
+    return web.json_response(status)
+
+
+async def native_voice_toggle_mute_endpoint(request):
+    await object_body(request)
+    service = request.app["native_voice"]
+    status = await service.toggle_mute()
+    return web.json_response(status)
+
+
+async def native_voice_stop_endpoint(request):
+    await object_body(request)
+    service = request.app["native_voice"]
+    status = await service.stop()
+    return web.json_response(status)
+
+
+async def native_voice_transcript_endpoint(request):
+    service = request.app["native_voice"]
+    lines = await service.get_latest_transcript()
+    return web.json_response({"lines": lines})
 
 
 async def client_visibility(request):

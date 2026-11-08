@@ -986,222 +986,197 @@ await window.mainV1.ready;
         });
       }
 
-      // Live Voice Controller tied to #btn-live-voice
+      // Native Antigravity Live Voice Controller (Google AI Pro account)
       const btnLiveVoice = document.getElementById('btn-live-voice');
-      let ws = null;
-      let audioCtx = null;
-      let mediaStream = null;
-      let isLiveActive = false;
-      let nextPlaybackTime = 0;
-      const activePlaybackSources = [];
+      const nativeVoiceBar = document.getElementById('native-voice-bar');
+      const nativeVoiceStatusText = document.getElementById('native-voice-status-text');
+      const nativeVoiceTimer = document.getElementById('native-voice-timer');
+      const btnNativeVoiceMute = document.getElementById('btn-native-voice-mute');
+      const btnNativeVoiceHangup = document.getElementById('btn-native-voice-hangup');
 
-      function stopAudioPlayback() {
-        activePlaybackSources.forEach(s => {
-          try { s.stop(); } catch (_) {}
-        });
-        activePlaybackSources.length = 0;
-        if (audioCtx) nextPlaybackTime = audioCtx.currentTime;
-      }
+      let isNativeVoiceActive = false;
+      let nativeVoicePollInterval = null;
+      let lastSpokenCount = 0;
 
-      function playPcmBytes(pcmBytes, sampleRate = 24000) {
-        if (!pcmBytes || pcmBytes.byteLength === 0) return;
-        if (!audioCtx || audioCtx.state === 'closed') return;
-        if (audioCtx.state === 'suspended') {
-          audioCtx.resume();
-        }
-        const numSamples = Math.floor(pcmBytes.byteLength / 2);
-        const dataView = new DataView(pcmBytes.buffer, pcmBytes.byteOffset, numSamples * 2);
-        const float32 = new Float32Array(numSamples);
-        for (let i = 0; i < numSamples; i++) {
-          const int16 = dataView.getInt16(i * 2, true);
-          float32[i] = int16 / 32768.0;
-        }
+      async function updateNativeVoiceUI(status) {
+        if (!status) return;
+        const active = !!status.active;
+        isNativeVoiceActive = active;
 
-        const buffer = audioCtx.createBuffer(1, float32.length, sampleRate);
-        buffer.copyToChannel(float32, 0);
-
-        const source = audioCtx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(audioCtx.destination);
-
-        const now = audioCtx.currentTime;
-        const startAt = Math.max(now, nextPlaybackTime);
-        source.start(startAt);
-        nextPlaybackTime = startAt + buffer.duration;
-        activePlaybackSources.push(source);
-        source.onended = () => {
-          const idx = activePlaybackSources.indexOf(source);
-          if (idx !== -1) activePlaybackSources.splice(idx, 1);
-        };
-      }
-
-      async function stopLiveVoice() {
-        if (!isLiveActive) return;
-        isLiveActive = false;
-        stopAudioPlayback();
-        if (ws) {
-          try { ws.close(); } catch (_) {}
-          ws = null;
-        }
-        if (mediaStream) {
-          try { mediaStream.getTracks().forEach(t => t.stop()); } catch (_) {}
-          mediaStream = null;
-        }
         if (btnLiveVoice) {
-          btnLiveVoice.setAttribute('aria-pressed', 'false');
-          btnLiveVoice.classList.remove('live-active');
-          btnLiveVoice.innerHTML = '<span aria-hidden="true">🎙️</span> المحادثة المباشرة';
+          btnLiveVoice.setAttribute('aria-pressed', active ? 'true' : 'false');
+          if (active) {
+            btnLiveVoice.classList.add('live-active');
+            btnLiveVoice.innerHTML = '<span aria-hidden="true">🔴</span> إيقاف المحادثة';
+          } else {
+            btnLiveVoice.classList.remove('live-active');
+            btnLiveVoice.innerHTML = '<span aria-hidden="true">🎙️</span> المحادثة المباشرة';
+          }
         }
-        announce('تم إيقاف المحادثة الصوتية المباشرة');
+
+        if (nativeVoiceBar) {
+          nativeVoiceBar.style.display = active ? 'flex' : 'none';
+        }
+
+        if (active) {
+          const isMuted = status.state === 'muted';
+          if (nativeVoiceStatusText) {
+            nativeVoiceStatusText.textContent = isMuted 
+              ? 'المايك مكتوم (F6) - اضغط تشغيل للتحدث' 
+              : 'محادثة حية بحساب Google AI Pro (جارٍ الاستماع)';
+          }
+          if (nativeVoiceTimer && status.elapsed) {
+            nativeVoiceTimer.textContent = status.elapsed;
+          }
+          if (btnNativeVoiceMute) {
+            btnNativeVoiceMute.textContent = isMuted ? 'تشغيل المايك' : 'كتم المايك';
+            btnNativeVoiceMute.setAttribute('aria-label', isMuted ? 'تشغيل المايك' : 'كتم المايك');
+            btnNativeVoiceMute.style.background = isMuted ? 'rgba(34, 197, 94, 0.2)' : 'rgba(234, 179, 8, 0.2)';
+            btnNativeVoiceMute.style.color = isMuted ? '#4ade80' : '#facc15';
+          }
+        }
       }
 
-      async function startLiveVoice() {
+      async function pollNativeVoiceStatus() {
         try {
-          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            announce('المتصفح لا يدعم تسجيل الصوت المباشر');
-            return;
+          const res = await fetch('/api/v1/voice/native/status');
+          if (!res.ok) return;
+          const status = await res.json();
+          await updateNativeVoiceUI(status);
+          if (!status.active && nativeVoicePollInterval) {
+            clearInterval(nativeVoicePollInterval);
+            nativeVoicePollInterval = null;
           }
 
-          try {
-            mediaStream = await navigator.mediaDevices.getUserMedia({
-              audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-              }
-            });
-          } catch (e1) {
-            console.warn('Advanced audio constraints failed, falling back to basic audio:', e1);
-            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          }
-
-          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-          try {
-            audioCtx = new AudioContextClass({ sampleRate: 24000 });
-          } catch (eCtx) {
-            audioCtx = new AudioContextClass();
-          }
-          if (audioCtx.state === 'suspended') {
-            await audioCtx.resume();
-          }
-          nextPlaybackTime = audioCtx.currentTime;
-          activePlaybackSources.length = 0;
-
-          const selectedVoice = (drawerActiveVoiceName && drawerActiveVoiceName.textContent.trim()) || 'Charon';
-          const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-          const wsUrl = `${proto}//${location.host}/api/v1/voice/live?voice=${encodeURIComponent(selectedVoice)}`;
-          ws = new WebSocket(wsUrl);
-          ws.binaryType = 'arraybuffer';
-
-          ws.onopen = () => {
-            isLiveActive = true;
-            if (btnLiveVoice) {
-              btnLiveVoice.setAttribute('aria-pressed', 'true');
-              btnLiveVoice.classList.add('live-active');
-              btnLiveVoice.innerHTML = '<span aria-hidden="true">🔴</span> إيقاف المحادثة';
-            }
-            announce(`تم بدء المحادثة المباشرة بصوت ${selectedVoice}، المايك يعمل الآن`);
-          };
-
-          ws.onmessage = (event) => {
+          if (status.active) {
             try {
-              if (event.data instanceof ArrayBuffer) {
-                let pcm = new Uint8Array(event.data);
-                if (pcm.length > 2 && pcm[0] === 0xAA && pcm[1] === 0x01) {
-                  pcm = pcm.subarray(2);
-                }
-                playPcmBytes(pcm, 24000);
-              } else if (typeof event.data === 'string') {
-                const msg = JSON.parse(event.data);
-                if (msg.type === 'transcript') {
-                  announce(`${msg.sender === 'user' ? 'أنت' : 'النموذج'}: ${msg.text}`);
-                } else if (msg.type === 'interrupted') {
-                  stopAudioPlayback();
-                  announce('تمت مقاطعة النموذج');
-                } else if (msg.type === 'closed') {
-                  stopLiveVoice();
+              const trRes = await fetch('/api/v1/voice/native/transcript');
+              if (trRes.ok) {
+                const trData = await trRes.json();
+                const lines = trData.lines || [];
+                if (lines.length > lastSpokenCount) {
+                  const newLines = lines.slice(lastSpokenCount);
+                  lastSpokenCount = lines.length;
+                  newLines.forEach(l => {
+                    const speaker = l.role === 'ROLE_USER' ? 'أنت' : 'Antigravity';
+                    announce(`${speaker}: ${l.text}`);
+                  });
                 }
               }
-            } catch (err) {
-              console.warn('Live voice message error:', err);
-            }
-          };
-
-          ws.onclose = () => {
-            if (isLiveActive) stopLiveVoice();
-          };
-
-          ws.onerror = (err) => {
-            console.error('Live voice websocket error:', err);
-            stopLiveVoice();
-          };
-
-          const inputSampleRate = audioCtx.sampleRate || 48000;
-          const source = audioCtx.createMediaStreamSource(mediaStream);
-          const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-          const muteGain = audioCtx.createGain();
-          muteGain.gain.value = 0.0;
-          source.connect(processor);
-          processor.connect(muteGain);
-          muteGain.connect(audioCtx.destination);
-
-          processor.onaudioprocess = (e) => {
-            if (!isLiveActive || !ws || ws.readyState !== WebSocket.OPEN) return;
-            const inputData = e.inputBuffer.getChannelData(0);
-
-            let sumSquares = 0;
-            for (let i = 0; i < inputData.length; i++) sumSquares += inputData[i] * inputData[i];
-            const rms = Math.sqrt(sumSquares / inputData.length);
-
-            // Acoustic Echo & Loopback Protection:
-            if (activePlaybackSources.length > 0) {
-              if (rms > 0.12) {
-                stopAudioPlayback();
-                ws.send(JSON.stringify({ type: 'interrupt' }));
-              } else {
-                return;
-              }
-            }
-
-            let samples = inputData;
-            if (inputSampleRate !== 16000) {
-              const ratio = inputSampleRate / 16000;
-              const newLength = Math.round(inputData.length / ratio);
-              const downsampled = new Float32Array(newLength);
-              for (let i = 0; i < newLength; i++) {
-                downsampled[i] = inputData[Math.min(Math.round(i * ratio), inputData.length - 1)];
-              }
-              samples = downsampled;
-            }
-            const pcm16 = new Int16Array(samples.length);
-            for (let i = 0; i < samples.length; i++) {
-              const s = Math.max(-1, Math.min(1, samples[i]));
-              pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-            }
-            ws.send(pcm16.buffer);
-          };
-
+            } catch (_) {}
+          }
         } catch (err) {
-          console.error('Start live voice error:', err);
-          const errName = err ? (err.name || '') : '';
-          const errMsg = err ? (err.message || '') : '';
-          const detail = errName ? `${errName}: ${errMsg}` : String(err);
-          announce('تعذر بدء المحادثة المباشرة: ' + (detail || 'تأكد من منح إذن الميكروفون'));
-          stopLiveVoice();
+          console.warn('Native voice poll error:', err);
+        }
+      }
+
+      async function startNativeVoice() {
+        try {
+          if (btnLiveVoice) {
+            btnLiveVoice.textContent = 'جاري الاتصال...';
+          }
+          announce('جاري بدء المحادثة الصوتية الحية المباشرة بحسابك...');
+          
+          const csrf = pairingState ? pairingState.csrf_token : '';
+          const res = await fetch('/api/v1/voice/native/start', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': csrf
+            },
+            body: JSON.stringify({})
+          });
+
+          if (!res.ok) {
+            throw new Error(`HTTP error ${res.status}`);
+          }
+          const status = await res.json();
+          await updateNativeVoiceUI(status);
+          
+          if (status.active) {
+            announce('المحادثة الصوتية الحية نشطة بحساب Google AI Pro، المايك يستمع الآن');
+            if (nativeVoicePollInterval) clearInterval(nativeVoicePollInterval);
+            nativeVoicePollInterval = setInterval(pollNativeVoiceStatus, 2000);
+          }
+        } catch (err) {
+          console.error('Start native voice error:', err);
+          announce('تعذر بدء المحادثة المباشرة: تأكد من تشغيل جلسة agy');
+          await updateNativeVoiceUI({ active: false });
+        }
+      }
+
+      async function toggleNativeVoiceMute() {
+        try {
+          const csrf = pairingState ? pairingState.csrf_token : '';
+          const res = await fetch('/api/v1/voice/native/toggle-mute', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': csrf
+            },
+            body: JSON.stringify({})
+          });
+          if (res.ok) {
+            const status = await res.json();
+            await updateNativeVoiceUI(status);
+            const isMuted = status.state === 'muted';
+            announce(isMuted ? 'تم كتم المايك' : 'تم تشغيل المايك، جارٍ الاستماع');
+          }
+        } catch (err) {
+          console.error('Toggle mute error:', err);
+        }
+      }
+
+      async function stopNativeVoice() {
+        try {
+          if (nativeVoicePollInterval) {
+            clearInterval(nativeVoicePollInterval);
+            nativeVoicePollInterval = null;
+          }
+          const csrf = pairingState ? pairingState.csrf_token : '';
+          const res = await fetch('/api/v1/voice/native/stop', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': csrf
+            },
+            body: JSON.stringify({})
+          });
+          if (res.ok) {
+            const status = await res.json();
+            await updateNativeVoiceUI(status);
+          } else {
+            await updateNativeVoiceUI({ active: false });
+          }
+          announce('تم إنهاء المحادثة الصوتية المباشرة');
+        } catch (err) {
+          console.error('Stop native voice error:', err);
+          await updateNativeVoiceUI({ active: false });
         }
       }
 
       if (btnLiveVoice) {
         btnLiveVoice.addEventListener('click', () => {
-          if (isLiveActive) {
-            stopLiveVoice();
+          if (isNativeVoiceActive) {
+            stopNativeVoice();
           } else {
-            startLiveVoice();
+            startNativeVoice();
           }
         });
       }
 
-      attachVoiceSelectHandlers();
+      if (btnNativeVoiceMute) {
+        btnNativeVoiceMute.addEventListener('click', toggleNativeVoiceMute);
+      }
+
+      if (btnNativeVoiceHangup) {
+        btnNativeVoiceHangup.addEventListener('click', stopNativeVoice);
+      }
+
+      // Check initial native voice status
+      pollNativeVoiceStatus();
+
+            attachVoiceSelectHandlers();
       refreshVoiceCatalog();
     }
 
