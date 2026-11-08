@@ -909,13 +909,42 @@ await window.mainV1.ready;
         btnCloseVoicePickerTop.addEventListener('click', closeVoicePicker);
       }
 
+      async function callNativeVoiceApi(path, options = {}) {
+        const route = path.startsWith('/api/v1') ? path.slice(7) : (path.startsWith('/api') ? path.slice(4) : path);
+        if (window.Companion && window.Companion.api && typeof window.Companion.api.request === 'function') {
+          return await window.Companion.api.request(route, options);
+        }
+        const fullPath = path.startsWith('/api/v1') ? path : ('/api/v1' + path);
+        const apiBase = (typeof window.location !== 'undefined' && window.location && window.location.origin === 'https://appassets.androidplatform.net')
+          ? 'http://127.0.0.1:7681'
+          : '';
+        const csrf = (window.mainV1State && window.mainV1State.csrf)
+          || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('antigravity_csrf'))
+          || (typeof localStorage !== 'undefined' && localStorage.getItem('antigravity_csrf'))
+          || '';
+        const headers = { Accept: 'application/json', ...(options.headers || {}) };
+        if (options.method && options.method !== 'GET') {
+          if (csrf) headers['X-CSRF-Token'] = csrf;
+          if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+        }
+        const res = await fetch(apiBase + fullPath, {
+          ...options,
+          headers,
+          credentials: 'include',
+          cache: 'no-store',
+          body: options.body !== undefined ? JSON.stringify(options.body) : undefined
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP error ${res.status}`);
+        }
+        return await res.json();
+      }
+
       // Fetch active voice and populate catalog
       async function refreshVoiceCatalog() {
         try {
-          const fetcher = window.mainV1Fetch || window.fetch;
-          const resp = await fetcher('/api/v1/voice/catalog');
-          if (resp.ok) {
-            const data = await resp.json();
+          const data = await callNativeVoiceApi('/api/v1/voice/catalog');
+          if (data) {
             const activeVoice = data.active_voice || data.default || 'Charon';
             if (drawerActiveVoiceName) {
               drawerActiveVoiceName.textContent = activeVoice;
@@ -966,18 +995,14 @@ await window.mainV1.ready;
             const voiceName = btn.getAttribute('data-voice');
             if (!voiceName) return;
             try {
-              const fetcher = window.mainV1Fetch || window.fetch;
-              const resp = await fetcher('/api/v1/voice/select', {
+              await callNativeVoiceApi('/api/v1/voice/select', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ voice: voiceName })
+                body: { voice: voiceName }
               });
-              if (resp.ok) {
-                if (drawerActiveVoiceName) drawerActiveVoiceName.textContent = voiceName;
-                announce(`تم اختيار الصوت: ${voiceName}`);
-                refreshVoiceCatalog();
-                setTimeout(closeVoicePicker, 500);
-              }
+              if (drawerActiveVoiceName) drawerActiveVoiceName.textContent = voiceName;
+              announce(`تم اختيار الصوت: ${voiceName}`);
+              refreshVoiceCatalog();
+              setTimeout(closeVoicePicker, 500);
             } catch (err) {
               console.error('Error selecting voice:', err);
               announce('حدث خطأ أثناء حفظ الصوت');
@@ -1039,9 +1064,7 @@ await window.mainV1.ready;
 
       async function pollNativeVoiceStatus() {
         try {
-          const res = await fetch('/api/v1/voice/native/status');
-          if (!res.ok) return;
-          const status = await res.json();
+          const status = await callNativeVoiceApi('/api/v1/voice/native/status');
           await updateNativeVoiceUI(status);
           if (!status.active && nativeVoicePollInterval) {
             clearInterval(nativeVoicePollInterval);
@@ -1050,18 +1073,15 @@ await window.mainV1.ready;
 
           if (status.active) {
             try {
-              const trRes = await fetch('/api/v1/voice/native/transcript');
-              if (trRes.ok) {
-                const trData = await trRes.json();
-                const lines = trData.lines || [];
-                if (lines.length > lastSpokenCount) {
-                  const newLines = lines.slice(lastSpokenCount);
-                  lastSpokenCount = lines.length;
-                  newLines.forEach(l => {
-                    const speaker = l.role === 'ROLE_USER' ? 'أنت' : 'Antigravity';
-                    announce(`${speaker}: ${l.text}`);
-                  });
-                }
+              const trData = await callNativeVoiceApi('/api/v1/voice/native/transcript');
+              const lines = trData?.lines || [];
+              if (lines.length > lastSpokenCount) {
+                const newLines = lines.slice(lastSpokenCount);
+                lastSpokenCount = lines.length;
+                newLines.forEach(l => {
+                  const speaker = l.role === 'ROLE_USER' ? 'أنت' : 'Antigravity';
+                  announce(`${speaker}: ${l.text}`);
+                });
               }
             } catch (_) {}
           }
@@ -1077,26 +1097,18 @@ await window.mainV1.ready;
           }
           announce('جاري بدء المحادثة الصوتية الحية المباشرة بحسابك...');
           
-          const csrf = pairingState ? pairingState.csrf_token : '';
-          const res = await fetch('/api/v1/voice/native/start', {
+          const status = await callNativeVoiceApi('/api/v1/voice/native/start', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-CSRF-Token': csrf
-            },
-            body: JSON.stringify({})
+            body: {}
           });
-
-          if (!res.ok) {
-            throw new Error(`HTTP error ${res.status}`);
-          }
-          const status = await res.json();
           await updateNativeVoiceUI(status);
           
           if (status.active) {
             announce('المحادثة الصوتية الحية نشطة بحساب Google AI Pro، المايك يستمع الآن');
             if (nativeVoicePollInterval) clearInterval(nativeVoicePollInterval);
             nativeVoicePollInterval = setInterval(pollNativeVoiceStatus, 2000);
+          } else {
+            announce('جلسة agy قيد التهيئة، يرجى الانتظار لحظة والمحاولة ثانية');
           }
         } catch (err) {
           console.error('Start native voice error:', err);
@@ -1107,17 +1119,11 @@ await window.mainV1.ready;
 
       async function toggleNativeVoiceMute() {
         try {
-          const csrf = pairingState ? pairingState.csrf_token : '';
-          const res = await fetch('/api/v1/voice/native/toggle-mute', {
+          const status = await callNativeVoiceApi('/api/v1/voice/native/toggle-mute', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-CSRF-Token': csrf
-            },
-            body: JSON.stringify({})
+            body: {}
           });
-          if (res.ok) {
-            const status = await res.json();
+          if (status) {
             await updateNativeVoiceUI(status);
             const isMuted = status.state === 'muted';
             announce(isMuted ? 'تم كتم المايك' : 'تم تشغيل المايك، جارٍ الاستماع');
@@ -1133,21 +1139,11 @@ await window.mainV1.ready;
             clearInterval(nativeVoicePollInterval);
             nativeVoicePollInterval = null;
           }
-          const csrf = pairingState ? pairingState.csrf_token : '';
-          const res = await fetch('/api/v1/voice/native/stop', {
+          const status = await callNativeVoiceApi('/api/v1/voice/native/stop', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-CSRF-Token': csrf
-            },
-            body: JSON.stringify({})
+            body: {}
           });
-          if (res.ok) {
-            const status = await res.json();
-            await updateNativeVoiceUI(status);
-          } else {
-            await updateNativeVoiceUI({ active: false });
-          }
+          await updateNativeVoiceUI(status || { active: false });
           announce('تم إنهاء المحادثة الصوتية المباشرة');
         } catch (err) {
           console.error('Stop native voice error:', err);

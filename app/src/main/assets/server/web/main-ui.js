@@ -909,13 +909,42 @@ await window.mainV1.ready;
         btnCloseVoicePickerTop.addEventListener('click', closeVoicePicker);
       }
 
+      async function callNativeVoiceApi(path, options = {}) {
+        const route = path.startsWith('/api/v1') ? path.slice(7) : (path.startsWith('/api') ? path.slice(4) : path);
+        if (window.Companion && window.Companion.api && typeof window.Companion.api.request === 'function') {
+          return await window.Companion.api.request(route, options);
+        }
+        const fullPath = path.startsWith('/api/v1') ? path : ('/api/v1' + path);
+        const apiBase = (typeof window.location !== 'undefined' && window.location && window.location.origin === 'https://appassets.androidplatform.net')
+          ? 'http://127.0.0.1:7681'
+          : '';
+        const csrf = (window.mainV1State && window.mainV1State.csrf)
+          || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('antigravity_csrf'))
+          || (typeof localStorage !== 'undefined' && localStorage.getItem('antigravity_csrf'))
+          || '';
+        const headers = { Accept: 'application/json', ...(options.headers || {}) };
+        if (options.method && options.method !== 'GET') {
+          if (csrf) headers['X-CSRF-Token'] = csrf;
+          if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+        }
+        const res = await fetch(apiBase + fullPath, {
+          ...options,
+          headers,
+          credentials: 'include',
+          cache: 'no-store',
+          body: options.body !== undefined ? JSON.stringify(options.body) : undefined
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP error ${res.status}`);
+        }
+        return await res.json();
+      }
+
       // Fetch active voice and populate catalog
       async function refreshVoiceCatalog() {
         try {
-          const fetcher = window.mainV1Fetch || window.fetch;
-          const resp = await fetcher('/api/v1/voice/catalog');
-          if (resp.ok) {
-            const data = await resp.json();
+          const data = await callNativeVoiceApi('/api/v1/voice/catalog');
+          if (data) {
             const activeVoice = data.active_voice || data.default || 'Charon';
             if (drawerActiveVoiceName) {
               drawerActiveVoiceName.textContent = activeVoice;
@@ -966,18 +995,14 @@ await window.mainV1.ready;
             const voiceName = btn.getAttribute('data-voice');
             if (!voiceName) return;
             try {
-              const fetcher = window.mainV1Fetch || window.fetch;
-              const resp = await fetcher('/api/v1/voice/select', {
+              await callNativeVoiceApi('/api/v1/voice/select', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ voice: voiceName })
+                body: { voice: voiceName }
               });
-              if (resp.ok) {
-                if (drawerActiveVoiceName) drawerActiveVoiceName.textContent = voiceName;
-                announce(`تم اختيار الصوت: ${voiceName}`);
-                refreshVoiceCatalog();
-                setTimeout(closeVoicePicker, 500);
-              }
+              if (drawerActiveVoiceName) drawerActiveVoiceName.textContent = voiceName;
+              announce(`تم اختيار الصوت: ${voiceName}`);
+              refreshVoiceCatalog();
+              setTimeout(closeVoicePicker, 500);
             } catch (err) {
               console.error('Error selecting voice:', err);
               announce('حدث خطأ أثناء حفظ الصوت');
@@ -986,7 +1011,168 @@ await window.mainV1.ready;
         });
       }
 
-      attachVoiceSelectHandlers();
+      // Native Antigravity Live Voice Controller (Google AI Pro account)
+      const btnLiveVoice = document.getElementById('btn-live-voice');
+      const nativeVoiceBar = document.getElementById('native-voice-bar');
+      const nativeVoiceStatusText = document.getElementById('native-voice-status-text');
+      const nativeVoiceTimer = document.getElementById('native-voice-timer');
+      const btnNativeVoiceMute = document.getElementById('btn-native-voice-mute');
+      const btnNativeVoiceHangup = document.getElementById('btn-native-voice-hangup');
+
+      let isNativeVoiceActive = false;
+      let nativeVoicePollInterval = null;
+      let lastSpokenCount = 0;
+
+      async function updateNativeVoiceUI(status) {
+        if (!status) return;
+        const active = !!status.active;
+        isNativeVoiceActive = active;
+
+        if (btnLiveVoice) {
+          btnLiveVoice.setAttribute('aria-pressed', active ? 'true' : 'false');
+          if (active) {
+            btnLiveVoice.classList.add('live-active');
+            btnLiveVoice.innerHTML = '<span aria-hidden="true">🔴</span> إيقاف المحادثة';
+          } else {
+            btnLiveVoice.classList.remove('live-active');
+            btnLiveVoice.innerHTML = '<span aria-hidden="true">🎙️</span> المحادثة المباشرة';
+          }
+        }
+
+        if (nativeVoiceBar) {
+          nativeVoiceBar.style.display = active ? 'flex' : 'none';
+        }
+
+        if (active) {
+          const isMuted = status.state === 'muted';
+          if (nativeVoiceStatusText) {
+            nativeVoiceStatusText.textContent = isMuted 
+              ? 'المايك مكتوم (F6) - اضغط تشغيل للتحدث' 
+              : 'محادثة حية بحساب Google AI Pro (جارٍ الاستماع)';
+          }
+          if (nativeVoiceTimer && status.elapsed) {
+            nativeVoiceTimer.textContent = status.elapsed;
+          }
+          if (btnNativeVoiceMute) {
+            btnNativeVoiceMute.textContent = isMuted ? 'تشغيل المايك' : 'كتم المايك';
+            btnNativeVoiceMute.setAttribute('aria-label', isMuted ? 'تشغيل المايك' : 'كتم المايك');
+            btnNativeVoiceMute.style.background = isMuted ? 'rgba(34, 197, 94, 0.2)' : 'rgba(234, 179, 8, 0.2)';
+            btnNativeVoiceMute.style.color = isMuted ? '#4ade80' : '#facc15';
+          }
+        }
+      }
+
+      async function pollNativeVoiceStatus() {
+        try {
+          const status = await callNativeVoiceApi('/api/v1/voice/native/status');
+          await updateNativeVoiceUI(status);
+          if (!status.active && nativeVoicePollInterval) {
+            clearInterval(nativeVoicePollInterval);
+            nativeVoicePollInterval = null;
+          }
+
+          if (status.active) {
+            try {
+              const trData = await callNativeVoiceApi('/api/v1/voice/native/transcript');
+              const lines = trData?.lines || [];
+              if (lines.length > lastSpokenCount) {
+                const newLines = lines.slice(lastSpokenCount);
+                lastSpokenCount = lines.length;
+                newLines.forEach(l => {
+                  const speaker = l.role === 'ROLE_USER' ? 'أنت' : 'Antigravity';
+                  announce(`${speaker}: ${l.text}`);
+                });
+              }
+            } catch (_) {}
+          }
+        } catch (err) {
+          console.warn('Native voice poll error:', err);
+        }
+      }
+
+      async function startNativeVoice() {
+        try {
+          if (btnLiveVoice) {
+            btnLiveVoice.textContent = 'جاري الاتصال...';
+          }
+          announce('جاري بدء المحادثة الصوتية الحية المباشرة بحسابك...');
+          
+          const status = await callNativeVoiceApi('/api/v1/voice/native/start', {
+            method: 'POST',
+            body: {}
+          });
+          await updateNativeVoiceUI(status);
+          
+          if (status.active) {
+            announce('المحادثة الصوتية الحية نشطة بحساب Google AI Pro، المايك يستمع الآن');
+            if (nativeVoicePollInterval) clearInterval(nativeVoicePollInterval);
+            nativeVoicePollInterval = setInterval(pollNativeVoiceStatus, 2000);
+          } else {
+            announce('جلسة agy قيد التهيئة، يرجى الانتظار لحظة والمحاولة ثانية');
+          }
+        } catch (err) {
+          console.error('Start native voice error:', err);
+          announce('تعذر بدء المحادثة المباشرة: تأكد من تشغيل جلسة agy');
+          await updateNativeVoiceUI({ active: false });
+        }
+      }
+
+      async function toggleNativeVoiceMute() {
+        try {
+          const status = await callNativeVoiceApi('/api/v1/voice/native/toggle-mute', {
+            method: 'POST',
+            body: {}
+          });
+          if (status) {
+            await updateNativeVoiceUI(status);
+            const isMuted = status.state === 'muted';
+            announce(isMuted ? 'تم كتم المايك' : 'تم تشغيل المايك، جارٍ الاستماع');
+          }
+        } catch (err) {
+          console.error('Toggle mute error:', err);
+        }
+      }
+
+      async function stopNativeVoice() {
+        try {
+          if (nativeVoicePollInterval) {
+            clearInterval(nativeVoicePollInterval);
+            nativeVoicePollInterval = null;
+          }
+          const status = await callNativeVoiceApi('/api/v1/voice/native/stop', {
+            method: 'POST',
+            body: {}
+          });
+          await updateNativeVoiceUI(status || { active: false });
+          announce('تم إنهاء المحادثة الصوتية المباشرة');
+        } catch (err) {
+          console.error('Stop native voice error:', err);
+          await updateNativeVoiceUI({ active: false });
+        }
+      }
+
+      if (btnLiveVoice) {
+        btnLiveVoice.addEventListener('click', () => {
+          if (isNativeVoiceActive) {
+            stopNativeVoice();
+          } else {
+            startNativeVoice();
+          }
+        });
+      }
+
+      if (btnNativeVoiceMute) {
+        btnNativeVoiceMute.addEventListener('click', toggleNativeVoiceMute);
+      }
+
+      if (btnNativeVoiceHangup) {
+        btnNativeVoiceHangup.addEventListener('click', stopNativeVoice);
+      }
+
+      // Check initial native voice status
+      pollNativeVoiceStatus();
+
+            attachVoiceSelectHandlers();
       refreshVoiceCatalog();
     }
 

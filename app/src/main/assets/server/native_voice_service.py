@@ -81,18 +81,30 @@ class NativeVoiceService:
         # Check for active Live voice indicators:
         # Example: ● Live 00:08 · muted · f6 unmute · esc hang up
         # Example: ● Live 00:02 · listening · f6 mute · esc hang up
-        live_match = re.search(r"Live\s+([0-9:]+)\s*·\s*(listening|muted)", pane)
+        # Example: ● Live 00:00 · starting · f6 mute · esc hang up
+        live_match = re.search(r"Live\s+([0-9:]+)\s*·\s*([a-zA-Z]+)", pane)
         if live_match:
             elapsed = live_match.group(1)
-            mode = live_match.group(2)
+            mode = live_match.group(2).lower()
             is_muted = (mode == "muted")
+            is_active = mode in ("listening", "muted", "starting", "connected", "speaking")
             return {
-                "active": True,
-                "state": "muted" if is_muted else "listening",
+                "active": is_active,
+                "state": "muted" if is_muted else mode,
                 "label": "المايك مكتوم" if is_muted else "محادثة حية مباشرة - جارٍ الاستماع",
                 "account": "ahmedhanafy884@gmail.com (Google AI Pro)",
                 "mic_active": not is_muted,
                 "elapsed": elapsed
+            }
+
+        if "Connecting..." in pane and "esc to cancel" in pane:
+            return {
+                "active": True,
+                "state": "connecting",
+                "label": "جاري الاتصال بالمحادثة المباشرة...",
+                "account": "ahmedhanafy884@gmail.com (Google AI Pro)",
+                "mic_active": True,
+                "elapsed": ""
             }
 
         # Check for dictation recording mode:
@@ -108,7 +120,9 @@ class NativeVoiceService:
                 "elapsed": rec_match.group(1)
             }
 
-        if "Started voice chat" in pane and "Stopped voice chat" not in pane:
+        last_start = pane.rfind("Started voice chat")
+        last_stop = pane.rfind("Stopped voice chat")
+        if last_start != -1 and last_start > last_stop:
             return {
                 "active": True,
                 "state": "listening",
@@ -128,7 +142,7 @@ class NativeVoiceService:
         }
 
     async def start(self) -> Dict[str, Any]:
-        """Start or unpause the native Antigravity live voice chat via F6."""
+        """Start or unpause the native Antigravity live voice chat via /voice."""
         await self.ensure_pulseaudio()
 
         alive = await self.is_session_alive()
@@ -139,31 +153,38 @@ class NativeVoiceService:
                 "tmux", "new-session", "-d", "-s", self.session_name, "-c", cwd, "agy"
             )
             # Wait for prompt to appear and TUI to stabilize
-            for _ in range(20):
-                await asyncio.sleep(0.5)
+            for _ in range(25):
+                await asyncio.sleep(0.4)
                 pane = await self.capture_pane()
                 if ">" in pane:
-                    await asyncio.sleep(1.2)  # Allow TUI event loop to settle
+                    await asyncio.sleep(1.0)  # Allow TUI event loop to settle
                     break
 
         status = await self.get_status()
         if status.get("state") == "muted":
             # If muted, unmute via F6
             await self._run_cmd("tmux", "send-keys", "-t", self.session_name, "F6")
-            await asyncio.sleep(0.8)
+            await asyncio.sleep(0.5)
             return await self.get_status()
 
         if status.get("active"):
             return status
 
-        # Send F6 hotkey once to trigger native live voice mode
-        await self._run_cmd("tmux", "send-keys", "-t", self.session_name, "F6")
-        await asyncio.sleep(1.5)
-        status = await self.get_status()
+        # In agy, Live Voice is initiated with the slash command /voice
+        await self._run_cmd("tmux", "send-keys", "-t", self.session_name, "Escape")
+        await asyncio.sleep(0.2)
+        await self._run_cmd("tmux", "send-keys", "-t", self.session_name, "/voice", "Enter")
+
+        for _ in range(12):
+            await asyncio.sleep(0.4)
+            status = await self.get_status()
+            if status.get("active"):
+                break
+
         if status.get("state") == "muted":
             # If it started in muted state, unmute via F6
             await self._run_cmd("tmux", "send-keys", "-t", self.session_name, "F6")
-            await asyncio.sleep(0.6)
+            await asyncio.sleep(0.5)
             return await self.get_status()
 
         return status
@@ -181,7 +202,9 @@ class NativeVoiceService:
         if not await self.is_session_alive():
             return await self.get_status()
         await self._run_cmd("tmux", "send-keys", "-t", self.session_name, "Escape")
-        await asyncio.sleep(0.8)
+        await asyncio.sleep(0.3)
+        await self._run_cmd("tmux", "send-keys", "-t", self.session_name, "Escape")
+        await asyncio.sleep(0.5)
         return await self.get_status()
 
     async def get_latest_transcript(self, limit: int = 15) -> list[dict]:
