@@ -57,6 +57,7 @@ public final class MainActivity extends AppCompatActivity {
     private interface NativeAction { void execute(NativeRequest request); }
     private static final int REQUEST_TERMUX_RUN_COMMAND = 2001;
     private static final int REQUEST_RECORD_AUDIO = 2002;
+    private android.webkit.PermissionRequest pendingAudioRequest;
     private static final class NativeRequest {
         final String id;
         final JsonObject args;
@@ -137,12 +138,23 @@ public final class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     if (request == null) return;
                     String origin = request.getOrigin() != null ? request.getOrigin().toString() : "";
-                    if (origins.allowsNativeOrigin(origin) || OriginPolicy.ASSET_ORIGIN.equals(origin)) {
+                    while (origin.endsWith("/")) {
+                        origin = origin.substring(0, origin.length() - 1);
+                    }
+                    boolean allowed = origins.allowsNativeOrigin(origin)
+                            || origins.allowsBridge(origin)
+                            || OriginPolicy.ASSET_ORIGIN.equals(origin)
+                            || origin.startsWith(OriginPolicy.ASSET_ORIGIN);
+                    if (allowed) {
                         for (String resource : request.getResources()) {
                             if (android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
                                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
                                         checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                                     request.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+                                    return;
+                                } else {
+                                    pendingAudioRequest = request;
+                                    requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_RECORD_AUDIO);
                                     return;
                                 }
                             }
@@ -583,6 +595,20 @@ public final class MainActivity extends AppCompatActivity {
                 launchTermux();
             } else {
                 showStatus("يلزم تفعيل إذن تشغيل أوامر Termux من الإعدادات للتحكم بالخادم");
+            }
+        } else if (requestCode == REQUEST_RECORD_AUDIO) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                showStatus("تم منح إذن الميكروفون بنجاح");
+                if (pendingAudioRequest != null) {
+                    pendingAudioRequest.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+                    pendingAudioRequest = null;
+                }
+            } else {
+                showStatus("يلزم تفعيل إذن الميكروفون للبدء في البث المباشر");
+                if (pendingAudioRequest != null) {
+                    pendingAudioRequest.deny();
+                    pendingAudioRequest = null;
+                }
             }
         }
     }
