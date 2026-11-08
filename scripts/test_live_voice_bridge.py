@@ -8,7 +8,7 @@ sys.path.insert(0, str(ROOT / "server"))
 
 async def test_live_voice_websocket():
     from application import create_app
-    from aiohttp import web, ClientSession, CookieJar, WSMsgType
+    from aiohttp import web, ClientSession, CookieJar
     import tempfile
     
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -27,34 +27,38 @@ async def test_live_voice_websocket():
                 json={"code": app["pairing"].code}
             )
             assert pair_resp.status == 200, f"Pairing failed: {pair_resp.status}"
+            pair_data = await pair_resp.json()
+            csrf_token = pair_data.get("csrf_token", "")
 
-            # Connect to live voice websocket
-            ws_url = f"http://127.0.0.1:{port}/api/v1/voice/live?voice=Charon"
-            ws = await client.ws_connect(ws_url)
+            # 1. Fetch voice catalog
+            cat_resp = await client.get(f"http://127.0.0.1:{port}/api/v1/voice/catalog")
+            assert cat_resp.status == 200, f"Catalog failed: {cat_resp.status}"
+            cat_data = await cat_resp.json()
+            assert "voices" in cat_data, "Expected voices list"
+            assert len(cat_data["voices"]) >= 8, f"Expected at least 8 voices, got {len(cat_data['voices'])}"
+            assert "active_voice" in cat_data, "Expected active_voice"
             
-            # First message should be ready handshake
-            msg = await ws.receive_json(timeout=5)
-            assert msg.get("type") == "ready", f"Expected ready message, got {msg}"
-            assert msg.get("voice") == "Charon", f"Expected voice Charon, got {msg.get('voice')}"
-            
-            # Second message should be binary PCM chime audio
-            chime_bin = await ws.receive(timeout=5)
-            assert chime_bin.type == WSMsgType.BINARY, f"Expected binary chime, got {chime_bin.type}"
-            assert len(chime_bin.data) > 0, "Expected non-empty chime bytes"
+            # Verify required voices exist
+            voice_names = {v["name"] for v in cat_data["voices"]}
+            for req in ["Charon", "Puck", "Fenrir", "Orus", "Aoede", "Kore", "Leda", "Zephyr"]:
+                assert req in voice_names, f"Expected voice {req} in catalog"
 
-            # Send sample PCM audio chunk (16-bit PCM silence: 320 bytes = 10ms at 16kHz)
-            dummy_pcm = b"\x00" * 320
-            await ws.send_bytes(dummy_pcm)
-            
-            # Send text / control message
-            await ws.send_json({"type": "mute", "muted": True})
-            ack = await ws.receive_json(timeout=5)
-            assert ack.get("type") == "state", f"Expected state update, got {ack}"
-            assert ack.get("muted") is True, "Expected muted to be True"
-            
-            # Close cleanly
-            await ws.close()
-            print("WebSocket live voice tests passed.")
+            # 2. Select a voice with CSRF token
+            headers = {
+                "X-CSRF-Token": csrf_token,
+                "Origin": f"http://127.0.0.1:{port}"
+            } if csrf_token else {}
+            sel_resp = await client.post(
+                f"http://127.0.0.1:{port}/api/v1/voice/select",
+                headers=headers,
+                json={"voice": "Charon"}
+            )
+            assert sel_resp.status == 200, f"Voice select failed: {sel_resp.status}"
+            sel_data = await sel_resp.json()
+            assert sel_data.get("success") is True, f"Select not successful: {sel_data}"
+            assert sel_data.get("active_voice") == "Charon", f"Expected active Charon, got {sel_data.get('active_voice')}"
+
+            print("Voice catalog and selection tests passed.")
         finally:
             await client.close()
             await runner.cleanup()

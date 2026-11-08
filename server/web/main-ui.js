@@ -870,250 +870,115 @@ await window.mainV1.ready;
       } catch(e) {}
     }
 
-    // Bi-directional Live Voice Streaming Controller (Gemini Live)
-    function initLiveVoice() {
-      const btnLiveVoice = document.getElementById('btn-live-voice');
-      const voiceSelect = document.getElementById('voice-select');
-      if (!btnLiveVoice) return;
+    // Official Antigravity AI Voice Picker Controller
+    function initVoicePicker() {
+      const btnOpenVoiceDialog = document.getElementById('btn-open-voice-dialog');
+      const voicePickerDialog = document.getElementById('voice-picker-dialog');
+      const btnCloseVoicePicker = document.getElementById('btn-close-voice-picker');
+      const btnCloseVoicePickerTop = document.getElementById('btn-close-voice-picker-top');
+      const drawerActiveVoiceName = document.getElementById('drawer-active-voice-name');
+      const voiceCardsContainer = document.getElementById('voice-cards-container');
 
-      let ws = null;
-      let audioCtx = null;
-      let mediaStream = null;
-      let isLiveActive = false;
+      function openVoicePicker() {
+        if (!voicePickerDialog) return;
+        closeDrawer();
+        if (typeof voicePickerDialog.showModal === 'function') {
+          voicePickerDialog.showModal();
+        } else {
+          voicePickerDialog.setAttribute('open', '');
+        }
+        announce('تم فتح نافذة اختيار أصوات الذكاء الاصطناعي');
+      }
 
-      // Populate voice catalog from server
-      (async () => {
+      function closeVoicePicker() {
+        if (!voicePickerDialog) return;
+        if (typeof voicePickerDialog.close === 'function') {
+          voicePickerDialog.close();
+        } else {
+          voicePickerDialog.removeAttribute('open');
+        }
+      }
+
+      if (btnOpenVoiceDialog) {
+        btnOpenVoiceDialog.addEventListener('click', openVoicePicker);
+      }
+      if (btnCloseVoicePicker) {
+        btnCloseVoicePicker.addEventListener('click', closeVoicePicker);
+      }
+      if (btnCloseVoicePickerTop) {
+        btnCloseVoicePickerTop.addEventListener('click', closeVoicePicker);
+      }
+
+      // Fetch active voice and populate catalog
+      async function refreshVoiceCatalog() {
         try {
           const fetcher = window.mainV1Fetch || window.fetch;
           const resp = await fetcher('/api/v1/voice/catalog');
-          if (resp.ok && voiceSelect) {
+          if (resp.ok) {
             const data = await resp.json();
-            if (Array.isArray(data.voices) && data.voices.length > 0) {
-              voiceSelect.innerHTML = '';
+            const activeVoice = data.active_voice || data.default || 'Charon';
+            if (drawerActiveVoiceName) {
+              drawerActiveVoiceName.textContent = activeVoice;
+            }
+            if (voiceCardsContainer && Array.isArray(data.voices) && data.voices.length > 0) {
+              voiceCardsContainer.innerHTML = '';
               data.voices.forEach(v => {
-                const opt = document.createElement('option');
-                opt.value = v.name;
-                opt.textContent = `${v.name} (${v.persona_ar || v.persona_en})`;
-                if (v.name === (data.default || 'Puck')) opt.selected = true;
-                voiceSelect.appendChild(opt);
+                const card = document.createElement('div');
+                card.className = 'voice-card-item';
+                card.style.cssText = 'padding:10px; border:1px solid var(--border-color); border-radius:8px; display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;';
+                const isSelected = v.name.toLowerCase() === activeVoice.toLowerCase();
+                if (isSelected) {
+                  card.style.borderColor = 'var(--accent-blue)';
+                  card.style.backgroundColor = 'rgba(66, 133, 244, 0.08)';
+                }
+                const isMale = v.gender === 'male';
+                const genderBadge = isMale 
+                  ? '<span style="font-size:0.8rem; background:rgba(66,133,244,0.15); color:var(--accent-blue); padding:2px 6px; border-radius:4px; margin-right:6px;">رجالي</span>'
+                  : '<span style="font-size:0.8rem; background:rgba(235,67,149,0.15); color:#ec407a; padding:2px 6px; border-radius:4px; margin-right:6px;">أنثوي</span>';
+                
+                card.innerHTML = ;
+                voiceCardsContainer.appendChild(card);
               });
+              attachVoiceSelectHandlers();
             }
           }
-        } catch (err) {
-          console.warn('Voice catalog fetch warning:', err);
+        } catch (e) {
+          console.warn('Could not load voice catalog:', e);
         }
-      })();
-
-      let nextPlaybackTime = 0;
-      const activePlaybackSources = [];
-
-      function stopAudioPlayback() {
-        activePlaybackSources.forEach(s => {
-          try { s.stop(); } catch (_) {}
-        });
-        activePlaybackSources.length = 0;
-        if (audioCtx) nextPlaybackTime = audioCtx.currentTime;
       }
 
-      function playPcmBytes(pcmBytes, sampleRate = 24000) {
-        if (!pcmBytes || pcmBytes.byteLength === 0) return;
-        if (!audioCtx || audioCtx.state === 'closed') return;
-        if (audioCtx.state === 'suspended') {
-          audioCtx.resume();
-        }
-        const numSamples = Math.floor(pcmBytes.byteLength / 2);
-        const dataView = new DataView(pcmBytes.buffer, pcmBytes.byteOffset, numSamples * 2);
-        const float32 = new Float32Array(numSamples);
-        for (let i = 0; i < numSamples; i++) {
-          const int16 = dataView.getInt16(i * 2, true);
-          float32[i] = int16 / 32768.0;
-        }
-
-        const buffer = audioCtx.createBuffer(1, float32.length, sampleRate);
-        buffer.copyToChannel(float32, 0);
-
-        const source = audioCtx.createBufferSource();
-        source.buffer = buffer;
-        source.connect(audioCtx.destination);
-
-        const now = audioCtx.currentTime;
-        const startAt = Math.max(now, nextPlaybackTime);
-        source.start(startAt);
-        nextPlaybackTime = startAt + buffer.duration;
-        activePlaybackSources.push(source);
-        source.onended = () => {
-          const idx = activePlaybackSources.indexOf(source);
-          if (idx !== -1) activePlaybackSources.splice(idx, 1);
-        };
-      }
-
-      async function stopLiveVoice() {
-        if (!isLiveActive) return;
-        isLiveActive = false;
-        stopAudioPlayback();
-        if (ws) {
-          try { ws.close(); } catch (_) {}
-          ws = null;
-        }
-        if (mediaStream) {
-          try { mediaStream.getTracks().forEach(t => t.stop()); } catch (_) {}
-          mediaStream = null;
-        }
-        if (audioCtx && audioCtx.state !== 'closed') {
-          try { await audioCtx.close(); } catch (_) {}
-          audioCtx = null;
-        }
-        btnLiveVoice.setAttribute('aria-pressed', 'false');
-        btnLiveVoice.classList.remove('live-active');
-        btnLiveVoice.innerHTML = '<span aria-hidden="true">🎙️</span> بدء البث المباشر';
-        announce('تم إيقاف البث المباشر');
-      }
-
-      async function startLiveVoice() {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          announce('المتصفح لا يدعم التقاط الصوت المباشر');
-          return;
-        }
-        try {
-          announce('جاري طلب إذن الميكروفون والاتصال...');
-          try {
-            mediaStream = await navigator.mediaDevices.getUserMedia({
-              audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-              }
-            });
-          } catch (e1) {
-            console.warn('Advanced audio constraints failed, falling back to basic audio:', e1);
-            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          }
-
-          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-          try {
-            audioCtx = new AudioContextClass({ sampleRate: 24000 });
-          } catch (eCtx) {
-            audioCtx = new AudioContextClass();
-          }
-          if (audioCtx.state === 'suspended') {
-            await audioCtx.resume();
-          }
-          nextPlaybackTime = audioCtx.currentTime;
-          activePlaybackSources.length = 0;
-
-          const selectedVoice = (voiceSelect && voiceSelect.value) ? voiceSelect.value : 'Puck';
-          const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-          const wsUrl = `${proto}//${location.host}/api/v1/voice/live?voice=${encodeURIComponent(selectedVoice)}`;
-          ws = new WebSocket(wsUrl);
-          ws.binaryType = 'arraybuffer';
-
-          ws.onopen = () => {
-            isLiveActive = true;
-            btnLiveVoice.setAttribute('aria-pressed', 'true');
-            btnLiveVoice.classList.add('live-active');
-            btnLiveVoice.innerHTML = '<span aria-hidden="true">🔴</span> إيقاف البث المباشر';
-            announce(`تم بدء البث المباشر بصوت ${selectedVoice}، المايك يعمل الآن`);
-          };
-
-          ws.onmessage = (event) => {
+      function attachVoiceSelectHandlers() {
+        const selectButtons = document.querySelectorAll('.btn-select-voice');
+        selectButtons.forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const voiceName = btn.getAttribute('data-voice');
+            if (!voiceName) return;
             try {
-              if (event.data instanceof ArrayBuffer) {
-                let pcm = new Uint8Array(event.data);
-                if (pcm.length > 2 && pcm[0] === 0xAA && pcm[1] === 0x01) {
-                  pcm = pcm.subarray(2);
-                }
-                playPcmBytes(pcm, 24000);
-              } else if (typeof event.data === 'string') {
-                const msg = JSON.parse(event.data);
-                if (msg.type === 'transcript') {
-                  announce(`${msg.sender === 'user' ? 'أنت' : 'النموذج'}: ${msg.text}`);
-                } else if (msg.type === 'interrupted') {
-                  stopAudioPlayback();
-                  announce('تمت مقاطعة النموذج');
-                } else if (msg.type === 'closed') {
-                  stopLiveVoice();
-                }
+              const fetcher = window.mainV1Fetch || window.fetch;
+              const resp = await fetcher('/api/v1/voice/select', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ voice: voiceName })
+              });
+              if (resp.ok) {
+                if (drawerActiveVoiceName) drawerActiveVoiceName.textContent = voiceName;
+                announce();
+                refreshVoiceCatalog();
+                setTimeout(closeVoicePicker, 500);
               }
             } catch (err) {
-              console.warn('Live voice message error:', err);
+              console.error('Error selecting voice:', err);
+              announce('حدث خطأ أثناء حفظ الصوت');
             }
-          };
-
-          ws.onclose = () => {
-            if (isLiveActive) stopLiveVoice();
-          };
-
-          ws.onerror = (err) => {
-            console.error('Live voice websocket error:', err);
-            stopLiveVoice();
-          };
-
-          const inputSampleRate = audioCtx.sampleRate || 48000;
-          const source = audioCtx.createMediaStreamSource(mediaStream);
-          const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-          const muteGain = audioCtx.createGain();
-          muteGain.gain.value = 0.0;
-          source.connect(processor);
-          processor.connect(muteGain);
-          muteGain.connect(audioCtx.destination);
-
-          processor.onaudioprocess = (e) => {
-            if (!isLiveActive || !ws || ws.readyState !== WebSocket.OPEN) return;
-            const inputData = e.inputBuffer.getChannelData(0);
-
-            let sumSquares = 0;
-            for (let i = 0; i < inputData.length; i++) sumSquares += inputData[i] * inputData[i];
-            const rms = Math.sqrt(sumSquares / inputData.length);
-
-            // Acoustic Echo & Loopback Protection:
-            // Do not send mic audio while model is speaking unless user explicitly interrupts
-            if (activePlaybackSources.length > 0) {
-              if (rms > 0.12) {
-                stopAudioPlayback();
-                ws.send(JSON.stringify({ type: 'interrupt' }));
-              } else {
-                return;
-              }
-            }
-
-            let samples = inputData;
-            if (inputSampleRate !== 16000) {
-              const ratio = inputSampleRate / 16000;
-              const newLength = Math.round(inputData.length / ratio);
-              const downsampled = new Float32Array(newLength);
-              for (let i = 0; i < newLength; i++) {
-                downsampled[i] = inputData[Math.min(Math.round(i * ratio), inputData.length - 1)];
-              }
-              samples = downsampled;
-            }
-            const pcm16 = new Int16Array(samples.length);
-            for (let i = 0; i < samples.length; i++) {
-              const s = Math.max(-1, Math.min(1, samples[i]));
-              pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-            }
-            ws.send(pcm16.buffer);
-          };
-
-        } catch (err) {
-          console.error('Start live voice error:', err);
-          const errName = err ? (err.name || '') : '';
-          const errMsg = err ? (err.message || '') : '';
-          const detail = errName ? `${errName}: ${errMsg}` : String(err);
-          announce('تعذر بدء البث المباشر: ' + (detail || 'تأكد من منح إذن الميكروفون'));
-          stopLiveVoice();
-        }
+          });
+        });
       }
 
-      btnLiveVoice.addEventListener('click', () => {
-        if (isLiveActive) {
-          stopLiveVoice();
-        } else {
-          startLiveVoice();
-        }
-      });
+      attachVoiceSelectHandlers();
+      refreshVoiceCatalog();
     }
 
-    initLiveVoice();
+    initVoicePicker();
 
 
 

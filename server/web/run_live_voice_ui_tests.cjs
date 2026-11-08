@@ -9,24 +9,24 @@ const JS_PATH = path.join(ROOT, 'server', 'web', 'main-ui.js');
 function testHtmlControls() {
   const html = fs.readFileSync(HTML_PATH, 'utf-8');
   
-  assert(html.includes('id="btn-live-voice"'), 'index.html must have #btn-live-voice button');
-  assert(html.includes('aria-pressed="false"'), '#btn-live-voice must start with aria-pressed="false"');
-  assert(html.includes('بدء البث المباشر'), '#btn-live-voice must have accessible Arabic label بدء البث المباشر');
-  assert(html.includes('id="voice-select"'), 'index.html must have #voice-select voice dropdown');
+  assert(html.includes('id="btn-open-voice-dialog"'), 'index.html must have #btn-open-voice-dialog button in drawer');
+  assert(html.includes('id="voice-picker-dialog"'), 'index.html must have #voice-picker-dialog modal');
+  assert(html.includes('id="drawer-active-voice-name"'), 'index.html must have active voice badge');
+  assert(html.includes('btn-select-voice'), 'index.html must have voice select buttons');
   
-  console.log('HTML controls tests passed.');
+  console.log('HTML voice controls tests passed.');
 }
 
 function testJsClient() {
   const js = fs.readFileSync(JS_PATH, 'utf-8');
   
-  assert(js.includes('LiveVoice') || js.includes('live-voice'), 'app.js must implement live voice streaming logic');
-  assert(js.includes('getUserMedia'), 'app.js must call getUserMedia for microphone');
-  assert(js.includes('echoCancellation'), 'app.js must specify echoCancellation: true for clean voice duplex');
-  assert(js.includes('/api/v1/voice/live'), 'app.js must connect to /api/v1/voice/live websocket');
-  assert(js.includes('sr-announcer'), 'app.js must announce voice state changes to screen readers');
+  assert(js.includes('initVoicePicker'), 'main-ui.js must implement initVoicePicker');
+  assert(js.includes('/api/v1/voice/catalog'), 'main-ui.js must fetch /api/v1/voice/catalog');
+  assert(js.includes('/api/v1/voice/select'), 'main-ui.js must save selected voice to /api/v1/voice/select');
+  assert(js.includes('voice-picker-dialog'), 'main-ui.js must manage voice picker modal');
+  assert(js.includes('announce'), 'main-ui.js must announce voice changes to screen readers');
   
-  console.log('JS live voice client tests passed.');
+  console.log('JS voice picker client tests passed.');
 }
 
 try {
