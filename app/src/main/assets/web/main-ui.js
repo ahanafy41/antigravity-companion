@@ -1025,14 +1025,7 @@ await window.mainV1.ready;
                 playPcmBytes(pcm, 24000);
               } else if (typeof event.data === 'string') {
                 const msg = JSON.parse(event.data);
-                if (msg.type === 'audio' && msg.data) {
-                  const binStr = atob(msg.data);
-                  const bytes = new Uint8Array(binStr.length);
-                  for (let i = 0; i < binStr.length; i++) {
-                    bytes[i] = binStr.charCodeAt(i);
-                  }
-                  playPcmBytes(bytes, msg.sample_rate || 24000);
-                } else if (msg.type === 'transcript') {
+                if (msg.type === 'transcript') {
                   announce(`${msg.sender === 'user' ? 'أنت' : 'النموذج'}: ${msg.text}`);
                 } else if (msg.type === 'interrupted') {
                   stopAudioPlayback();
@@ -1071,9 +1064,16 @@ await window.mainV1.ready;
             let sumSquares = 0;
             for (let i = 0; i < inputData.length; i++) sumSquares += inputData[i] * inputData[i];
             const rms = Math.sqrt(sumSquares / inputData.length);
-            if (rms > 0.08 && activePlaybackSources.length > 0) {
-              stopAudioPlayback();
-              ws.send(JSON.stringify({ type: 'interrupt' }));
+
+            // Acoustic Echo & Loopback Protection:
+            // Do not send mic audio while model is speaking unless user explicitly interrupts
+            if (activePlaybackSources.length > 0) {
+              if (rms > 0.12) {
+                stopAudioPlayback();
+                ws.send(JSON.stringify({ type: 'interrupt' }));
+              } else {
+                return;
+              }
             }
 
             let samples = inputData;

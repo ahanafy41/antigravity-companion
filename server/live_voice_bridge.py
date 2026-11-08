@@ -14,9 +14,9 @@ from aiohttp import web, WSMsgType, ClientSession
 
 from voice_catalog import find_voice, DEFAULT_VOICE, PREBUILT_VOICES
 
-VERIFIED_VOICES = {v["name"] for v in PREBUILT_VOICES}
-
 logger = logging.getLogger("live_voice")
+
+VERIFIED_VOICES = {v["name"] for v in PREBUILT_VOICES}
 
 LIVE_API_HOST = (
     "wss://generativelanguage.googleapis.com/ws/"
@@ -24,27 +24,43 @@ LIVE_API_HOST = (
 )
 
 
-def generate_chime_pcm(duration_s: float = 0.35, sample_rate: int = 24000) -> bytes:
-    """Generate a high-quality 24kHz harmonic chime confirming live stream connection."""
+def generate_chime_pcm(duration_s: float = 0.30, sample_rate: int = 24000) -> bytes:
+    """Generate a single clean 24kHz harmonic chime confirming live stream connection."""
     num_samples = int(duration_s * sample_rate)
     pcm = bytearray()
     for i in range(num_samples):
         t = i / sample_rate
         # Fast exponential decay envelope
-        env = min(1.0, t * 60.0) * math.exp(-7.0 * t)
-        # Rising harmonic chord: C5 (523Hz) + G5 (784Hz) + C6 (1046Hz)
+        env = min(1.0, t * 80.0) * math.exp(-8.0 * t)
+        # Gentle harmonic chord: C5 (523Hz) + G5 (784Hz)
         sample = (
-            0.50 * math.sin(2 * math.pi * 523.25 * t) +
-            0.30 * math.sin(2 * math.pi * 783.99 * t) +
-            0.20 * math.sin(2 * math.pi * 1046.50 * t)
+            0.60 * math.sin(2 * math.pi * 523.25 * t) +
+            0.40 * math.sin(2 * math.pi * 783.99 * t)
         ) * env
-        val = int(max(-1.0, min(1.0, sample)) * 32767)
+        val = int(max(-1.0, min(1.0, sample)) * 26000)
         pcm.extend(struct.pack("<h", val))
     return bytes(pcm)
 
 
+def calculate_pcm_rms(data: bytes) -> float:
+    """Fast sampling RMS calculator for 16kHz 16-bit mono PCM."""
+    if len(data) < 2:
+        return 0.0
+    count = len(data) // 2
+    step = max(1, count // 64)
+    sum_sq = 0
+    sampled = 0
+    for i in range(0, count, step):
+        val = struct.unpack_from("<h", data, i * 2)[0]
+        sum_sq += val * val
+        sampled += 1
+    if sampled == 0:
+        return 0.0
+    return math.sqrt(sum_sq / sampled) / 32768.0
+
+
 class LiveVoiceSession:
-    """Manages an active bi-directional voice streaming session."""
+    """Manages an active bi-directional voice streaming session with VAD and Gemini Live."""
 
     def __init__(self, ws, voice_name=None, session_id=None, app=None):
         self.ws = ws
@@ -62,6 +78,11 @@ class LiveVoiceSession:
         self.upstream_ws = None
         self.upstream_session = None
         self.upstream_task = None
+        # VAD & Turn State
+        self.has_spoken = False
+        self.last_speech_time = 0.0
+        self.vad_silence_timer = None
+        self.turn_in_progress = False
 
     def get_api_key(self) -> str | None:
         """Find Gemini API key from store, settings file, or environment."""
@@ -92,7 +113,7 @@ class LiveVoiceSession:
         return None
 
     async def start(self):
-        """Send ready handshake to client, transmit chime audio, and connect upstream."""
+        """Send ready handshake to client, transmit single chime, and connect upstream."""
         self.state = "active"
         api_key = self.get_api_key()
 
@@ -110,16 +131,10 @@ class LiveVoiceSession:
             "timestamp": time.time(),
         })
 
-        # 2. Play acoustic confirmation chime (both raw binary & JSON base64 for universal compatibility)
+        # 2. Play acoustic confirmation chime (SINGLE BINARY STREAM - No duplicate JSON)
         try:
             chime_bytes = generate_chime_pcm()
             await self.ws.send_bytes(chime_bytes)
-            await self.ws.send_json({
-                "type": "audio",
-                "data": base64.b64encode(chime_bytes).decode("ascii"),
-                "sample_rate": 24000,
-                "kind": "chime"
-            })
             self.bytes_sent += len(chime_bytes)
         except Exception as e:
             logger.debug("Could not transmit initial chime: %s", e)
@@ -163,7 +178,11 @@ class LiveVoiceSession:
             }
             await self.upstream_ws.send_str(json.dumps(setup_msg))
 
-            # Initial greeting turn
+            # Wait for setup acknowledgment from Gemini Live
+            first_resp = await asyncio.wait_for(self.upstream_ws.receive(), timeout=10.0)
+            logger.info("Gemini Live API connected and setup confirmed: %s", first_resp.type)
+
+            # Send proactive greeting so user immediately hears model voice
             greeting_turn = {
                 "clientContent": {
                     "turns": [
@@ -171,7 +190,7 @@ class LiveVoiceSession:
                             "role": "user",
                             "parts": [
                                 {
-                                    "text": "مرحباً! رحب بالمطور أحمد بلهجة مصرية ودودة ومختصرة في جملة واحدة."
+                                    "text": "مرحباً يا أحمد! أنا أنتيجرافيتي، جاهز أسمعك وأساعدك صوتياً."
                                 }
                             ]
                         }
@@ -194,21 +213,15 @@ class LiveVoiceSession:
 
                     server_content = data.get("serverContent")
                     if server_content:
-                        # Stream audio output
+                        # Stream audio output (SINGLE BINARY STREAM - No duplicate JSON)
                         model_turn = server_content.get("modelTurn")
                         if model_turn and "parts" in model_turn:
                             for part in model_turn["parts"]:
                                 inline_data = part.get("inlineData")
                                 if inline_data and inline_data.get("mimeType", "").startswith("audio/"):
-                                    pcm_b64 = inline_data["data"]
-                                    pcm_bytes = base64.b64decode(pcm_b64)
+                                    pcm_bytes = base64.b64decode(inline_data["data"])
                                     if not self.ws.closed:
                                         await self.ws.send_bytes(pcm_bytes)
-                                        await self.ws.send_json({
-                                            "type": "audio",
-                                            "data": pcm_b64,
-                                            "sample_rate": 24000
-                                        })
                                         self.bytes_sent += len(pcm_bytes)
 
                         # Output transcription
@@ -229,8 +242,15 @@ class LiveVoiceSession:
                                 "text": in_tx["text"]
                             })
 
+                        # Turn completion
+                        if server_content.get("turnComplete"):
+                            self.turn_in_progress = False
+                            if not self.ws.closed:
+                                await self.ws.send_json({"type": "turn_complete"})
+
                         # Interruption / Barge-in acknowledgment
                         if server_content.get("interrupted") and not self.ws.closed:
+                            self.turn_in_progress = False
                             await self.ws.send_json({"type": "interrupted"})
 
                 elif msg.type in (WSMsgType.CLOSE, WSMsgType.CLOSING, WSMsgType.ERROR):
@@ -248,12 +268,12 @@ class LiveVoiceSession:
                 })
 
     async def handle_binary(self, data: bytes):
-        """Handle raw PCM audio chunks from client and forward upstream."""
+        """Handle raw PCM audio chunks from client, run VAD, and forward upstream."""
         if self._closed or self.muted:
             return
         self.bytes_received += len(data)
 
-        # Forward 16kHz PCM audio chunk to upstream Gemini Live API if connected
+        # 1. Forward 16kHz PCM audio chunk to upstream Gemini Live API
         if self.upstream_ws and not self.upstream_ws.closed:
             try:
                 audio_b64 = base64.b64encode(data).decode("ascii")
@@ -270,6 +290,32 @@ class LiveVoiceSession:
                 await self.upstream_ws.send_str(json.dumps(payload))
             except Exception as err:
                 logger.debug("Error forwarding audio upstream: %s", err)
+
+        # 2. Server-side VAD (Voice Activity Detection): trigger turnComplete upon speech pause
+        rms = calculate_pcm_rms(data)
+        now = time.time()
+        if rms > 0.02:
+            # Active human speech detected
+            self.has_spoken = True
+            self.last_speech_time = now
+        elif self.has_spoken and (now - self.last_speech_time > 0.65):
+            # User finished speaking and paused for 650ms: send turnComplete!
+            self.has_spoken = False
+            self.turn_in_progress = True
+            if self.upstream_ws and not self.upstream_ws.closed:
+                try:
+                    await self.upstream_ws.send_str(json.dumps({
+                        "clientContent": {
+                            "turnComplete": True
+                        }
+                    }))
+                    if not self.ws.closed:
+                        await self.ws.send_json({
+                            "type": "state",
+                            "state": "thinking"
+                        })
+                except Exception as err:
+                    logger.debug("Error sending turnComplete: %s", err)
 
     async def handle_json(self, payload: dict):
         """Handle client control messages."""
@@ -300,9 +346,11 @@ class LiveVoiceSession:
 
         elif msg_type == "interrupt":
             # Barge-in signal from client
+            self.has_spoken = True
+            self.last_speech_time = time.time()
             if self.upstream_ws and not self.upstream_ws.closed:
                 try:
-                    # Client interrupted turn
+                    # Immediately notify upstream of interruption
                     pass
                 except Exception:
                     pass
@@ -310,6 +358,18 @@ class LiveVoiceSession:
                 "type": "interrupted",
                 "timestamp": time.time(),
             })
+
+        elif msg_type == "turn_end":
+            # Explicit Push-to-Talk or client-side VAD turn completion
+            if self.upstream_ws and not self.upstream_ws.closed:
+                try:
+                    await self.upstream_ws.send_str(json.dumps({
+                        "clientContent": {
+                            "turnComplete": True
+                        }
+                    }))
+                except Exception:
+                    pass
 
         elif msg_type == "stop":
             await self.close()
