@@ -37,6 +37,16 @@ async def test_live_voice_websocket():
             assert msg.get("type") == "ready", f"Expected ready message, got {msg}"
             assert msg.get("voice") == "Charon", f"Expected voice Charon, got {msg.get('voice')}"
             
+            # Second message should be binary PCM chime audio
+            chime_bin = await ws.receive(timeout=5)
+            assert chime_bin.type == WSMsgType.BINARY, f"Expected binary chime, got {chime_bin.type}"
+            assert len(chime_bin.data) > 0, "Expected non-empty chime bytes"
+
+            # Third message should be JSON audio announcement
+            chime_json = await ws.receive_json(timeout=5)
+            assert chime_json.get("type") == "audio", f"Expected audio message, got {chime_json}"
+            assert chime_json.get("sample_rate") == 24000, "Expected 24kHz sample rate"
+
             # Send sample PCM audio chunk (16-bit PCM silence: 320 bytes = 10ms at 16kHz)
             dummy_pcm = b"\x00" * 320
             await ws.send_bytes(dummy_pcm)

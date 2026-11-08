@@ -3,6 +3,7 @@
 # Antigravity Server Launcher (Port 7681)
 # ==============================================================================
 export PATH="/data/data/com.termux/files/usr/bin:$PATH"
+export PULSE_SERVER="127.0.0.1:4713"
 export HOME="/data/data/com.termux/files/home"
 export GODEBUG="netdns=cgo"
 export SSL_CERT_FILE="/data/data/com.termux/files/usr/etc/tls/cert.pem"

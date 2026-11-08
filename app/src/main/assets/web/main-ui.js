@@ -904,9 +904,53 @@ await window.mainV1.ready;
         }
       })();
 
+      let nextPlaybackTime = 0;
+      const activePlaybackSources = [];
+
+      function stopAudioPlayback() {
+        activePlaybackSources.forEach(s => {
+          try { s.stop(); } catch (_) {}
+        });
+        activePlaybackSources.length = 0;
+        if (audioCtx) nextPlaybackTime = audioCtx.currentTime;
+      }
+
+      function playPcmBytes(pcmBytes, sampleRate = 24000) {
+        if (!pcmBytes || pcmBytes.byteLength === 0) return;
+        if (!audioCtx || audioCtx.state === 'closed') return;
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        const numSamples = Math.floor(pcmBytes.byteLength / 2);
+        const dataView = new DataView(pcmBytes.buffer, pcmBytes.byteOffset, numSamples * 2);
+        const float32 = new Float32Array(numSamples);
+        for (let i = 0; i < numSamples; i++) {
+          const int16 = dataView.getInt16(i * 2, true);
+          float32[i] = int16 / 32768.0;
+        }
+
+        const buffer = audioCtx.createBuffer(1, float32.length, sampleRate);
+        buffer.copyToChannel(float32, 0);
+
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+        const startAt = Math.max(now, nextPlaybackTime);
+        source.start(startAt);
+        nextPlaybackTime = startAt + buffer.duration;
+        activePlaybackSources.push(source);
+        source.onended = () => {
+          const idx = activePlaybackSources.indexOf(source);
+          if (idx !== -1) activePlaybackSources.splice(idx, 1);
+        };
+      }
+
       async function stopLiveVoice() {
         if (!isLiveActive) return;
         isLiveActive = false;
+        stopAudioPlayback();
         if (ws) {
           try { ws.close(); } catch (_) {}
           ws = null;
@@ -945,10 +989,23 @@ await window.mainV1.ready;
             mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           }
 
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          try {
+            audioCtx = new AudioContextClass({ sampleRate: 24000 });
+          } catch (eCtx) {
+            audioCtx = new AudioContextClass();
+          }
+          if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+          }
+          nextPlaybackTime = audioCtx.currentTime;
+          activePlaybackSources.length = 0;
+
           const selectedVoice = (voiceSelect && voiceSelect.value) ? voiceSelect.value : 'Puck';
           const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
           const wsUrl = `${proto}//${location.host}/api/v1/voice/live?voice=${encodeURIComponent(selectedVoice)}`;
           ws = new WebSocket(wsUrl);
+          ws.binaryType = 'arraybuffer';
 
           ws.onopen = () => {
             isLiveActive = true;
@@ -960,13 +1017,33 @@ await window.mainV1.ready;
 
           ws.onmessage = (event) => {
             try {
-              if (typeof event.data === 'string') {
+              if (event.data instanceof ArrayBuffer) {
+                let pcm = new Uint8Array(event.data);
+                if (pcm.length > 2 && pcm[0] === 0xAA && pcm[1] === 0x01) {
+                  pcm = pcm.subarray(2);
+                }
+                playPcmBytes(pcm, 24000);
+              } else if (typeof event.data === 'string') {
                 const msg = JSON.parse(event.data);
-                if (msg.type === 'transcript') {
+                if (msg.type === 'audio' && msg.data) {
+                  const binStr = atob(msg.data);
+                  const bytes = new Uint8Array(binStr.length);
+                  for (let i = 0; i < binStr.length; i++) {
+                    bytes[i] = binStr.charCodeAt(i);
+                  }
+                  playPcmBytes(bytes, msg.sample_rate || 24000);
+                } else if (msg.type === 'transcript') {
                   announce(`${msg.sender === 'user' ? 'أنت' : 'النموذج'}: ${msg.text}`);
+                } else if (msg.type === 'interrupted') {
+                  stopAudioPlayback();
+                  announce('تمت مقاطعة النموذج');
+                } else if (msg.type === 'closed') {
+                  stopLiveVoice();
                 }
               }
-            } catch (_) {}
+            } catch (err) {
+              console.warn('Live voice message error:', err);
+            }
           };
 
           ws.onclose = () => {
@@ -978,25 +1055,27 @@ await window.mainV1.ready;
             stopLiveVoice();
           };
 
-          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-          try {
-            audioCtx = new AudioContextClass({ sampleRate: 16000 });
-          } catch (eCtx) {
-            audioCtx = new AudioContextClass();
-          }
-          if (audioCtx.state === 'suspended') {
-            await audioCtx.resume();
-          }
-
           const inputSampleRate = audioCtx.sampleRate || 48000;
           const source = audioCtx.createMediaStreamSource(mediaStream);
           const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+          const muteGain = audioCtx.createGain();
+          muteGain.gain.value = 0.0;
           source.connect(processor);
-          processor.connect(audioCtx.destination);
+          processor.connect(muteGain);
+          muteGain.connect(audioCtx.destination);
 
           processor.onaudioprocess = (e) => {
             if (!isLiveActive || !ws || ws.readyState !== WebSocket.OPEN) return;
             const inputData = e.inputBuffer.getChannelData(0);
+
+            let sumSquares = 0;
+            for (let i = 0; i < inputData.length; i++) sumSquares += inputData[i] * inputData[i];
+            const rms = Math.sqrt(sumSquares / inputData.length);
+            if (rms > 0.08 && activePlaybackSources.length > 0) {
+              stopAudioPlayback();
+              ws.send(JSON.stringify({ type: 'interrupt' }));
+            }
+
             let samples = inputData;
             if (inputSampleRate !== 16000) {
               const ratio = inputSampleRate / 16000;
