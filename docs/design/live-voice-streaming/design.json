@@ -1,0 +1,221 @@
+{
+  "version": 2,
+  "slug": "live-voice-streaming",
+  "title": "Bi-directional Live Voice Streaming, Prebuilt Voice Catalog, and Android Microphone Bridge",
+  "mode": "repo",
+  "status": "draft",
+  "decided": null,
+  "updatedAt": "2026-11-08",
+
+  "context": {
+    "problem": "The Antigravity Companion app and Termux CLI currently lack interactive real-time voice conversations for two architectural reasons: (1) Android security boundaries: Termux lacks the RECORD_AUDIO permission in its manifest and Android refuses raw audio capture from CLI processes, while the Companion Android App's WebChromeClient hardcodes `onPermissionRequest(request::deny)` and omits RECORD_AUDIO; and (2) Absence of a full-duplex bi-directional audio pipeline in the Companion WebUI: The Companion server on port 7681 does not expose a live WebSocket voice stream, the WebUI has no accessible 'Start Live Stream' button with TalkBack/Jieshuo feedback, and there is no voice selection catalog to choose from Gemini's 30 prebuilt studio voices (such as Puck, Charon, Aoede, Kore, Fenrir, and Zephyr).",
+    "constraints": [
+      "Android Security Invariant: RECORD_AUDIO must be explicitly requested in AndroidManifest.xml and dynamically granted at runtime in MainActivity.java before WebChromeClient grants RESOURCE_AUDIO_CAPTURE to origin http://127.0.0.1:7681",
+      "Screen Reader Invariant: Full WCAG 2.2 AAA accessibility for TalkBack and Jieshuo. The 'بدء البث المباشر' button must use aria-pressed, aria-label, aria-live status updates, zero decorative emoji clutter, and clear voice selector controls",
+      "Termux Mobile Bounds: Audio processing must be lightweight (< 15 MB heap, < 5% CPU on ARM64) using Web Audio API / AudioWorklet (16 kHz / 24 kHz linear 16-bit PCM or Opus) without crashing the aiohttp async event loop",
+      "Duplex Latency Target: Round-trip mouth-to-ear latency < 350ms over local WebSocket bridge to Gemini Live API",
+      "Voice Catalog Integrity: Support the 30 official Gemini prebuilt voices (Puck, Charon, Aoede, Kore, Fenrir, Zephyr, etc.) with description, tone, and persistence in companion settings"
+    ],
+    "vocabulary": [
+      "Gemini Live Protocol",
+      "Bi-directional Audio Stream",
+      "AudioWorklet",
+      "PCM Linear 16-bit",
+      "RESOURCE_AUDIO_CAPTURE",
+      "Prebuilt Voice Persona",
+      "Full-Duplex WebSocket Bridge",
+      "Voice Catalog Store"
+    ],
+    "observed": {
+      "commit": "ce12b05b7559a8e6ad5aeac8f8571eebc0d59e87",
+      "uncommittedChanges": false
+    }
+  },
+
+  "requirements": {
+    "functional": [
+      {
+        "id": "fr-1",
+        "text": "Android Permission & Web Capture Bridge: Declare `android.permission.RECORD_AUDIO` and `android.permission.MODIFY_AUDIO_SETTINGS` in AndroidManifest.xml. Update MainActivity.java to check and request runtime permission, and implement WebChromeClient.onPermissionRequest to authorize RESOURCE_AUDIO_CAPTURE exclusively for trusted companion origin.",
+        "priority": "core"
+      },
+      {
+        "id": "fr-2",
+        "text": "Accessible Live Voice Button & Control Bar: Provide a dedicated, prominent 'بدء البث المباشر' toggle button in the WebUI header/toolbar. When pressed, it requests microphone access, starts bi-directional streaming, announces live status to TalkBack/Jieshuo via aria-live, and toggles between Active, Muted, and Disconnected states.",
+        "priority": "core"
+      },
+      {
+        "id": "fr-3",
+        "text": "Bi-directional Full-Duplex WebSocket Service: Expose `/api/v1/voice/live` on companion server 7681. Handle client PCM/Opus chunks from Web Audio API, forward them to the Gemini Live upstream session, and stream received audio chunks back to the browser for low-latency playback alongside real-time transcript deltas into the chat feed.",
+        "priority": "core"
+      },
+      {
+        "id": "fr-4",
+        "text": "Gemini Prebuilt Voice Catalog & Selector: Provide a voice selector modal/dropdown containing the 30 Gemini 3.8 prebuilt studio voices (Puck, Charon, Aoede, Kore, Fenrir, Leda, Orus, Zephyr, etc.) categorized by tone (Friendly, Informative, Firm, Breeze). Store selected voice in settings and pass in Live setup configuration.",
+        "priority": "core"
+      }
+    ],
+    "nonFunctional": [
+      {
+        "id": "nfr-1",
+        "text": "Audio Latency: Client microphone buffer-to-WebSocket transmission latency under 60ms; end-to-end response speech playback initiation under 400ms.",
+        "priority": "core"
+      },
+      {
+        "id": "nfr-2",
+        "text": "Accessibility & Zero Echo: Audio stream must activate hardware echo cancellation (`echoCancellation: true, noiseSuppression: true, autoGainControl: true`) in browser getUserMedia to prevent AI speech loopback.",
+        "priority": "core"
+      },
+      {
+        "id": "nfr-3",
+        "text": "Resilience & Clean Teardown: If the network drops or the user stops voice mode, both the upstream WebSocket and local AudioContext must cleanly terminate within 100ms with zero hanging background goroutines or server locks.",
+        "priority": "core"
+      }
+    ]
+  },
+
+  "dataModel": {
+    "entities": [
+      {
+        "name": "LiveVoiceSession",
+        "description": "Represents an active bi-directional streaming voice conversation between Web Audio client and Gemini Live API.",
+        "fields": [
+          "session_id: string (UUID)",
+          "conversation_id: string (Brain trajectory ID)",
+          "voice_name: string (e.g., 'Puck', 'Charon')",
+          "sample_rate: int (16000 or 24000)",
+          "state: enum ('connecting', 'active', 'muted', 'closed')",
+          "started_at: int (epoch ms)",
+          "bytes_sent: int",
+          "bytes_received: int"
+        ]
+      },
+      {
+        "name": "PrebuiltVoiceDescriptor",
+        "description": "Catalog item representing a prebuilt voice personality available in Gemini 3.8 Live API.",
+        "fields": [
+          "id: string (e.g., 'puck', 'charon')",
+          "name: string (Display Name, e.g. 'Puck')",
+          "persona_ar: string (Arabic tone description, e.g. 'مبتهج وحيوي')",
+          "persona_en: string (English tone, e.g. 'Upbeat')",
+          "gender: string ('male', 'female', 'neutral')",
+          "pitch: string ('medium', 'low', 'high')"
+        ]
+      }
+    ]
+  },
+
+  "architectures": [
+    {
+      "id": "arch-1",
+      "title": "Architecture 1: Full-Duplex Web Audio & Server WebSocket Bridge (Recommended)",
+      "summary": "Native Android Audio Permissions + Browser Web Audio API AudioWorklet + Companion Server Duplex WebSocket Bridge to Gemini Live + Accessible Voice Selector.",
+      "rating": 9.4,
+      "strengths": [
+        "Eliminates Termux permission barrier completely: Android audio permission is held and granted by the Companion App itself directly to the WebView",
+        "Sub-150ms low latency: Web Audio API AudioWorklet captures 16kHz linear PCM chunks directly in the browser and streams via WebSocket",
+        "Hardware AEC: Utilizes Android's native acoustic echo cancellation and noise suppression via standard getUserMedia constraints",
+        "Full TalkBack & Jieshuo accessibility: Accessible 'بدء البث المباشر' button with live audio announcements and accessible voice picker dialog",
+        "Native Gemini 30 Voice Catalog integrated directly into UI settings with immediate live preview"
+      ],
+      "weaknesses": [
+        "Requires building and deploying the updated Companion Android APK with RECORD_AUDIO permission to physical devices"
+      ],
+      "components": [
+        {
+          "id": "comp-android",
+          "name": "Android Permission & WebView Host",
+          "type": "native-client",
+          "description": "Android Companion App requesting RECORD_AUDIO and granting RESOURCE_AUDIO_CAPTURE in WebChromeClient to 127.0.0.1:7681."
+        },
+        {
+          "id": "comp-webaudio",
+          "name": "Web Audio & Live UI Controller",
+          "type": "web-ui",
+          "description": "HTML5 UI with 'بدء البث المباشر' button, AudioContext/AudioWorklet PCM encoder/decoder, and Voice Picker."
+        },
+        {
+          "id": "comp-bridge",
+          "name": "Live Voice WebSocket Bridge",
+          "type": "service",
+          "description": "aiohttp WebSocket handler (/api/v1/voice/live) streaming audio chunks to/from Google Gemini Live API."
+        },
+        {
+          "id": "comp-catalog",
+          "name": "Prebuilt Voice Catalog",
+          "type": "store",
+          "description": "Catalog of 30 curated Gemini voices (Puck, Charon, Aoede, Kore, Fenrir, etc.) exposed via /api/v1/voice/catalog."
+        }
+      ]
+    },
+    {
+      "id": "arch-2",
+      "title": "Architecture 2: Native Android AudioRecord Bridge via WebMessage",
+      "summary": "Android App records raw audio natively in Java via AudioRecord, serializes Base64 over CompanionNative WebMessage, and relays to server.",
+      "rating": 6.8,
+      "strengths": [
+        "Does not rely on WebView WebRTC/getUserMedia implementation"
+      ],
+      "weaknesses": [
+        "Excessive Base64 serialization overhead on mobile CPU",
+        "Higher latency (>500ms) due to double hop over WebMessage bridge",
+        "Complex native Java thread management for AudioRecord and AudioTrack"
+      ],
+      "components": [
+        {
+          "id": "comp-arch2-native",
+          "name": "Android AudioRecord Engine",
+          "type": "native-client",
+          "description": "Java service recording raw PCM from AudioRecord."
+        }
+      ]
+    },
+    {
+      "id": "arch-3",
+      "title": "Architecture 3: Headless agy mic-serve Daemon Relay",
+      "summary": "Companion Server spawns 'agy mic-serve' as a child subprocess on port 4713 and routes audio through loopback TCP socket.",
+      "rating": 6.2,
+      "strengths": [
+        "Reuses existing agy mic-serve command line"
+      ],
+      "weaknesses": [
+        "Still blocked by Termux audio permission boundary if mic-serve is executed inside Termux",
+        "Subprocess management complexity, zombie processes, and port 4713 contention",
+        "Cannot customize voice persona or capture speech in browser without external audio routing"
+      ],
+      "components": [
+        {
+          "id": "comp-arch3-daemon",
+          "name": "agy mic-serve Subprocess",
+          "type": "process",
+          "description": "Background daemon running on 127.0.0.1:4713."
+        }
+      ]
+    }
+  ],
+
+  "decision": {
+    "recommended": "arch-1",
+    "rationale": "Architecture 1 is the cleanest, lowest-latency, and most robust solution. By declaring RECORD_AUDIO in the Companion Android App and granting RESOURCE_AUDIO_CAPTURE in WebChromeClient, the WebView acquires full native hardware microphone capabilities with built-in Echo Cancellation. Web Audio API captures 16kHz PCM chunks with near-zero latency, which aiohttp streams directly to Gemini Live API. It gives Ahmed an accessible 'بدء البث المباشر' button and a voice picker with all 30 Gemini prebuilt voices.",
+    "topCharacteristics": [
+      "Sub-250ms conversational latency",
+      "100% TalkBack & Jieshuo accessibility",
+      "Bypasses Termux permission limitation safely"
+    ]
+  },
+
+  "deepDives": [
+    {
+      "topic": "Android Microphone Permission & WebChromeClient Grant",
+      "details": "1. Add `<uses-permission android:name=\"android.permission.RECORD_AUDIO\" />` and `<uses-permission android:name=\"android.permission.MODIFY_AUDIO_SETTINGS\" />` to AndroidManifest.xml.\n2. In `MainActivity.java`: In `onCreate()` or upon user action, call `requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQUEST_RECORD_AUDIO)`.\n3. In `WebChromeClient.onPermissionRequest(PermissionRequest request)`: Check if `request.getOrigin()` matches `origins.origin()`. If origin is trusted and matches `PermissionRequest.RESOURCE_AUDIO_CAPTURE`, verify Android permission is granted and invoke `request.grant(new String[]{PermissionRequest.RESOURCE_AUDIO_CAPTURE})` on the main thread, otherwise deny."
+    },
+    {
+      "topic": "Accessible 'بدء البث المباشر' Button & Audio Feedback",
+      "details": "1. Add a dedicated accessible button in `index.html`:\n`<button id=\"btn-live-voice\" class=\"btn-icon voice-stream-btn\" aria-pressed=\"false\" aria-label=\"بدء البث المباشر، غير نشط\" aria-live=\"polite\">\n  <span class=\"voice-icon\" aria-hidden=\"true\"></span>\n  <span class=\"voice-label\">بدء البث المباشر</span>\n</button>`\n2. When activated, the button updates state to 'جاري الاتصال بالبث المباشر...', and when audio flows, it turns to 'البث المباشر نشط، انقر لكتم المايك' with `aria-pressed=\"true\"`.\n3. Include keyboard shortcut (e.g. `Ctrl+M` or dedicated action) to toggle stream/mute."
+    },
+    {
+      "topic": "Gemini 30 Prebuilt Voices Catalog & Integration",
+      "details": "The 30 Gemini 3.8 curated prebuilt voices:\n- Zephyr (Bright / مشرق)\n- Puck (Upbeat / مبتهج وحيوي)\n- Charon (Informative / إخباري هادئ)\n- Kore (Firm / حازم ورزين)\n- Fenrir (Excitable / متفاعل وحماسي)\n- Leda (Youthful / شبابي)\n- Orus (Firm / وقور)\n- Aoede (Breezy / مرح)\n- Callirrhoe (Easy-going / عفوي)\n- Autonoe (Bright / متألق)\n- Enceladus, Iapetus, Umbriel, Algieba, Despina, Erinome, Algenib, Rasalgethi, Laomedeia, Achernar, Alnilam, Schedar, Gacrux, Pulcherrima, Achird, Zubenelgenubi, Vindemiatrix, Sadachbia, Sadaltager, Sulafat.\nExposed via `/api/v1/voice/catalog` and stored in `settings.json` under `selected_voice` (default: 'Puck'). Passed upstream in Gemini Live setup `generation_config.speech_config.voice_config.prebuilt_voice_config.voice_name`."
+    }
+  ]
+}
