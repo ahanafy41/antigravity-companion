@@ -932,15 +932,18 @@ await window.mainV1.ready;
         }
         try {
           announce('جاري طلب إذن الميكروفون والاتصال...');
-          mediaStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-              channelCount: 1,
-              sampleRate: 16000
-            }
-          });
+          try {
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+              }
+            });
+          } catch (e1) {
+            console.warn('Advanced audio constraints failed, falling back to basic audio:', e1);
+            mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          }
 
           const selectedVoice = (voiceSelect && voiceSelect.value) ? voiceSelect.value : 'Puck';
           const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -975,7 +978,17 @@ await window.mainV1.ready;
             stopLiveVoice();
           };
 
-          audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          try {
+            audioCtx = new AudioContextClass({ sampleRate: 16000 });
+          } catch (eCtx) {
+            audioCtx = new AudioContextClass();
+          }
+          if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+          }
+
+          const inputSampleRate = audioCtx.sampleRate || 48000;
           const source = audioCtx.createMediaStreamSource(mediaStream);
           const processor = audioCtx.createScriptProcessor(4096, 1, 1);
           source.connect(processor);
@@ -984,9 +997,19 @@ await window.mainV1.ready;
           processor.onaudioprocess = (e) => {
             if (!isLiveActive || !ws || ws.readyState !== WebSocket.OPEN) return;
             const inputData = e.inputBuffer.getChannelData(0);
-            const pcm16 = new Int16Array(inputData.length);
-            for (let i = 0; i < inputData.length; i++) {
-              const s = Math.max(-1, Math.min(1, inputData[i]));
+            let samples = inputData;
+            if (inputSampleRate !== 16000) {
+              const ratio = inputSampleRate / 16000;
+              const newLength = Math.round(inputData.length / ratio);
+              const downsampled = new Float32Array(newLength);
+              for (let i = 0; i < newLength; i++) {
+                downsampled[i] = inputData[Math.min(Math.round(i * ratio), inputData.length - 1)];
+              }
+              samples = downsampled;
+            }
+            const pcm16 = new Int16Array(samples.length);
+            for (let i = 0; i < samples.length; i++) {
+              const s = Math.max(-1, Math.min(1, samples[i]));
               pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
             }
             ws.send(pcm16.buffer);
@@ -994,7 +1017,10 @@ await window.mainV1.ready;
 
         } catch (err) {
           console.error('Start live voice error:', err);
-          announce('تعذر بدء البث المباشر: تأكد من منح إذن الميكروفون');
+          const errName = err ? (err.name || '') : '';
+          const errMsg = err ? (err.message || '') : '';
+          const detail = errName ? `${errName}: ${errMsg}` : String(err);
+          announce('تعذر بدء البث المباشر: ' + (detail || 'تأكد من منح إذن الميكروفون'));
           stopLiveVoice();
         }
       }
