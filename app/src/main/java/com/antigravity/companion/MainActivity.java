@@ -56,6 +56,7 @@ public final class MainActivity extends AppCompatActivity {
     private volatile int reportedServerPort;
     private interface NativeAction { void execute(NativeRequest request); }
     private static final int REQUEST_TERMUX_RUN_COMMAND = 2001;
+    private static final int REQUEST_RECORD_AUDIO = 2002;
     private static final class NativeRequest {
         final String id;
         final JsonObject args;
@@ -68,9 +69,17 @@ public final class MainActivity extends AppCompatActivity {
         updates = new AppUpdateManager(this); server = new ServerConnection(this);
         buildViews(); configureWebView(); registerActions();
         installBackHandler();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-                && checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{"com.termux.permission.RUN_COMMAND"}, REQUEST_TERMUX_RUN_COMMAND);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            java.util.List<String> neededPermissions = new java.util.ArrayList<>();
+            if (checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) {
+                neededPermissions.add("com.termux.permission.RUN_COMMAND");
+            }
+            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                neededPermissions.add(android.Manifest.permission.RECORD_AUDIO);
+            }
+            if (!neededPermissions.isEmpty()) {
+                requestPermissions(neededPermissions.toArray(new String[0]), REQUEST_RECORD_AUDIO);
+            }
         }
         long lastSeenCode = getSharedPreferences("companion_settings", MODE_PRIVATE).getLong("last_seen_version_code", -1);
         long currentCode = updates.currentVersionCode();
@@ -125,7 +134,22 @@ public final class MainActivity extends AppCompatActivity {
 
             @Override
             public void onPermissionRequest(final android.webkit.PermissionRequest request) {
-                runOnUiThread(request::deny);
+                runOnUiThread(() -> {
+                    if (request == null) return;
+                    String origin = request.getOrigin() != null ? request.getOrigin().toString() : "";
+                    if (origins.allowsNativeOrigin(origin) || OriginPolicy.ASSET_ORIGIN.equals(origin)) {
+                        for (String resource : request.getResources()) {
+                            if (android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                                        checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                    request.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE});
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    request.deny();
+                });
             }
         });
         bridgeSupported = WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER);
