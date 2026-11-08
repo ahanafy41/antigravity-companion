@@ -17,6 +17,7 @@ from mcp_probe import MCPProbe
 from mcp_settings import MCPSettings
 from task_runtime import TaskRuntime
 from local_tasks import LocalTasks
+from voice_catalog import get_voice_catalog, DEFAULT_VOICE
 from voice_agent import VoiceAgent
 from voice_planner import VoicePlanner
 from legacy_conversations import LegacyConversations
@@ -159,6 +160,7 @@ def register_routes(application):
             "/api/v1/voice/requests/{request_id}/cancel", cancel_voice_request
         ),
         web.get("/api/v1/voice/runs", list_voice_runs),
+        web.get("/api/v1/voice/catalog", get_voice_catalog_endpoint),
         web.post("/api/v1/voice/runs", start_voice_agent),
         web.get("/api/v1/voice/runs/{voice_id}", voice_detail),
         web.post("/api/v1/voice/runs/{voice_id}/cancel", cancel_voice_agent),
@@ -509,6 +511,15 @@ async def voice_detail(request):
 async def cancel_voice_agent(request):
     return web.json_response(
         await request.app["voice_agent"].cancel(request.match_info["voice_id"])
+    )
+
+
+async def get_voice_catalog_endpoint(request):
+    return web.json_response(
+        {
+            "voices": get_voice_catalog(),
+            "default": DEFAULT_VOICE,
+        }
     )
 
 
