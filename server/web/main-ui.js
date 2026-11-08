@@ -936,7 +936,19 @@ await window.mainV1.ready;
                   ? '<span style="font-size:0.8rem; background:rgba(66,133,244,0.15); color:var(--accent-blue); padding:2px 6px; border-radius:4px; margin-right:6px;">رجالي</span>'
                   : '<span style="font-size:0.8rem; background:rgba(235,67,149,0.15); color:#ec407a; padding:2px 6px; border-radius:4px; margin-right:6px;">أنثوي</span>';
                 
-                card.innerHTML = ;
+                const personaText = v.persona_ar ? `${v.name} (${v.persona_ar})` : (v.persona_en ? `${v.name} (${v.persona_en})` : v.name);
+                const descText = v.description || (v.persona_ar ? `صوت ${v.persona_ar}` : '');
+                const btnLabel = isSelected ? 'المفعّل حالياً' : 'اختيار';
+                const btnClass = isSelected ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-select-voice';
+                const btnAttr = isSelected ? 'disabled' : `data-voice="${v.name}"`;
+
+                card.innerHTML = `
+                  <div>
+                    <strong style="display:block; font-size:1rem;">${personaText} ${genderBadge}</strong>
+                    <span style="font-size:0.85rem; color:var(--text-muted);">${descText}</span>
+                  </div>
+                  <button type="button" class="${btnClass}" ${btnAttr} aria-label="اختيار صوت ${v.name}">${btnLabel}</button>
+                `;
                 voiceCardsContainer.appendChild(card);
               });
               attachVoiceSelectHandlers();
@@ -962,7 +974,7 @@ await window.mainV1.ready;
               });
               if (resp.ok) {
                 if (drawerActiveVoiceName) drawerActiveVoiceName.textContent = voiceName;
-                announce();
+                announce(`تم اختيار الصوت: ${voiceName}`);
                 refreshVoiceCatalog();
                 setTimeout(closeVoicePicker, 500);
               }

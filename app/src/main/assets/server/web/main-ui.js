@@ -870,6 +870,128 @@ await window.mainV1.ready;
       } catch(e) {}
     }
 
+    // Official Antigravity AI Voice Picker Controller
+    function initVoicePicker() {
+      const btnOpenVoiceDialog = document.getElementById('btn-open-voice-dialog');
+      const voicePickerDialog = document.getElementById('voice-picker-dialog');
+      const btnCloseVoicePicker = document.getElementById('btn-close-voice-picker');
+      const btnCloseVoicePickerTop = document.getElementById('btn-close-voice-picker-top');
+      const drawerActiveVoiceName = document.getElementById('drawer-active-voice-name');
+      const voiceCardsContainer = document.getElementById('voice-cards-container');
+
+      function openVoicePicker() {
+        if (!voicePickerDialog) return;
+        closeDrawer();
+        if (typeof voicePickerDialog.showModal === 'function') {
+          voicePickerDialog.showModal();
+        } else {
+          voicePickerDialog.setAttribute('open', '');
+        }
+        announce('تم فتح نافذة اختيار أصوات الذكاء الاصطناعي');
+      }
+
+      function closeVoicePicker() {
+        if (!voicePickerDialog) return;
+        if (typeof voicePickerDialog.close === 'function') {
+          voicePickerDialog.close();
+        } else {
+          voicePickerDialog.removeAttribute('open');
+        }
+      }
+
+      if (btnOpenVoiceDialog) {
+        btnOpenVoiceDialog.addEventListener('click', openVoicePicker);
+      }
+      if (btnCloseVoicePicker) {
+        btnCloseVoicePicker.addEventListener('click', closeVoicePicker);
+      }
+      if (btnCloseVoicePickerTop) {
+        btnCloseVoicePickerTop.addEventListener('click', closeVoicePicker);
+      }
+
+      // Fetch active voice and populate catalog
+      async function refreshVoiceCatalog() {
+        try {
+          const fetcher = window.mainV1Fetch || window.fetch;
+          const resp = await fetcher('/api/v1/voice/catalog');
+          if (resp.ok) {
+            const data = await resp.json();
+            const activeVoice = data.active_voice || data.default || 'Charon';
+            if (drawerActiveVoiceName) {
+              drawerActiveVoiceName.textContent = activeVoice;
+            }
+            if (voiceCardsContainer && Array.isArray(data.voices) && data.voices.length > 0) {
+              voiceCardsContainer.innerHTML = '';
+              data.voices.forEach(v => {
+                const card = document.createElement('div');
+                card.className = 'voice-card-item';
+                card.style.cssText = 'padding:10px; border:1px solid var(--border-color); border-radius:8px; display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;';
+                const isSelected = v.name.toLowerCase() === activeVoice.toLowerCase();
+                if (isSelected) {
+                  card.style.borderColor = 'var(--accent-blue)';
+                  card.style.backgroundColor = 'rgba(66, 133, 244, 0.08)';
+                }
+                const isMale = v.gender === 'male';
+                const genderBadge = isMale 
+                  ? '<span style="font-size:0.8rem; background:rgba(66,133,244,0.15); color:var(--accent-blue); padding:2px 6px; border-radius:4px; margin-right:6px;">رجالي</span>'
+                  : '<span style="font-size:0.8rem; background:rgba(235,67,149,0.15); color:#ec407a; padding:2px 6px; border-radius:4px; margin-right:6px;">أنثوي</span>';
+                
+                const personaText = v.persona_ar ? `${v.name} (${v.persona_ar})` : (v.persona_en ? `${v.name} (${v.persona_en})` : v.name);
+                const descText = v.description || (v.persona_ar ? `صوت ${v.persona_ar}` : '');
+                const btnLabel = isSelected ? 'المفعّل حالياً' : 'اختيار';
+                const btnClass = isSelected ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-select-voice';
+                const btnAttr = isSelected ? 'disabled' : `data-voice="${v.name}"`;
+
+                card.innerHTML = `
+                  <div>
+                    <strong style="display:block; font-size:1rem;">${personaText} ${genderBadge}</strong>
+                    <span style="font-size:0.85rem; color:var(--text-muted);">${descText}</span>
+                  </div>
+                  <button type="button" class="${btnClass}" ${btnAttr} aria-label="اختيار صوت ${v.name}">${btnLabel}</button>
+                `;
+                voiceCardsContainer.appendChild(card);
+              });
+              attachVoiceSelectHandlers();
+            }
+          }
+        } catch (e) {
+          console.warn('Could not load voice catalog:', e);
+        }
+      }
+
+      function attachVoiceSelectHandlers() {
+        const selectButtons = document.querySelectorAll('.btn-select-voice');
+        selectButtons.forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const voiceName = btn.getAttribute('data-voice');
+            if (!voiceName) return;
+            try {
+              const fetcher = window.mainV1Fetch || window.fetch;
+              const resp = await fetcher('/api/v1/voice/select', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ voice: voiceName })
+              });
+              if (resp.ok) {
+                if (drawerActiveVoiceName) drawerActiveVoiceName.textContent = voiceName;
+                announce(`تم اختيار الصوت: ${voiceName}`);
+                refreshVoiceCatalog();
+                setTimeout(closeVoicePicker, 500);
+              }
+            } catch (err) {
+              console.error('Error selecting voice:', err);
+              announce('حدث خطأ أثناء حفظ الصوت');
+            }
+          });
+        });
+      }
+
+      attachVoiceSelectHandlers();
+      refreshVoiceCatalog();
+    }
+
+    initVoicePicker();
+
 
 
     // Pure Accessible Agent Mode - AI Studio is always active

@@ -146,6 +146,7 @@ class CLISettings:
             "speech_enabled": bool(document.get("speech_enabled", True)),
             "tones_enabled": bool(document.get("tones_enabled", True)),
             "haptic_enabled": bool(document.get("haptic_enabled", True)),
+            "voice": document.get("voice", "Charon"),
             "trustedWorkspaces": document.get("trustedWorkspaces", [str(Path.home())]),
             "whitelist": allow,
             "permissions": policy_values(
@@ -185,6 +186,9 @@ class CLISettings:
             for key in ("speech_enabled", "tones_enabled", "haptic_enabled", "sandbox", "allowNonWorkspaceAccess"):
                 if key in patch:
                     document[key] = bool(patch[key])
+
+            if "voice" in patch and isinstance(patch["voice"], str) and patch["voice"].strip():
+                document["voice"] = patch["voice"].strip()
 
             if "mode" in patch and isinstance(patch["mode"], str):
                 document["mode"] = patch["mode"]
