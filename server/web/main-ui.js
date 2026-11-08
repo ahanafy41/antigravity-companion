@@ -870,6 +870,146 @@ await window.mainV1.ready;
       } catch(e) {}
     }
 
+    // Bi-directional Live Voice Streaming Controller (Gemini Live)
+    function initLiveVoice() {
+      const btnLiveVoice = document.getElementById('btn-live-voice');
+      const voiceSelect = document.getElementById('voice-select');
+      if (!btnLiveVoice) return;
+
+      let ws = null;
+      let audioCtx = null;
+      let mediaStream = null;
+      let isLiveActive = false;
+
+      // Populate voice catalog from server
+      (async () => {
+        try {
+          const fetcher = window.mainV1Fetch || window.fetch;
+          const resp = await fetcher('/api/v1/voice/catalog');
+          if (resp.ok && voiceSelect) {
+            const data = await resp.json();
+            if (Array.isArray(data.voices) && data.voices.length > 0) {
+              voiceSelect.innerHTML = '';
+              data.voices.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v.name;
+                opt.textContent = `${v.name} (${v.persona_ar || v.persona_en})`;
+                if (v.name === (data.default || 'Puck')) opt.selected = true;
+                voiceSelect.appendChild(opt);
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('Voice catalog fetch warning:', err);
+        }
+      })();
+
+      async function stopLiveVoice() {
+        if (!isLiveActive) return;
+        isLiveActive = false;
+        if (ws) {
+          try { ws.close(); } catch (_) {}
+          ws = null;
+        }
+        if (mediaStream) {
+          try { mediaStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+          mediaStream = null;
+        }
+        if (audioCtx && audioCtx.state !== 'closed') {
+          try { await audioCtx.close(); } catch (_) {}
+          audioCtx = null;
+        }
+        btnLiveVoice.setAttribute('aria-pressed', 'false');
+        btnLiveVoice.classList.remove('live-active');
+        btnLiveVoice.innerHTML = '<span aria-hidden="true">🎙️</span> بدء البث المباشر';
+        announce('تم إيقاف البث المباشر');
+      }
+
+      async function startLiveVoice() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          announce('المتصفح لا يدعم التقاط الصوت المباشر');
+          return;
+        }
+        try {
+          announce('جاري طلب إذن الميكروفون والاتصال...');
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              channelCount: 1,
+              sampleRate: 16000
+            }
+          });
+
+          const selectedVoice = (voiceSelect && voiceSelect.value) ? voiceSelect.value : 'Puck';
+          const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const wsUrl = `${proto}//${location.host}/api/v1/voice/live?voice=${encodeURIComponent(selectedVoice)}`;
+          ws = new WebSocket(wsUrl);
+
+          ws.onopen = () => {
+            isLiveActive = true;
+            btnLiveVoice.setAttribute('aria-pressed', 'true');
+            btnLiveVoice.classList.add('live-active');
+            btnLiveVoice.innerHTML = '<span aria-hidden="true">🔴</span> إيقاف البث المباشر';
+            announce(`تم بدء البث المباشر بصوت ${selectedVoice}، المايك يعمل الآن`);
+          };
+
+          ws.onmessage = (event) => {
+            try {
+              if (typeof event.data === 'string') {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'transcript') {
+                  announce(`${msg.sender === 'user' ? 'أنت' : 'النموذج'}: ${msg.text}`);
+                }
+              }
+            } catch (_) {}
+          };
+
+          ws.onclose = () => {
+            if (isLiveActive) stopLiveVoice();
+          };
+
+          ws.onerror = (err) => {
+            console.error('Live voice websocket error:', err);
+            stopLiveVoice();
+          };
+
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+          const source = audioCtx.createMediaStreamSource(mediaStream);
+          const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+          source.connect(processor);
+          processor.connect(audioCtx.destination);
+
+          processor.onaudioprocess = (e) => {
+            if (!isLiveActive || !ws || ws.readyState !== WebSocket.OPEN) return;
+            const inputData = e.inputBuffer.getChannelData(0);
+            const pcm16 = new Int16Array(inputData.length);
+            for (let i = 0; i < inputData.length; i++) {
+              const s = Math.max(-1, Math.min(1, inputData[i]));
+              pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+            }
+            ws.send(pcm16.buffer);
+          };
+
+        } catch (err) {
+          console.error('Start live voice error:', err);
+          announce('تعذر بدء البث المباشر: تأكد من منح إذن الميكروفون');
+          stopLiveVoice();
+        }
+      }
+
+      btnLiveVoice.addEventListener('click', () => {
+        if (isLiveActive) {
+          stopLiveVoice();
+        } else {
+          startLiveVoice();
+        }
+      });
+    }
+
+    initLiveVoice();
+
 
 
     // Pure Accessible Agent Mode - AI Studio is always active

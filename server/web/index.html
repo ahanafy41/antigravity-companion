@@ -34,6 +34,19 @@
       <button type="button" id="btn-header-auth" class="btn" aria-label="الحساب"><span id="header-auth-badge">الحساب</span></button>
       <button type="button" id="btn-header-model" class="btn btn-header-model" aria-label="تغيير النموذج"><span id="header-active-model-name">Gemini 3.8 Flash</span></button>
       <button type="button" id="btn-header-artifacts" class="btn" style="display:none; align-items:center; gap:6px; border: 1px solid var(--accent-purple); color: var(--accent-purple);" aria-label="عرض المستندات وملفات المشروع (Artifacts & Project Files)" title="المستندات وملفات المشروع"><span aria-hidden="true">📄📁</span> المستندات والملفات <span id="header-artifacts-badge" style="background:var(--accent-purple); color:#fff; border-radius:10px; padding:1px 6px; font-size:0.75rem; font-weight:bold;">0</span></button>
+      <div class="live-voice-group" style="display:inline-flex; align-items:center; gap:4px;">
+        <button type="button" id="btn-live-voice" class="btn btn-live-voice" aria-pressed="false" aria-label="بدء البث المباشر، غير نشط" title="بدء البث المباشر"><span aria-hidden="true">🎙️</span> بدء البث المباشر</button>
+        <select id="voice-select" class="form-select voice-select" aria-label="صوت المحادثة المباشرة" title="اختر صوت الذكاء الاصطناعي">
+          <option value="Puck" selected>Puck (مبتهج وحيوي)</option>
+          <option value="Charon">Charon (إخباري هادئ)</option>
+          <option value="Zephyr">Zephyr (مشرق ومتفائل)</option>
+          <option value="Kore">Kore (حازم ورزين)</option>
+          <option value="Fenrir">Fenrir (متفاعل وحماسي)</option>
+          <option value="Aoede">Aoede (مرح ومنعش)</option>
+          <option value="Orus">Orus (وقور وموثوق)</option>
+          <option value="Leda">Leda (شبابي وسلس)</option>
+        </select>
+      </div>
       <button type="button" id="btn-new-ai-chat" class="btn btn-primary" aria-label="محادثة جديدة">جديد</button>
       <button type="button" id="btn-toggle-tones" class="btn main-style-2" aria-label="الأصوات">أصوات</button>
     </div>
