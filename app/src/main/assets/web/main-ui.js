@@ -802,6 +802,7 @@ await window.mainV1.ready;
     const settingsActiveConv = document.getElementById('settings-active-conv');
     const btnSettingsRefreshStats = document.getElementById('btn-settings-refresh-stats');
     let currentActiveConversationId = null;
+    let currentWorkspace = '';
     let currentActiveToolDesc = '';
     let currentTotalSteps = 0;
     // AI Tokens & Quota elements
@@ -914,6 +915,9 @@ await window.mainV1.ready;
       async function callNativeVoiceApi(path, options = {}) {
         const route = path.startsWith('/api/v1') ? path.slice(7) : (path.startsWith('/api') ? path.slice(4) : path);
         if (window.Companion && window.Companion.api && typeof window.Companion.api.request === 'function') {
+          if (typeof window.Companion.api.restoreSession === 'function') {
+            try { await window.Companion.api.restoreSession(); } catch (_) {}
+          }
           return await window.Companion.api.request(route, options);
         }
         const fullPath = path.startsWith('/api/v1') ? path : ('/api/v1' + path);
@@ -1131,16 +1135,21 @@ await window.mainV1.ready;
           }
           announce('جاري بدء المحادثة الصوتية الحية المباشرة بحسابك...');
           
+          const cid = (typeof currentActiveConversationId !== 'undefined' && currentActiveConversationId) ? currentActiveConversationId : '';
+          const ws = (typeof currentWorkspace !== 'undefined' && currentWorkspace) 
+            ? currentWorkspace 
+            : (aiInput ? (aiInput.getAttribute('data-active-project') || '') : '');
+
           const status = await callNativeVoiceApi('/api/v1/voice/native/start', {
             method: 'POST',
             body: {
-              conversation_id: currentActiveConversationId || '',
-              workspace: currentWorkspace || ''
+              conversation_id: cid,
+              workspace: ws
             }
           });
           await updateNativeVoiceUI(status);
           
-          if (status.active) {
+          if (status && status.active) {
             announce('المحادثة الصوتية الحية نشطة بحساب Google AI Pro، المايك يستمع الآن');
             if (nativeVoicePollInterval) clearInterval(nativeVoicePollInterval);
             nativeVoicePollInterval = setInterval(pollNativeVoiceStatus, 2000);
@@ -1149,7 +1158,8 @@ await window.mainV1.ready;
           }
         } catch (err) {
           console.error('Start native voice error:', err);
-          announce('تعذر بدء المحادثة المباشرة: تأكد من تشغيل جلسة agy');
+          const errDetail = (err && err.message) ? err.message : 'تأكد من تشغيل جلسة agy';
+          announce('تعذر بدء المحادثة المباشرة: ' + errDetail);
           await updateNativeVoiceUI({ active: false });
         }
       }
@@ -2716,6 +2726,7 @@ await window.mainV1.ready;
 
     function updateActiveProjectLabel(dirPath) {
       if (!dirPath) return;
+      currentWorkspace = dirPath;
       const folderName = dirPath.split('/').filter(Boolean).pop() || dirPath;
       if (aiInput) {
         aiInput.setAttribute('data-active-project', dirPath);

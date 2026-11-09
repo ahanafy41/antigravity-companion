@@ -33,6 +33,8 @@ function testJsClient() {
   assert(js.includes('/api/v1/voice/select'), 'main-ui.js must save selected voice to /api/v1/voice/select');
   assert(js.includes('voice-picker-dialog'), 'main-ui.js must manage voice picker modal');
   assert(js.includes('announce'), 'main-ui.js must announce voice changes to screen readers');
+  assert(js.includes('let currentWorkspace'), 'main-ui.js must declare currentWorkspace in module scope');
+  assert(js.includes('currentWorkspace = dirPath'), 'updateActiveProjectLabel must update currentWorkspace');
   
   console.log('JS voice picker client tests passed.');
 }
