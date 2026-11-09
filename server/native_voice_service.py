@@ -141,14 +141,72 @@ class NativeVoiceService:
             "elapsed": ""
         }
 
-    async def start(self) -> Dict[str, Any]:
+    def _extract_recent_conversation_brief(self, conversation_id: Optional[str]) -> str:
+        """Extract a concise briefing of the recent user request and assistant work."""
+        if not conversation_id or not isinstance(conversation_id, str):
+            return ""
+        try:
+            tfile = (
+                Path.home()
+                / ".gemini"
+                / "antigravity-cli"
+                / "brain"
+                / conversation_id
+                / ".system_generated"
+                / "logs"
+                / "transcript.jsonl"
+            )
+            if not tfile.exists():
+                return ""
+            lines = tfile.read_text(encoding="utf-8", errors="ignore").splitlines()
+            last_user = ""
+            last_agent = ""
+            for raw in reversed(lines[-25:]):
+                try:
+                    entry = json.loads(raw)
+                    if not last_user and entry.get("type") == "USER_INPUT":
+                        content = entry.get("content", "")
+                        if "<USER_REQUEST>" in content:
+                            content = content.split("<USER_REQUEST>")[1].split("</USER_REQUEST>")[0].strip()
+                        clean = re.sub(r"<[^>]+>", " ", content).strip()
+                        clean = re.sub(r"\s+", " ", clean).strip()
+                        if clean and not clean.startswith("<voice_instructions>"):
+                            last_user = clean[:140]
+                    elif not last_agent and entry.get("type") == "PLANNER_RESPONSE":
+                        content = entry.get("content", "")
+                        clean = re.sub(r"<[^>]+>", " ", content).strip()
+                        clean = re.sub(r"\s+", " ", clean).strip()
+                        if clean:
+                            last_agent = clean[:180]
+                except Exception:
+                    continue
+            parts = []
+            if last_user:
+                parts.append(f"آخر طلب لأحمد: {last_user}")
+            if last_agent:
+                parts.append(f"العمل المنجز: {last_agent}")
+            return " | ".join(parts)
+        except Exception as e:
+            LOGGER.warning("Could not extract conversation brief: %s", e)
+            return ""
+
+    async def start(
+        self,
+        conversation_id: Optional[str] = None,
+        workspace: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Start or unpause the native Antigravity live voice chat via /voice."""
         await self.ensure_pulseaudio()
+
+        target_ws = workspace or self.workspace
+        if target_ws and os.path.isdir(target_ws):
+            cwd = target_ws
+        else:
+            cwd = str(Path.home())
 
         alive = await self.is_session_alive()
         if not alive:
             # Spawn a fresh interactive agy session in tmux
-            cwd = self.workspace if os.path.isdir(self.workspace) else str(Path.home())
             await self._run_cmd(
                 "tmux", "new-session", "-d", "-s", self.session_name, "-c", cwd, "agy"
             )
@@ -159,6 +217,17 @@ class NativeVoiceService:
                 if ">" in pane:
                     await asyncio.sleep(1.0)  # Allow TUI event loop to settle
                     break
+
+            # If we have a conversation briefing, seed it so the voice agent knows what Ahmed is working on!
+            briefing = self._extract_recent_conversation_brief(conversation_id)
+            if briefing:
+                seed_prompt = f"أنت المساعد الصوتي لأحمد في تطبيق الرفيق. سياق الجلسة الحالية: {briefing}. رحب به وأخبره أنك متابع معه."
+                await self._run_cmd("tmux", "send-keys", "-t", self.session_name, seed_prompt, "Enter")
+                for _ in range(20):
+                    await asyncio.sleep(0.4)
+                    pane = await self.capture_pane()
+                    if "?" in pane and "Thinking..." not in pane:
+                        break
 
         status = await self.get_status()
         if status.get("state") == "muted":

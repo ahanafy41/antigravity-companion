@@ -567,9 +567,12 @@ async def native_voice_status_endpoint(request):
 
 
 async def native_voice_start_endpoint(request):
-    await object_body(request)
+    payload = await object_body(request)
     service = request.app["native_voice"]
-    status = await service.start()
+    status = await service.start(
+        conversation_id=payload.get("conversation_id"),
+        workspace=payload.get("workspace"),
+    )
     return web.json_response(status)
 
 

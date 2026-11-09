@@ -802,6 +802,8 @@ await window.mainV1.ready;
     const settingsActiveConv = document.getElementById('settings-active-conv');
     const btnSettingsRefreshStats = document.getElementById('btn-settings-refresh-stats');
     let currentActiveConversationId = null;
+    let currentActiveToolDesc = '';
+    let currentTotalSteps = 0;
     // AI Tokens & Quota elements
     const valAiTokens = document.getElementById('val-ai-tokens');
     const valAiContext = document.getElementById('val-ai-context');
@@ -1062,6 +1064,36 @@ await window.mainV1.ready;
         }
       }
 
+      function appendInstantChatCard(speaker, text, type) {
+        if (!aiChatFeed) return;
+        const now = new Date();
+        const timeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+        const isUser = type === 'user';
+        const card = document.createElement('article');
+        card.className = `chat-message ${isUser ? 'user-message' : 'ai-message'}`;
+        card.setAttribute('role', 'article');
+        card.setAttribute('aria-label', `${speaker}: ${text}`);
+        const rendered = (typeof window.renderSafeMarkdown === 'function') 
+          ? window.renderSafeMarkdown(text) 
+          : `<p>${escapeHtml(text)}</p>`;
+        card.innerHTML = `
+          <header class="msg-header">
+            <div class="msg-header-left">
+              <span class="${isUser ? 'user-avatar' : 'ai-avatar'}" aria-hidden="true">${isUser ? '👤' : '🤖'}</span>
+              <span class="msg-title">${escapeHtml(speaker)}</span>
+            </div>
+            <span class="msg-time">${timeStr}</span>
+          </header>
+          <div class="msg-content markdown-body" dir="auto">${rendered}</div>
+        `;
+        aiChatFeed.appendChild(card);
+        if (typeof scrollChatIfNearBottom === 'function') {
+          scrollChatIfNearBottom();
+        } else {
+          aiChatFeed.scrollTop = aiChatFeed.scrollHeight;
+        }
+      }
+
       async function pollNativeVoiceStatus() {
         try {
           const status = await callNativeVoiceApi('/api/v1/voice/native/status');
@@ -1079,7 +1111,9 @@ await window.mainV1.ready;
                 const newLines = lines.slice(lastSpokenCount);
                 lastSpokenCount = lines.length;
                 newLines.forEach(l => {
-                  const speaker = l.role === 'ROLE_USER' ? 'أنت' : 'Antigravity';
+                  const isUser = l.role === 'ROLE_USER';
+                  const speaker = isUser ? 'أنت (صوتياً)' : 'Antigravity (صوتياً)';
+                  appendInstantChatCard(speaker, l.text, isUser ? 'user' : 'ai');
                   announce(`${speaker}: ${l.text}`);
                 });
               }
@@ -1099,7 +1133,10 @@ await window.mainV1.ready;
           
           const status = await callNativeVoiceApi('/api/v1/voice/native/start', {
             method: 'POST',
-            body: {}
+            body: {
+              conversation_id: currentActiveConversationId || '',
+              workspace: currentWorkspace || ''
+            }
           });
           await updateNativeVoiceUI(status);
           
@@ -1748,49 +1785,54 @@ await window.mainV1.ready;
         aiInput.style.height = 'auto';
       }
 
-      // If a task is already generating, inject into persistent session independently
+      // If a task is already generating, handle instant steering or live progress inquiries!
       if (isAiGenerating) {
-        const nowRunning = new Date();
-        const timeStrRunning = nowRunning.getHours().toString().padStart(2, '0') + ':' + nowRunning.getMinutes().toString().padStart(2, '0');
-        if (activeFocusedAgent) {
-          userMsgContent = `<div class="main-style-142">🎯 موجه إلى: ${escapeHtml(activeFocusedAgent)}</div><br>` + userMsgContent;
-          finalPromptToSend = `[توجيه محادثة مباشر إلى الوكيل الفرعي: "${activeFocusedAgent}"]: ${promptText}`;
+        const trimmed = (promptText || '').trim();
+        const isStatusQuery = /^(وصلت|فين|ايه الأخبار|إيه الأخبار|شغال في ايه|شغال في إيه|بتعمل ايه|بتعمل إيه|الحالة|الوضع|status|progress|عملت ايه|عملت إيه)/i.test(trimmed);
+
+        if (isStatusQuery) {
+          // Instant mid-flight status report without interrupting the ongoing task!
+          const activeTool = currentActiveToolDesc || 'تنفيذ الخطوة الحالية';
+          const stepInfo = currentTotalSteps > 0 ? `في الخطوة رقم ${currentTotalSteps}` : 'جاري التحضير والعمل';
+          const replyText = `أنا حالياً ${stepInfo}: ${activeTool}، ومستمر في تنفيذ طلبك في الخلفية بدون توقف.`;
+
+          appendInstantChatCard('أنت', promptText, 'user');
+          appendInstantChatCard('Antigravity', replyText, 'ai');
+          announce(replyText);
+          playSuccessChime();
+          return;
         }
-        const userCardRunning = document.createElement('article');
-        userCardRunning.className = 'chat-message user-message';
-        userCardRunning.setAttribute('role', 'article');
-        userCardRunning.setAttribute('aria-label', activeFocusedAgent ? `طلبك موجه للوكيل ${activeFocusedAgent}` : 'طلبك أثناء تشغيل المهمة');
-        userCardRunning.innerHTML =
-          '<header class="msg-header">' +
-            '<div class="msg-header-left">' +
-              '<span class="user-avatar" aria-hidden="true">👤</span>' +
-              '<span class="msg-title">أنت</span>' +
-            '</div>' +
-            '<span class="msg-time">' + timeStrRunning + '</span>' +
-          '</header>' +
-          '<div class="msg-content" dir="auto">' + userMsgContent + '</div>';
-        aiChatFeed.appendChild(userCardRunning);
-        userCardRunning.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+        const steerPrompt = activeFocusedAgent 
+          ? `[توجيه محادثة مباشر إلى الوكيل الفرعي: "${activeFocusedAgent}"]: ${promptText}`
+          : `[توجيه فوري من أحمد أثناء استمرار المهمة]: ${promptText}`;
+
+        appendInstantChatCard('أنت', steerPrompt, 'user');
 
         try {
           const res = await window.mainV1Fetch('/api/ai/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: finalPromptToSend })
+            body: JSON.stringify({ prompt: steerPrompt })
           });
           const resData = await res.json().catch(() => ({}));
           if (res.ok && resData.queued) {
             playStartChime();
-            announce('حُفظت الرسالة للدور التالي؛ لم تُحقن في الدور الجاري.');
+            const steerConfirm = `تم استلام توجيهك: "${promptText}". جاري تنفيذه مع استمرار العملية دون توقف.`;
+            appendInstantChatCard('Antigravity', steerConfirm, 'ai');
+            announce(steerConfirm);
             return;
           }
-          announce(resData.error || 'تعذر حفظ الرسالة التالية.');
+          announce(resData.error || 'تعذر تسجيل التوجيه.');
           return;
         } catch (e) {
-          announce('تعذر تأكيد حفظ الرسالة؛ افحص المهام قبل تكرارها.');
+          announce('تعذر تأكيد التوجيه؛ افحص المهام قبل تكرارها.');
           return;
         }
       }
+
+      currentActiveToolDesc = 'بدء تحليل الطلب والتخطيط';
+      currentTotalSteps = 0;
 
       isAiGenerating = true;
       playStartChime();
@@ -2205,11 +2247,14 @@ await window.mainV1.ready;
                   }
 
                   const totalStepsSoFar = targetList.querySelectorAll('.step-item').length;
+                  currentTotalSteps = totalStepsSoFar;
+                  currentActiveToolDesc = toolDesc;
                   if (!data.subagent_id && !data.subagent_role) {
                     if (data.state === 'ACTIVE') {
-                      announce(`جارٍ تنفيذ أداة: ${toolDesc} (خطوة رقم ${totalStepsSoFar})`);
+                      announce(`خطوة ${totalStepsSoFar}: ${toolDesc}`);
                     } else if (isDone) {
-                      announce(`اكتملت أداة: ${toolDesc}`);
+                      currentActiveToolDesc = `اكتملت: ${toolDesc}`;
+                      announce(`اكتملت خطوة ${totalStepsSoFar}: ${toolDesc}`);
                     }
                   }
 
