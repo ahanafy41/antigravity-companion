@@ -56,11 +56,11 @@ class NativeVoiceService:
         code, _, _ = await self._run_cmd("tmux", "has-session", "-t", self.session_name)
         return code == 0
 
-    async def capture_pane(self) -> str:
-        """Capture the text content of the tmux pane."""
+    async def capture_pane(self, lines: int = 100) -> str:
+        """Capture the text content of the tmux pane including recent scrollback."""
         if not await self.is_session_alive():
             return ""
-        code, out, _ = await self._run_cmd("tmux", "capture-pane", "-t", self.session_name, "-p")
+        code, out, _ = await self._run_cmd("tmux", "capture-pane", "-t", self.session_name, "-p", "-S", f"-{lines}")
         return out if code == 0 else ""
 
     async def get_status(self) -> Dict[str, Any]:
@@ -87,11 +87,11 @@ class NativeVoiceService:
             elapsed = live_match.group(1)
             mode = live_match.group(2).lower()
             is_muted = (mode == "muted")
-            is_active = mode in ("listening", "muted", "starting", "connected", "speaking")
+            is_active = mode in ("listening", "muted", "starting", "connected", "speaking", "thinking")
             return {
                 "active": is_active,
                 "state": "muted" if is_muted else mode,
-                "label": "المايك مكتوم" if is_muted else "محادثة حية مباشرة - جارٍ الاستماع",
+                "label": "المايك مكتوم" if is_muted else ("جاري التفكير في الرد..." if mode == "thinking" else "محادثة حية مباشرة - جارٍ الاستماع"),
                 "account": "ahmedhanafy884@gmail.com (Google AI Pro)",
                 "mic_active": not is_muted,
                 "elapsed": elapsed
@@ -143,25 +143,27 @@ class NativeVoiceService:
 
     def _extract_recent_conversation_brief(self, conversation_id: Optional[str]) -> str:
         """Extract a concise briefing of the recent user request and assistant work."""
-        if not conversation_id or not isinstance(conversation_id, str):
-            return ""
         try:
-            tfile = (
-                Path.home()
-                / ".gemini"
-                / "antigravity-cli"
-                / "brain"
-                / conversation_id
-                / ".system_generated"
-                / "logs"
-                / "transcript.jsonl"
-            )
+            brain = Path.home() / ".gemini" / "antigravity-cli" / "brain"
+            if not conversation_id or not isinstance(conversation_id, str):
+                convs = sorted(
+                    [p for p in brain.iterdir() if p.is_dir() and (p / ".system_generated" / "logs" / "transcript.jsonl").exists()],
+                    key=lambda p: (p / ".system_generated" / "logs" / "transcript.jsonl").stat().st_mtime,
+                    reverse=True
+                )
+                if convs:
+                    conversation_id = convs[0].name
+            if not conversation_id:
+                return ""
+
+            tfile = brain / conversation_id / ".system_generated" / "logs" / "transcript.jsonl"
             if not tfile.exists():
                 return ""
+
             lines = tfile.read_text(encoding="utf-8", errors="ignore").splitlines()
             last_user = ""
             last_agent = ""
-            for raw in reversed(lines[-25:]):
+            for raw in reversed(lines[-100:]):
                 try:
                     entry = json.loads(raw)
                     if not last_user and entry.get("type") == "USER_INPUT":
@@ -170,13 +172,13 @@ class NativeVoiceService:
                             content = content.split("<USER_REQUEST>")[1].split("</USER_REQUEST>")[0].strip()
                         clean = re.sub(r"<[^>]+>", " ", content).strip()
                         clean = re.sub(r"\s+", " ", clean).strip()
-                        if clean and not clean.startswith("<voice_instructions>"):
-                            last_user = clean[:140]
+                        if clean and not clean.startswith("<voice_instructions>") and not clean.startswith("system:"):
+                            last_user = clean[:180]
                     elif not last_agent and entry.get("type") == "PLANNER_RESPONSE":
                         content = entry.get("content", "")
                         clean = re.sub(r"<[^>]+>", " ", content).strip()
                         clean = re.sub(r"\s+", " ", clean).strip()
-                        if clean:
+                        if clean and not clean.startswith("بفحص") and not clean.startswith("بشغل") and not clean.startswith("بقرأ"):
                             last_agent = clean[:180]
                 except Exception:
                     continue
@@ -205,30 +207,6 @@ class NativeVoiceService:
             cwd = str(Path.home())
 
         alive = await self.is_session_alive()
-        if not alive:
-            # Spawn a fresh interactive agy session in tmux
-            await self._run_cmd(
-                "tmux", "new-session", "-d", "-s", self.session_name, "-c", cwd, "agy"
-            )
-            # Wait for prompt to appear and TUI to stabilize
-            for _ in range(25):
-                await asyncio.sleep(0.4)
-                pane = await self.capture_pane()
-                if ">" in pane:
-                    await asyncio.sleep(1.0)  # Allow TUI event loop to settle
-                    break
-
-            # If we have a conversation briefing, seed it so the voice agent knows what Ahmed is working on!
-            briefing = self._extract_recent_conversation_brief(conversation_id)
-            if briefing:
-                seed_prompt = f"أنت المساعد الصوتي لأحمد في تطبيق الرفيق. سياق الجلسة الحالية: {briefing}. رحب به وأخبره أنك متابع معه."
-                await self._run_cmd("tmux", "send-keys", "-t", self.session_name, seed_prompt, "Enter")
-                for _ in range(20):
-                    await asyncio.sleep(0.4)
-                    pane = await self.capture_pane()
-                    if "?" in pane and "Thinking..." not in pane:
-                        break
-
         status = await self.get_status()
         if status.get("state") == "muted":
             # If muted, unmute via F6
@@ -239,19 +217,45 @@ class NativeVoiceService:
         if status.get("active"):
             return status
 
-        # In agy, Live Voice is initiated with the slash command /voice
-        await self._run_cmd("tmux", "send-keys", "-t", self.session_name, "Escape")
-        await asyncio.sleep(0.2)
+        if not alive:
+            # Spawn a fresh interactive agy session in tmux
+            await self._run_cmd(
+                "tmux", "new-session", "-d", "-s", self.session_name, "-c", cwd, "agy"
+            )
+            for _ in range(25):
+                await asyncio.sleep(0.4)
+                pane = await self.capture_pane()
+                if ">" in pane:
+                    await asyncio.sleep(1.0)
+                    break
+        else:
+            # Clear stale conversation history to prevent old topic hallucinations
+            await self._run_cmd("tmux", "send-keys", "-t", self.session_name, "Escape")
+            await asyncio.sleep(0.2)
+            await self._run_cmd("tmux", "send-keys", "-t", self.session_name, "/clear", "Enter")
+            await asyncio.sleep(0.8)
+
+        # Seed current conversation briefing
+        briefing = self._extract_recent_conversation_brief(conversation_id)
+        if briefing:
+            seed_prompt = f"أنت المساعد الصوتي لأحمد في تطبيق الرفيق. سياق المحادثة الحالية التي يعمل عليها في الشات: {briefing}. رحب به باختصار شديد وأخبره أنك متابع معه في الشات."
+            await self._run_cmd("tmux", "send-keys", "-t", self.session_name, seed_prompt, "Enter")
+            for _ in range(25):
+                await asyncio.sleep(0.4)
+                pane = await self.capture_pane()
+                if "?" in pane and "Thinking..." not in pane:
+                    break
+
+        # Initiate Live Voice via /voice
         await self._run_cmd("tmux", "send-keys", "-t", self.session_name, "/voice", "Enter")
 
-        for _ in range(12):
+        for _ in range(15):
             await asyncio.sleep(0.4)
             status = await self.get_status()
             if status.get("active"):
                 break
 
         if status.get("state") == "muted":
-            # If it started in muted state, unmute via F6
             await self._run_cmd("tmux", "send-keys", "-t", self.session_name, "F6")
             await asyncio.sleep(0.5)
             return await self.get_status()
