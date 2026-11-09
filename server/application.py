@@ -17,9 +17,6 @@ from mcp_probe import MCPProbe
 from mcp_settings import MCPSettings
 from task_runtime import TaskRuntime
 from local_tasks import LocalTasks
-from voice_catalog import get_voice_catalog, DEFAULT_VOICE
-from live_voice_bridge import live_voice_endpoint
-from native_voice_service import NativeVoiceService
 from voice_agent import VoiceAgent
 from voice_planner import VoicePlanner
 from legacy_conversations import LegacyConversations
@@ -109,7 +106,6 @@ def create_app(data_dir, port=7681):
         VoicePlanner(application["cli"], store.root),
         application["android"],
     )
-    application["native_voice"] = NativeVoiceService()
     application["visibility"] = {}
     application["legacy"] = LegacyConversations(Path.home())
     application["conversation_metadata"] = ConversationMetadataStore(
@@ -163,14 +159,6 @@ def register_routes(application):
             "/api/v1/voice/requests/{request_id}/cancel", cancel_voice_request
         ),
         web.get("/api/v1/voice/runs", list_voice_runs),
-        web.get("/api/v1/voice/catalog", get_voice_catalog_endpoint),
-        web.post("/api/v1/voice/select", select_voice_endpoint),
-        web.get("/api/v1/voice/live", live_voice_endpoint),
-        web.get("/api/v1/voice/native/status", native_voice_status_endpoint),
-        web.post("/api/v1/voice/native/start", native_voice_start_endpoint),
-        web.post("/api/v1/voice/native/toggle-mute", native_voice_toggle_mute_endpoint),
-        web.post("/api/v1/voice/native/stop", native_voice_stop_endpoint),
-        web.get("/api/v1/voice/native/transcript", native_voice_transcript_endpoint),
         web.post("/api/v1/voice/runs", start_voice_agent),
         web.get("/api/v1/voice/runs/{voice_id}", voice_detail),
         web.post("/api/v1/voice/runs/{voice_id}/cancel", cancel_voice_agent),
@@ -524,76 +512,6 @@ async def cancel_voice_agent(request):
     )
 
 
-async def get_voice_catalog_endpoint(request):
-    active_voice = DEFAULT_VOICE
-    cli_settings = request.app.get("cli_settings")
-    if cli_settings:
-        try:
-            st = cli_settings.read_settings()
-            active_voice = st.get("voice") or DEFAULT_VOICE
-        except Exception:
-            pass
-    return web.json_response(
-        {
-            "voices": get_voice_catalog(),
-            "default": DEFAULT_VOICE,
-            "active_voice": active_voice,
-        }
-    )
-
-
-async def select_voice_endpoint(request):
-    payload = await object_body(request)
-    voice = payload.get("voice", "").strip()
-    if not voice:
-        raise ValueError("voice name is required")
-    cli_settings = request.app.get("cli_settings")
-    if cli_settings:
-        doc, rev = cli_settings._document()
-        cli_settings.write_settings({"voice": voice}, revision=rev)
-    try:
-        st = request.app["store"].read("settings")
-        st["voice"] = voice
-        request.app["store"].write("settings", st)
-    except Exception:
-        pass
-    return web.json_response({"success": True, "active_voice": voice})
-
-
-async def native_voice_status_endpoint(request):
-    service = request.app["native_voice"]
-    status = await service.get_status()
-    return web.json_response(status)
-
-
-async def native_voice_start_endpoint(request):
-    payload = await object_body(request)
-    service = request.app["native_voice"]
-    status = await service.start(
-        conversation_id=payload.get("conversation_id"),
-        workspace=payload.get("workspace"),
-    )
-    return web.json_response(status)
-
-
-async def native_voice_toggle_mute_endpoint(request):
-    await object_body(request)
-    service = request.app["native_voice"]
-    status = await service.toggle_mute()
-    return web.json_response(status)
-
-
-async def native_voice_stop_endpoint(request):
-    await object_body(request)
-    service = request.app["native_voice"]
-    status = await service.stop()
-    return web.json_response(status)
-
-
-async def native_voice_transcript_endpoint(request):
-    service = request.app["native_voice"]
-    lines = await service.get_latest_transcript()
-    return web.json_response({"lines": lines})
 
 
 async def client_visibility(request):

@@ -56,8 +56,6 @@ public final class MainActivity extends AppCompatActivity {
     private volatile int reportedServerPort;
     private interface NativeAction { void execute(NativeRequest request); }
     private static final int REQUEST_TERMUX_RUN_COMMAND = 2001;
-    private static final int REQUEST_RECORD_AUDIO = 2002;
-    private android.webkit.PermissionRequest pendingAudioRequest;
     private static final class NativeRequest {
         final String id;
         final JsonObject args;
@@ -71,15 +69,8 @@ public final class MainActivity extends AppCompatActivity {
         buildViews(); configureWebView(); registerActions();
         installBackHandler();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            java.util.List<String> neededPermissions = new java.util.ArrayList<>();
             if (checkSelfPermission("com.termux.permission.RUN_COMMAND") != PackageManager.PERMISSION_GRANTED) {
-                neededPermissions.add("com.termux.permission.RUN_COMMAND");
-            }
-            if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                neededPermissions.add(android.Manifest.permission.RECORD_AUDIO);
-            }
-            if (!neededPermissions.isEmpty()) {
-                requestPermissions(neededPermissions.toArray(new String[0]), REQUEST_RECORD_AUDIO);
+                requestPermissions(new String[]{"com.termux.permission.RUN_COMMAND"}, REQUEST_TERMUX_RUN_COMMAND);
             }
         }
         long lastSeenCode = getSharedPreferences("companion_settings", MODE_PRIVATE).getLong("last_seen_version_code", -1);
@@ -137,29 +128,6 @@ public final class MainActivity extends AppCompatActivity {
             public void onPermissionRequest(final android.webkit.PermissionRequest request) {
                 runOnUiThread(() -> {
                     if (request == null) return;
-                    String origin = request.getOrigin() != null ? request.getOrigin().toString() : "";
-                    while (origin.endsWith("/")) {
-                        origin = origin.substring(0, origin.length() - 1);
-                    }
-                    boolean allowed = origins.allowsNativeOrigin(origin)
-                            || origins.allowsBridge(origin)
-                            || OriginPolicy.ASSET_ORIGIN.equals(origin)
-                            || origin.startsWith(OriginPolicy.ASSET_ORIGIN);
-                    if (allowed) {
-                        for (String resource : request.getResources()) {
-                            if (android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
-                                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-                                        checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                    request.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE});
-                                    return;
-                                } else {
-                                    pendingAudioRequest = request;
-                                    requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQUEST_RECORD_AUDIO);
-                                    return;
-                                }
-                            }
-                        }
-                    }
                     request.deny();
                 });
             }
@@ -595,20 +563,6 @@ public final class MainActivity extends AppCompatActivity {
                 launchTermux();
             } else {
                 showStatus("يلزم تفعيل إذن تشغيل أوامر Termux من الإعدادات للتحكم بالخادم");
-            }
-        } else if (requestCode == REQUEST_RECORD_AUDIO) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                showStatus("تم منح إذن الميكروفون بنجاح");
-                if (pendingAudioRequest != null) {
-                    pendingAudioRequest.grant(new String[]{android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE});
-                    pendingAudioRequest = null;
-                }
-            } else {
-                showStatus("يلزم تفعيل إذن الميكروفون للبدء في البث المباشر");
-                if (pendingAudioRequest != null) {
-                    pendingAudioRequest.deny();
-                    pendingAudioRequest = null;
-                }
             }
         }
     }

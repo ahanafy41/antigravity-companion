@@ -33,7 +33,6 @@
       <button type="button" id="btn-header-dashboard" class="btn" aria-label="لوحة التحكم وشاشة البدء" title="لوحة التحكم">الرئيسية</button>
       <button type="button" id="btn-header-auth" class="btn" aria-label="الحساب"><span id="header-auth-badge">الحساب</span></button>
       <button type="button" id="btn-header-model" class="btn btn-header-model" aria-label="تغيير النموذج"><span id="header-active-model-name">Gemini 3.8 Flash</span></button>
-      <button type="button" id="btn-live-voice" class="btn btn-live-voice" aria-pressed="false" aria-label="المحادثة الصوتية المباشرة، غير نشطة" title="المحادثة الصوتية المباشرة"><span aria-hidden="true">🎙️</span> المحادثة المباشرة</button>
       <button type="button" id="btn-header-artifacts" class="btn" style="display:none; align-items:center; gap:6px; border: 1px solid var(--accent-purple); color: var(--accent-purple);" aria-label="عرض المستندات وملفات المشروع (Artifacts & Project Files)" title="المستندات وملفات المشروع"><span aria-hidden="true">📄📁</span> المستندات والملفات <span id="header-artifacts-badge" style="background:var(--accent-purple); color:#fff; border-radius:10px; padding:1px 6px; font-size:0.75rem; font-weight:bold;">0</span></button>
       <button type="button" id="btn-new-ai-chat" class="btn btn-primary" aria-label="محادثة جديدة">جديد</button>
       <button type="button" id="btn-toggle-tones" class="btn main-style-2" aria-label="الأصوات">أصوات</button>
@@ -62,10 +61,6 @@
       </button>
       <button type="button" id="btn-open-settings" class="drawer-btn" aria-label="الإعدادات والأمان">
         <span>الإعدادات والأمان</span>
-      </button>
-      <button type="button" id="btn-open-voice-dialog" class="drawer-btn" aria-label="أصوات الذكاء الاصطناعي">
-        <span>صوت الذكاء الاصطناعي</span>
-        <strong id="drawer-active-voice-name" class="badge-count main-style-3">Charon (شارون)</strong>
       </button>
       <button type="button" id="btn-open-quota" class="drawer-btn" aria-label="استهلاك النماذج">
         <span>استهلاك النماذج</span>
@@ -153,18 +148,6 @@
       <button type="button" id="btn-refresh-stats" class="btn-stat-refresh" aria-label="تحديث الحصص">🔄 تحديث</button>
     </div>
 
-    <!-- شريط التحكم الصوتي المباشر الأصلي لحساب Antigravity -->
-    <div id="native-voice-bar" class="native-voice-bar" role="region" aria-label="التحكم في المحادثة الصوتية المباشرة" style="display:none; margin: 8px 12px; padding: 10px 14px; background: rgba(30, 41, 59, 0.95); border: 1px solid #38bdf8; border-radius: 8px; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span class="pulse-indicator" aria-hidden="true" style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #22c55e;"></span>
-        <span id="native-voice-status-text" role="status" aria-live="assertive" style="font-weight: 600; font-size: 0.95rem; color: #f8fafc;">محادثة حية مباشرة بحساب Google AI Pro (جارٍ الاستماع)</span>
-        <span id="native-voice-timer" style="font-size: 0.85rem; color: #94a3b8; font-family: monospace;">00:00</span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <button type="button" id="btn-native-voice-mute" class="btn btn-sm" aria-label="كتم المايك" style="background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.4);">كتم المايك</button>
-        <button type="button" id="btn-native-voice-hangup" class="btn btn-sm btn-danger" aria-label="إنهاء المحادثة الصوتية الحية">إنهاء المكالمة</button>
-      </div>
-    </div>
 
     <div id="ai-chat-feed" class="ai-chat-feed" role="region" aria-label="الرسائل"></div>
 
@@ -347,80 +330,6 @@
 
 
 
-  <dialog id="voice-picker-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="voice-picker-title">
-    <div class="dialog-content">
-      <header class="dialog-header">
-        <h2 id="voice-picker-title">🎙️ أصوات الذكاء الاصطناعي (Google AI Pro)</h2>
-        <button type="button" id="btn-close-voice-picker-top" class="btn-close-dialog" aria-label="إغلاق نافذة الأصوات">✕</button>
-      </header>
-      <div class="dialog-body">
-        <p class="form-hint" style="margin-bottom:12px; color:var(--text-muted);">
-          اختر الصوت المفضل للتواصل الصوتي الحي مع الوكيل. كل الأصوات تعمل مباشرة باشتراكك الرسمي بدون أي مفاتيح خارجية.
-        </p>
-        <div id="voice-cards-container" role="radiogroup" aria-label="قائمة الأصوات الرسمية المتاحة" style="display:flex; flex-direction:column; gap:8px;">
-          <div class="voice-card-item" style="padding:10px; border:1px solid var(--border-color); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <strong style="display:block; font-size:1rem;">Charon (شارون) <span style="font-size:0.8rem; background:rgba(66,133,244,0.15); color:var(--accent-blue); padding:2px 6px; border-radius:4px;">رجالي</span></strong>
-              <span style="font-size:0.85rem; color:var(--text-muted);">صوت رجالي عميق ووقور وفخم - ممتاز للقراءة والشروحات البرمجية</span>
-            </div>
-            <button type="button" class="btn btn-sm btn-select-voice" data-voice="Charon" aria-label="اختيار صوت شارون">اختيار</button>
-          </div>
-          <div class="voice-card-item" style="padding:10px; border:1px solid var(--border-color); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <strong style="display:block; font-size:1rem;">Puck (بوك) <span style="font-size:0.8rem; background:rgba(66,133,244,0.15); color:var(--accent-blue); padding:2px 6px; border-radius:4px;">رجالي</span></strong>
-              <span style="font-size:0.85rem; color:var(--text-muted);">صوت رجالي ودود ومبتهج وحيوي - مناسب للمحادثات السريعة</span>
-            </div>
-            <button type="button" class="btn btn-sm btn-select-voice" data-voice="Puck" aria-label="اختيار صوت بوك">اختيار</button>
-          </div>
-          <div class="voice-card-item" style="padding:10px; border:1px solid var(--border-color); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <strong style="display:block; font-size:1rem;">Fenrir (فينرير) <span style="font-size:0.8rem; background:rgba(66,133,244,0.15); color:var(--accent-blue); padding:2px 6px; border-radius:4px;">رجالي</span></strong>
-              <span style="font-size:0.85rem; color:var(--text-muted);">صوت رجالي متفاعل وحماسي وقوي ومفعم بالطاقة</span>
-            </div>
-            <button type="button" class="btn btn-sm btn-select-voice" data-voice="Fenrir" aria-label="اختيار صوت فينرير">اختيار</button>
-          </div>
-          <div class="voice-card-item" style="padding:10px; border:1px solid var(--border-color); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <strong style="display:block; font-size:1rem;">Orus (أوروس) <span style="font-size:0.8rem; background:rgba(66,133,244,0.15); color:var(--accent-blue); padding:2px 6px; border-radius:4px;">رجالي</span></strong>
-              <span style="font-size:0.85rem; color:var(--text-muted);">صوت رجالي وقور ورزين وموثوق</span>
-            </div>
-            <button type="button" class="btn btn-sm btn-select-voice" data-voice="Orus" aria-label="اختيار صوت أوروس">اختيار</button>
-          </div>
-          <div class="voice-card-item" style="padding:10px; border:1px solid var(--border-color); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <strong style="display:block; font-size:1rem;">Aoede (أويدي) <span style="font-size:0.8rem; background:rgba(235,67,149,0.15); color:#ec407a; padding:2px 6px; border-radius:4px;">أنثوي</span></strong>
-              <span style="font-size:0.85rem; color:var(--text-muted);">صوت أنثوي مرح ومنعش وسلس ومريح للأذن</span>
-            </div>
-            <button type="button" class="btn btn-sm btn-select-voice" data-voice="Aoede" aria-label="اختيار صوت أويدي">اختيار</button>
-          </div>
-          <div class="voice-card-item" style="padding:10px; border:1px solid var(--border-color); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <strong style="display:block; font-size:1rem;">Kore (كوري) <span style="font-size:0.8rem; background:rgba(235,67,149,0.15); color:#ec407a; padding:2px 6px; border-radius:4px;">أنثوي</span></strong>
-              <span style="font-size:0.85rem; color:var(--text-muted);">صوت أنثوي حازم ورزين ورسمي</span>
-            </div>
-            <button type="button" class="btn btn-sm btn-select-voice" data-voice="Kore" aria-label="اختيار صوت كوري">اختيار</button>
-          </div>
-          <div class="voice-card-item" style="padding:10px; border:1px solid var(--border-color); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <strong style="display:block; font-size:1rem;">Leda (ليدا) <span style="font-size:0.8rem; background:rgba(235,67,149,0.15); color:#ec407a; padding:2px 6px; border-radius:4px;">أنثوي</span></strong>
-              <span style="font-size:0.85rem; color:var(--text-muted);">صوت أنثوي شبابي نقي وخفيف</span>
-            </div>
-            <button type="button" class="btn btn-sm btn-select-voice" data-voice="Leda" aria-label="اختيار صوت ليدا">اختيار</button>
-          </div>
-          <div class="voice-card-item" style="padding:10px; border:1px solid var(--border-color); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <strong style="display:block; font-size:1rem;">Zephyr (زفير) <span style="font-size:0.8rem; background:rgba(52,168,83,0.15); color:#4caf50; padding:2px 6px; border-radius:4px;">متوازن</span></strong>
-              <span style="font-size:0.85rem; color:var(--text-muted);">صوت متوازن ومشرق ومتفائل وسلس</span>
-            </div>
-            <button type="button" class="btn btn-sm btn-select-voice" data-voice="Zephyr" aria-label="اختيار صوت زفير">اختيار</button>
-          </div>
-        </div>
-      </div>
-      <footer class="dialog-footer">
-        <button type="button" id="btn-close-voice-picker" class="btn" aria-label="إغلاق">إغلاق</button>
-      </footer>
-    </div>
-  </dialog>
 
   <dialog id="settings-dialog" class="accessible-dialog dynamic-settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-dialog-title" aria-describedby="settings-dialog-desc">
     <div class="dialog-content">
