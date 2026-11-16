@@ -690,6 +690,7 @@ await window.mainV1.ready;
     const aiInput = document.getElementById('ai-prompt-input');
     const btnAiSend = document.getElementById('btn-ai-send');
     const btnAiAbort = document.getElementById('btn-ai-abort');
+    const btnAiReportNow = document.getElementById('btn-ai-report-now');
     const settingsDialog = document.getElementById('settings-dialog');
     const btnOpenSettings = document.getElementById('btn-open-settings');
     const btnSaveSettings = document.getElementById('btn-save-settings');
@@ -864,8 +865,7 @@ await window.mainV1.ready;
       announcer.textContent = '';
       setTimeout(() => { announcer.textContent = text; }, 60);
       try {
-        if (window.speechSynthesis) {
-          window.speechSynthesis.cancel();
+        if (window.speechSynthesis && !window.speechSynthesis.speaking) {
           const u = new SpeechSynthesisUtterance(text);
           u.lang = /[\u0600-\u06FF]/.test(text) ? 'ar-SA' : 'en-US';
           window.speechSynthesis.speak(u);
@@ -1446,16 +1446,24 @@ await window.mainV1.ready;
         aiInput.style.height = 'auto';
       }
 
-      // If a task is already generating, handle instant steering or live progress inquiries!
+      // If a task is already generating, handle instant steering, report-now, or live progress inquiries!
       if (isAiGenerating) {
         const trimmed = (promptText || '').trim();
-        const isStatusQuery = /^(وصلت|فين|ايه الأخبار|إيه الأخبار|شغال في ايه|شغال في إيه|بتعمل ايه|بتعمل إيه|الحالة|الوضع|status|progress|عملت ايه|عملت إيه)/i.test(trimmed);
 
+        const isReportQuery = /^(\/report|رد باللي وصلت له|اخرج ورد|قولي اللي وصلت له|كفاية ورد|كفاية كده ورد|لخص اللي وصلت له|رد عليا)$/i.test(trimmed);
+        if (isReportQuery) {
+          if (btnAiReportNow) {
+            btnAiReportNow.click();
+            return;
+          }
+        }
+
+        const isStatusQuery = /^(وصلت|فين|ايه الأخبار|إيه الأخبار|شغال في ايه|شغال في إيه|بتعمل ايه|بتعمل إيه|الحالة|الوضع|status|progress|عملت ايه|عملت إيه)/i.test(trimmed);
         if (isStatusQuery) {
           // Instant mid-flight status report without interrupting the ongoing task!
           const activeTool = currentActiveToolDesc || 'تنفيذ الخطوة الحالية';
           const stepInfo = currentTotalSteps > 0 ? `في الخطوة رقم ${currentTotalSteps}` : 'جاري التحضير والعمل';
-          const replyText = `أنا حالياً ${stepInfo}: ${activeTool}، ومستمر في تنفيذ طلبك في الخلفية بدون توقف.`;
+          const replyText = `أنا حالياً ${stepInfo}: ${activeTool}، ومستمر في تنفيذ طلبك في الخلفية بدون توقف. إذا أردت مني التوقف والرد فوراً بما تم إنجازه، اضغط زر "رد باللي وصلت له" أو اكتب "اخرج ورد".`;
 
           appendInstantChatCard('أنت', promptText, 'user');
           appendInstantChatCard('Antigravity', replyText, 'ai');
@@ -1509,6 +1517,7 @@ await window.mainV1.ready;
       currentTotalSteps = 0;
 
       isAiGenerating = true;
+      if (btnAiReportNow) btnAiReportNow.style.display = 'inline-block';
       playStartChime();
       if (reconnectOptions) {
         announce('تمت استعادة الاتصال بالمهمة الجارية، الوكيل يعمل الآن...');
@@ -2287,6 +2296,7 @@ await window.mainV1.ready;
         }
         scheduleAiRender(true);
         isAiGenerating = false;
+        if (btnAiReportNow) btnAiReportNow.style.display = 'none';
         aiAbortController = null;
         isUserExplicitAbort = false;
         updateSystemUsage();
@@ -2347,7 +2357,33 @@ await window.mainV1.ready;
           }
         } catch (e) {}
         isAiGenerating = false;
+        if (btnAiReportNow) btnAiReportNow.style.display = 'none';
         announce('تم إيقاف المهمة وتفريغ أي عمليات معلقة بنجاح');
+      });
+    }
+
+    if (btnAiReportNow) {
+      btnAiReportNow.addEventListener('click', async () => {
+        if (!isAiGenerating && !aiAbortController) {
+          announce('الوكيل لا ينفذ أدوات حالياً');
+          return;
+        }
+        playBeep(520, 0.15);
+        announce('جارٍ إيقاف الأدوات ومطالبة الوكيل بالرد الفوري بما تم جمعه حتى الآن...');
+        if (aiAbortController) {
+          try { aiAbortController.abort(); } catch (e) {}
+          aiAbortController = null;
+        }
+        try {
+          await window.mainV1Fetch('/api/ai/abort', { method: 'POST' });
+        } catch (e) {}
+        isAiGenerating = false;
+        if (btnAiReportNow) btnAiReportNow.style.display = 'none';
+
+        const reportPrompt = '[مقاطعة فورية من أحمد]: توقف فوراً عن تشغيل أو تنفيذ أي أدوات أو أوامر إضافية، ولخص لي واكتب لي الآن تقريراً شاملاً بكل النتائج والمعلومات التي توصلت إليها حتى هذه اللحظة.';
+        setTimeout(() => {
+          sendAiPrompt(reportPrompt);
+        }, 150);
       });
     }
 
