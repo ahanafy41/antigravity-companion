@@ -1464,32 +1464,45 @@ await window.mainV1.ready;
           return;
         }
 
-        const steerPrompt = activeFocusedAgent 
-          ? `[توجيه محادثة مباشر إلى الوكيل الفرعي: "${activeFocusedAgent}"]: ${promptText}`
-          : `[توجيه فوري من أحمد أثناء استمرار المهمة]: ${promptText}`;
-
-        appendInstantChatCard('أنت', steerPrompt, 'user');
-
-        try {
-          const res = await window.mainV1Fetch('/api/ai/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: steerPrompt })
-          });
-          const resData = await res.json().catch(() => ({}));
-          if (res.ok && resData.queued) {
-            playStartChime();
-            const steerConfirm = `تم استلام توجيهك: "${promptText}". جاري تنفيذه مع استمرار العملية دون توقف.`;
-            appendInstantChatCard('Antigravity', steerConfirm, 'ai');
-            announce(steerConfirm);
-            return;
+        const isStopQuery = /^(\/stop|\/cancel|\/abort|وقف|كفاية|إيقاف|stop|cancel|abort)$/i.test(trimmed);
+        if (isStopQuery) {
+          if (btnAiAbort) {
+            btnAiAbort.click();
+          } else {
+            if (aiAbortController) {
+              try { aiAbortController.abort(); } catch (e) {}
+              aiAbortController = null;
+            }
+            window.mainV1Fetch('/api/ai/abort', { method: 'POST' }).catch(() => {});
+            isAiGenerating = false;
+            announce('تم إيقاف المهمة الجارية بناءً على طلبك.');
           }
-          announce(resData.error || 'تعذر تسجيل التوجيه.');
-          return;
-        } catch (e) {
-          announce('تعذر تأكيد التوجيه؛ افحص المهام قبل تكرارها.');
           return;
         }
+
+        // Real instant interrupt & steering: Stop the stuck/current step and steer immediately!
+        announce('جارٍ مقاطعة الخطوة الجارية وتوجيه الوكيل فورياً بالطلب الجديد...');
+        playBeep(440, 0.15);
+
+        // Abort the active stream & run
+        if (aiAbortController) {
+          try { aiAbortController.abort(); } catch (e) {}
+          aiAbortController = null;
+        }
+        try {
+          await window.mainV1Fetch('/api/ai/abort', { method: 'POST' });
+        } catch (e) {}
+
+        isAiGenerating = false;
+
+        const steerPrompt = activeFocusedAgent 
+          ? `[توجيه محادثة مباشر إلى الوكيل الفرعي: "${activeFocusedAgent}"]: ${promptText}`
+          : `[توجيه وتعديل فوري من أحمد أثناء العمل]: ${promptText}`;
+
+        setTimeout(() => {
+          sendAiPrompt(steerPrompt);
+        }, 150);
+        return;
       }
 
       currentActiveToolDesc = 'بدء تحليل الطلب والتخطيط';
@@ -2319,21 +2332,22 @@ await window.mainV1.ready;
 
     if (btnAiAbort) {
       btnAiAbort.addEventListener('click', async () => {
-        if (!isAiGenerating && !aiAbortController) {
-          announce('لا توجد مهمة قيد التشغيل حالياً');
-          return;
-        }
         playBeep(440, 0.15);
-        announce('جارٍ إيقاف المهمة الجارية...');
+        announce('جارٍ إيقاف المهمة وتفريغ العمليات المعلقة...');
         isUserExplicitAbort = true;
         if (aiAbortController) {
-          aiAbortController.abort();
+          try { aiAbortController.abort(); } catch (e) {}
           aiAbortController = null;
         }
-        const cancelled = await window.mainV1Fetch('/api/ai/abort', { method: 'POST' });
-        if (!cancelled.ok) { announce((await cancelled.json()).error); return; }
+        try {
+          const cancelled = await window.mainV1Fetch('/api/ai/abort', { method: 'POST' });
+          if (!cancelled.ok) {
+            const err = await cancelled.json().catch(() => ({}));
+            if (err && err.error) announce(err.error);
+          }
+        } catch (e) {}
         isAiGenerating = false;
-        announce('تم إيقاف المهمة الجارية بنجاح');
+        announce('تم إيقاف المهمة وتفريغ أي عمليات معلقة بنجاح');
       });
     }
 

@@ -379,7 +379,8 @@
       for (const key of ['model', 'agent', 'effort', 'mode', 'sandbox', 'project', 'autopilot', 'safe_mode']) {
         if (stored[key] !== undefined && stored[key] !== '') options[key] = stored[key];
       }
-      if (payload.conversation_id) options.conversation_id = payload.conversation_id;
+      const convId = payload.conversation_id || current.conversationId;
+      if (convId) options.conversation_id = convId;
       const session = await request('/sessions', {method: 'POST', body: options});
       current.sessionId = session.session_id;
       current.conversationId = session.conversation_id || session.session_id;
@@ -814,16 +815,39 @@
       case 'ai/stream': return stream(body, options.signal);
       case 'ai/send': {
         if (!current.sessionId) unsupported('لا توجد جلسة لحفظ الرسالة التالية.');
-        if (current.pendingQueue && current.pendingQueue.message !== body.prompt) unsupported('رسالة تالية مجهولة النتيجة؛ افحص المهام قبل حفظ أخرى.');
+        if (current.pendingQueue && current.pendingQueue.message !== body.prompt) {
+          current.pendingQueue = null;
+          persist();
+        }
         current.pendingQueue ||= {message: body.prompt, requestId: uuid()}; persist();
-        const task = await request('/local-tasks', {method: 'POST', body: {session_id: current.sessionId,
-          message: body.prompt, request_id: current.pendingQueue.requestId, mode: 'queued'}});
-        current.pendingQueue = null; persist();
-        return {queued: true, task};
+        try {
+          const task = await request('/local-tasks', {method: 'POST', body: {session_id: current.sessionId,
+            message: body.prompt, request_id: current.pendingQueue.requestId, mode: 'queued'}});
+          current.pendingQueue = null; persist();
+          return {queued: true, task};
+        } catch (queueErr) {
+          current.pendingQueue = null; persist();
+          throw queueErr;
+        }
       }
-      case 'ai/abort':
-        if (current.runId) await request('/runs/' + encode(current.runId) + '/cancel', {method: 'POST', body: {}});
+      case 'ai/abort': {
+        if (current.runId) {
+          try { await request('/runs/' + encode(current.runId) + '/cancel', {method: 'POST', body: {}}); } catch (e) {}
+        }
+        if (current.sessionId) {
+          try {
+            const inventory = await request('/local-tasks');
+            const pendingTasks = (inventory.tasks || []).filter(task => task.session_id === current.sessionId && task.state === 'pending');
+            for (const task of pendingTasks) {
+              await request('/local-tasks/' + encode(task.task_id) + '/cancel', {method: 'POST', body: {}}).catch(() => {});
+            }
+          } catch (e) {}
+        }
+        current.pendingQueue = null;
+        current.pending = null;
+        persist();
         return {status: 'ok'};
+      }
       case 'ai/chat/reset': await closeCurrent(); return {status: 'ok'};
       case 'ai/runs/active': {
         const cId = query.get('conversation_id');
