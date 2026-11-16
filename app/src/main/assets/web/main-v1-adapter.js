@@ -661,7 +661,7 @@
       current.pending = current.pending || {message: payload.prompt, requestId: uuid()}; persist();
       try {
         started = await request('/sessions/' + encode(current.sessionId) + '/runs', {method: 'POST',
-          body: {message: current.pending.message, client_request_id: current.pending.requestId}});
+          body: {message: current.pending.message, client_request_id: current.pending.requestId, clear_queue: true}});
       } catch (runErr) {
         // Auto-recovery if session closed, capacity reached, or conflict: reset session and retry once
         if (runErr.status === 404 || runErr.status === 409) {
@@ -672,7 +672,7 @@
           current.pending = {message: payload.prompt, requestId: uuid()};
           persist();
           started = await request('/sessions/' + encode(current.sessionId) + '/runs', {method: 'POST',
-            body: {message: current.pending.message, client_request_id: current.pending.requestId}});
+            body: {message: current.pending.message, client_request_id: current.pending.requestId, clear_queue: true}});
         } else {
           current.pending = null;
           persist();

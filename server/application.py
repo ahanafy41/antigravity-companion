@@ -920,13 +920,23 @@ async def start_run(request):
     if request.app["cli_admin"].updating:
         raise RunConflict("CLI update is in progress")
     session_id = request.match_info["session_id"]
-    for entry in list(request.app["local_tasks"].entries.values()):
-        if (
-            entry["session_id"] == session_id
-            and entry["mode"] == "queued"
-            and entry["state"] == "pending"
-        ):
-            await request.app["local_tasks"].cancel(entry["task_id"])
+    if payload.get("clear_queue") or payload.get("force") or payload.get("steer"):
+        for entry in list(request.app["local_tasks"].entries.values()):
+            if (
+                entry["session_id"] == session_id
+                and entry["mode"] == "queued"
+                and entry["state"] == "pending"
+            ):
+                await request.app["local_tasks"].cancel(entry["task_id"])
+    elif any(
+        entry["session_id"] == session_id
+        and entry["mode"] == "queued"
+        and entry["state"] == "pending"
+        for entry in request.app["local_tasks"].entries.values()
+    ):
+        raise RunConflict(
+            "Saved messages are waiting; use the next-turn queue"
+        )
     run_id = request.app["sessions"].start(session_id, payload)
     return web.json_response({"run_id": run_id}, status=202)
 
