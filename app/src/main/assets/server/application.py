@@ -175,6 +175,7 @@ def register_routes(application):
         web.get("/api/v1/sessions", list_sessions),
         web.post("/api/v1/sessions", create_session),
         web.get("/api/v1/sessions/{session_id}", session_detail),
+        web.patch("/api/v1/sessions/{session_id}", patch_session),
         web.post("/api/v1/sessions/{session_id}/close", close_session),
         web.post("/api/v1/sessions/{session_id}/runs", start_run),
         web.get("/api/v1/runs/active", active_run_endpoint),
@@ -907,6 +908,13 @@ async def session_detail(request):
     return web.json_response(
         request.app["sessions"].detail(request.match_info["session_id"])
     )
+
+
+async def patch_session(request):
+    session_id = request.match_info["session_id"]
+    payload = await object_body(request)
+    session = await request.app["sessions"].update_session(session_id, payload)
+    return web.json_response(request.app["sessions"].detail(session_id))
 
 
 async def close_session(request):

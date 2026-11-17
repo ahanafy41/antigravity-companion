@@ -1255,6 +1255,20 @@ class Sessions:
         finally:
             self.session_closures.pop(session_id, None)
 
+    async def update_session(self, session_id, patch):
+        session = self.sessions[session_id]
+        changed_process_params = False
+        for key in ("model", "agent", "effort", "mode", "sandbox", "project"):
+            if key in patch and patch[key] != session.get(key):
+                session[key] = patch[key]
+                changed_process_params = True
+        self.persist()
+        if changed_process_params:
+            is_running = any(self.runs.get(key, {}).get("state") == "running" for key in session.get("runs", []))
+            if not is_running:
+                await self.stop_session_process(session_id)
+        return session
+
     async def close(self):
         await asyncio.gather(
             *self.session_closures.values(), return_exceptions=True

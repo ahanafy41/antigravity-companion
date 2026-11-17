@@ -331,6 +331,29 @@
         invalidateSettings();
         savedFields.push(...Object.keys(storePatch).filter(k => !savedFields.includes(k)));
       }
+      if (cliPatch.model || cliPatch.effort || storePatch.model || storePatch.effort) {
+        try {
+          const sessionPatch = {};
+          if (cliPatch.model || storePatch.model) sessionPatch.model = cliPatch.model || storePatch.model;
+          if (cliPatch.effort || storePatch.effort) sessionPatch.effort = cliPatch.effort || storePatch.effort;
+          if (current.sessionId) {
+            await request('/sessions/' + encode(current.sessionId), {
+              method: 'PATCH',
+              body: sessionPatch
+            });
+          } else if (patch.conversation_id || current.conversationId) {
+            const cid = patch.conversation_id || current.conversationId;
+            const listed = await request('/sessions');
+            const found = (listed.sessions || []).find(s => s.conversation_id === cid || s.session_id === cid);
+            if (found) {
+              await request('/sessions/' + encode(found.session_id), {
+                method: 'PATCH',
+                body: sessionPatch
+              });
+            }
+          }
+        } catch (e) {}
+      }
       return {settings: settingsView(), baseline: settingsBaseline(), savedFields};
     } catch (error) {
       error.savedFields = savedFields;
@@ -357,21 +380,42 @@
   }
   async function ensureSession(payload) {
     if (payload.force_new && !current.pending) await closeCurrent();
-    if (payload.conversation_id && payload.conversation_id !== current.conversationId) {
-      if (current.sessionId) await closeCurrent();
-      const listed = await request('/sessions');
-      const found = listed.sessions.find(session => session.conversation_id === payload.conversation_id || session.session_id === payload.conversation_id);
-      if (found) { current.sessionId = found.session_id; current.conversationId = found.conversation_id; persist(); }
-      else { current.conversationId = payload.conversation_id; persist(); }
-    }
-    if (current.sessionId) {
+    const targetConvId = payload.conversation_id || current.conversationId;
+    if (targetConvId && (targetConvId !== current.conversationId || !current.sessionId)) {
+      if (current.sessionId && current.conversationId !== targetConvId) {
+        await closeCurrent();
+      }
+      current.conversationId = targetConvId;
       try {
-        const check = await request('/sessions/' + encode(current.sessionId));
-        if (check && check.session_id) return;
+        const listed = await request('/sessions');
+        const found = (listed.sessions || []).find(session => session.conversation_id === targetConvId || session.session_id === targetConvId);
+        if (found) {
+          current.sessionId = found.session_id;
+          current.conversationId = found.conversation_id || targetConvId;
+          persist();
+        } else {
+          current.sessionId = null;
+          persist();
+        }
       } catch (e) {
         current.sessionId = null;
         persist();
       }
+    }
+    if (current.sessionId) {
+      try {
+        const check = await request('/sessions/' + encode(current.sessionId));
+        if (check && check.session_id) {
+          if (!targetConvId || check.conversation_id === targetConvId || check.session_id === targetConvId) {
+            return;
+          }
+        }
+      } catch (e) {
+        current.sessionId = null;
+        persist();
+      }
+      current.sessionId = null;
+      persist();
     }
     if (!sessionCreation) sessionCreation = (async () => {
       const stored = await settings();
@@ -405,7 +449,17 @@
   async function conversation(id) {
     await historyReady;
     if (id) {
+      if (current.conversationId !== id) {
+        current.sessionId = null;
+      }
       current.conversationId = id;
+      try {
+        const listed = await request('/sessions');
+        const found = (listed.sessions || []).find(s => s.conversation_id === id || s.session_id === id);
+        if (found) {
+          current.sessionId = found.session_id;
+        }
+      } catch (e) {}
       persist();
     }
     let activeRun = null;

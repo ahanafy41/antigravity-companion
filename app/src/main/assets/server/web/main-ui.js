@@ -3920,10 +3920,13 @@ await window.mainV1.ready;
           settingsActiveConv.textContent = convTitle;
         }
 
-        // Render conversation history
-        aiChatFeed.innerHTML = '';
+        // Render conversation history using an atomic DocumentFragment to eliminate layout reflows and TalkBack focus jumps
+        const chatFragment = document.createDocumentFragment();
         if (messages.length === 0) {
-          aiChatFeed.innerHTML = '<article class="chat-message ai-message"><div class="msg-content markdown-body" dir="rtl"><p>محادثة فارغة، يمكنك البدء بكتابة طلبك الآن.</p></div></article>';
+          const emptyCard = document.createElement('article');
+          emptyCard.className = 'chat-message ai-message';
+          emptyCard.innerHTML = '<div class="msg-content markdown-body" dir="rtl"><p>محادثة فارغة، يمكنك البدء بكتابة طلبك الآن.</p></div>';
+          chatFragment.appendChild(emptyCard);
         } else {
           messages.forEach(msg => {
             const isUser = msg.role === 'user';
@@ -4005,7 +4008,7 @@ await window.mainV1.ready;
               </div>
               ${statusBannerHtml}
             `;
-            aiChatFeed.appendChild(card);
+            chatFragment.appendChild(card);
 
             // Bind toggle events if thinking accordion exists
             if (!isUser && msg.thinking) {
@@ -4121,7 +4124,7 @@ await window.mainV1.ready;
                 <ul class="subagent-steps-list steps-list" role="list">${toolsHtml}</ul>
                 ${sub.response ? `<div class="msg-content markdown-body" style="margin-top:8px;" dir="rtl">${renderMarkdown(sub.response)}</div>` : ''}
               `;
-              aiChatFeed.appendChild(subThread);
+              chatFragment.appendChild(subThread);
             }
           });
         }
@@ -4139,10 +4142,13 @@ await window.mainV1.ready;
           data.artifacts.forEach(art => {
             artSection.appendChild(createArtifactCard(art));
           });
-          aiChatFeed.appendChild(artSection);
+          chatFragment.appendChild(artSection);
         } else {
           updateArtifactsUI(0);
         }
+
+        // Single atomic DOM paint to ensure absolute stability for screen readers
+        aiChatFeed.replaceChildren(chatFragment);
 
         aiChatFeed.scrollTop = aiChatFeed.scrollHeight;
         if (conversationsDialog) conversationsDialog.close();
@@ -4165,9 +4171,16 @@ await window.mainV1.ready;
             conversation_id: convId
           });
         } else {
-          announce(`تم استئناف المحادثة بنجاح: ${convTitle}`);
+          announce(`تم فتح المحادثة: ${convTitle}`);
         }
-        if (aiInput) aiInput.focus();
+        // Accessibility-safe focus: Keep focus stable on the last message or input without jumping
+        const lastCard = aiChatFeed.querySelector('.chat-message:last-of-type');
+        if (lastCard) {
+          lastCard.setAttribute('tabindex', '-1');
+          lastCard.focus({ preventScroll: true });
+        } else if (aiInput) {
+          aiInput.focus({ preventScroll: true });
+        }
       } catch (err) {
         playBeep(400, 0.2);
         announce('حدث خطأ أثناء استئناف المحادثة: ' + err.message);
@@ -6872,7 +6885,7 @@ await window.mainV1.ready;
         const res = await window.mainV1Fetch('/api/ai/settings', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: modelId })
+          body: JSON.stringify({ model: modelId, conversation_id: currentActiveConversationId })
         });
         if (res.ok) {
           const resData = await res.json();
