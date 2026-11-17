@@ -945,6 +945,15 @@ async def start_run(request):
         raise RunConflict(
             "Saved messages are waiting; use the next-turn queue"
         )
+    session = request.app["sessions"].sessions.get(session_id)
+    if session:
+        try:
+            cli_doc = request.app["cli_settings"].read_settings()
+            for k in ("model", "effort", "mode"):
+                if k in cli_doc and cli_doc[k]:
+                    session[k] = cli_doc[k]
+        except Exception:
+            pass
     run_id = request.app["sessions"].start(session_id, payload)
     return web.json_response({"run_id": run_id}, status=202)
 

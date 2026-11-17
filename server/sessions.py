@@ -715,7 +715,14 @@ class Sessions:
         session_id = session["session_id"]
         process = self.processes.get(session_id)
         if process and process.returncode is None:
-            return process
+            expected_model = session.get("model")
+            expected_effort = session.get("effort")
+            if (
+                getattr(process, "model", None) == expected_model
+                and getattr(process, "effort", None) == expected_effort
+            ):
+                return process
+            await self.stop_session_process(session_id)
         arguments = [
             "--input-format",
             "stream-json",
@@ -731,6 +738,8 @@ class Sessions:
         if session["conversation_id"]:
             arguments.extend(["--conversation", session["conversation_id"]])
         process = await self.cli.spawn(arguments, session["cwd"])
+        process.model = session.get("model")
+        process.effort = session.get("effort")
         self.processes[session_id] = process
         process.stderr_task = asyncio.create_task(self.drain_stderr(process))
         return process
