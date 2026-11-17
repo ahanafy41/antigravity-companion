@@ -332,27 +332,15 @@
         savedFields.push(...Object.keys(storePatch).filter(k => !savedFields.includes(k)));
       }
       if (cliPatch.model || cliPatch.effort || storePatch.model || storePatch.effort) {
-        try {
-          const sessionPatch = {};
-          if (cliPatch.model || storePatch.model) sessionPatch.model = cliPatch.model || storePatch.model;
-          if (cliPatch.effort || storePatch.effort) sessionPatch.effort = cliPatch.effort || storePatch.effort;
-          if (current.sessionId) {
-            await request('/sessions/' + encode(current.sessionId), {
-              method: 'PATCH',
-              body: sessionPatch
-            });
-          } else if (patch.conversation_id || current.conversationId) {
-            const cid = patch.conversation_id || current.conversationId;
-            const listed = await request('/sessions');
-            const found = (listed.sessions || []).find(s => s.conversation_id === cid || s.session_id === cid);
-            if (found) {
-              await request('/sessions/' + encode(found.session_id), {
-                method: 'PATCH',
-                body: sessionPatch
-              });
-            }
-          }
-        } catch (e) {}
+        const nextModel = cliPatch.model || storePatch.model;
+        current.model = nextModel || current.model;
+        if (current.sessionId) {
+          try {
+            await request('/sessions/' + encode(current.sessionId) + '/close', { method: 'POST', body: {} });
+          } catch (e) {}
+          current.sessionId = null;
+          persist();
+        }
       }
       return {settings: settingsView(), baseline: settingsBaseline(), savedFields};
     } catch (error) {
@@ -368,7 +356,8 @@
   function cwd() { return settingsDocument?.settings.cwd || settingsDocument?.settings.workspace_roots?.[0] || settingsDocument?.settings.trustedWorkspaces?.[0]; }
   function context() { return cwd() ? {cwd: cwd()} : {}; }
   function scoped(route) { return route + (cwd() ? '?cwd=' + encode(cwd()) : ''); }
-  async function closeCurrent() {
+  async function closeCurrent(preserveConversation = true) {
+    const savedConvId = preserveConversation ? current.conversationId : null;
     current.pending = null;
     current.pendingQueue = null;
     if (current.sessionId) {
@@ -376,22 +365,34 @@
         await request('/sessions/' + encode(current.sessionId) + '/close', {method: 'POST', body: {}});
       } catch (e) {}
     }
-    current = {}; persist();
+    current = savedConvId ? { conversationId: savedConvId } : {};
+    persist();
   }
   async function ensureSession(payload) {
-    if (payload.force_new && !current.pending) await closeCurrent();
+    if (payload.force_new && !current.pending) await closeCurrent(false);
     const targetConvId = payload.conversation_id || current.conversationId;
+    const stored = await settings();
+    const desiredModel = stored.model || stored.settings?.model;
+
+    if (current.sessionId && current.model && desiredModel && current.model !== desiredModel) {
+      await closeCurrent(true);
+    }
+
     if (targetConvId && (targetConvId !== current.conversationId || !current.sessionId)) {
       if (current.sessionId && current.conversationId !== targetConvId) {
-        await closeCurrent();
+        await closeCurrent(false);
       }
       current.conversationId = targetConvId;
       try {
         const listed = await request('/sessions');
-        const found = (listed.sessions || []).find(session => session.conversation_id === targetConvId || session.session_id === targetConvId);
+        const found = (listed.sessions || []).find(session =>
+          (session.conversation_id === targetConvId || session.session_id === targetConvId) &&
+          (!desiredModel || session.model === desiredModel)
+        );
         if (found) {
           current.sessionId = found.session_id;
           current.conversationId = found.conversation_id || targetConvId;
+          current.model = found.model || desiredModel;
           persist();
         } else {
           current.sessionId = null;
@@ -407,7 +408,10 @@
         const check = await request('/sessions/' + encode(current.sessionId));
         if (check && check.session_id) {
           if (!targetConvId || check.conversation_id === targetConvId || check.session_id === targetConvId) {
-            return;
+            if (!desiredModel || !check.model || check.model === desiredModel) {
+              current.model = check.model;
+              return;
+            }
           }
         }
       } catch (e) {
@@ -418,7 +422,6 @@
       persist();
     }
     if (!sessionCreation) sessionCreation = (async () => {
-      const stored = await settings();
       const options = context();
       for (const key of ['model', 'agent', 'effort', 'mode', 'sandbox', 'project', 'autopilot', 'safe_mode']) {
         if (stored[key] !== undefined && stored[key] !== '') options[key] = stored[key];
@@ -428,6 +431,7 @@
       const session = await request('/sessions', {method: 'POST', body: options});
       current.sessionId = session.session_id;
       current.conversationId = session.conversation_id || session.session_id;
+      current.model = session.model || options.model || desiredModel;
       persist();
     })().finally(() => { sessionCreation = null; });
     await sessionCreation;
