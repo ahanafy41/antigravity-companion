@@ -35,6 +35,33 @@
             <div id="update-status" class="start-style-2" role="region" aria-live="polite" aria-atomic="true" aria-label="حالة التحديث"></div>
         </section>
 
+        <section class="card" aria-labelledby="apps-heading">
+            <h2 id="apps-heading">التطبيقات التفاعلية المستقلة</h2>
+            <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px;">تشغيل التطبيقات كشاشات مستقلة مباشرة دون الحاجة لدخول المحادثة:</p>
+            <div id="start-apps-container" class="btn-group" role="region" aria-label="قائمة التطبيقات السريعة">
+                <a href="http://127.0.0.1:7681/apps/youtube.html" target="_blank" class="btn btn-app-link" aria-label="تشغيل تطبيق يوتيوب بلس التفاعلي في نافذة مستقلة">
+                    <span aria-hidden="true">▶️</span>
+                    <span>يوتيوب بلس - مشغل وتنزيل</span>
+                </a>
+                <a href="http://127.0.0.1:7681/apps/calculator.html" target="_blank" class="btn btn-app-link" aria-label="تشغيل تطبيق الآلة الحاسبة الناطقة في نافذة مستقلة">
+                    <span aria-hidden="true">🧮</span>
+                    <span>الآلة الحاسبة الناطقة الذكية</span>
+                </a>
+                <a href="http://127.0.0.1:7681/apps/python_calculator.html" target="_blank" class="btn btn-app-link" aria-label="تشغيل تطبيق آلة حاسبة بايثون في نافذة مستقلة">
+                    <span aria-hidden="true">🐍</span>
+                    <span>آلة حاسبة بايثون واستوديو الأكواد</span>
+                </a>
+                <a href="http://127.0.0.1:7681/apps/radio_masr.html" target="_blank" class="btn btn-app-link" aria-label="تشغيل تطبيق راديو مصر في نافذة مستقلة">
+                    <span aria-hidden="true">📻</span>
+                    <span>راديو مصر - الإذاعات الحية</span>
+                </a>
+                <button type="button" id="btn-start-view-all-apps" class="btn" aria-label="فتح مستودع التطبيقات الكامل في الشات">
+                    <span aria-hidden="true">📱</span>
+                    <span>مستودع كافة التطبيقات (<span id="start-apps-count">...</span>)</span>
+                </button>
+            </div>
+        </section>
+
         <section class="card" aria-labelledby="setup-heading">
             <h2 id="setup-heading">الإعداد الأولي والصيانة</h2>
             <div class="btn-group">

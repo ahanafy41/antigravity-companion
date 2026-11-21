@@ -184,6 +184,23 @@
             background-color: #4a191f;
         }
 
+        .btn-app-link {
+            background-color: #17202c;
+            border-color: #3b82f6;
+            color: #60a5fa;
+            justify-content: flex-start;
+            padding-inline: 18px;
+            gap: 12px;
+            text-align: right;
+        }
+
+        .btn-app-link:hover, .btn-app-link:focus-visible {
+            background-color: #1e293b;
+            border-color: #60a5fa;
+            color: #93c5fd;
+            outline: 3px solid #60a5fa !important;
+        }
+
         .diag-box {
             margin-top: 12px;
             padding: 10px;

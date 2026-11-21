@@ -106,7 +106,7 @@ function reportError(error) {
         }
 
         let isNavigatingToChat = false;
-        async function goToChat() {
+        async function goToChat(queryString = '') {
             if (isNavigatingToChat || serverBusy) return;
             isNavigatingToChat = true;
             try {
@@ -115,14 +115,30 @@ function reportError(error) {
                 if (!ready) ready = await changeServerState(true);
                 if (!ready) return;
                 announce('جارٍ فتح الشات والمحادثة...');
+                const target = '/' + (queryString ? queryString : '');
                 if (window.AntigravityBridge?.loadChatUrl) {
                     await window.AntigravityBridge.loadChatUrl();
                 } else {
-                    window.location.href = '/';
+                    window.location.href = target;
                 }
             } finally {
                 isNavigatingToChat = false;
             }
+        }
+
+        async function loadStartApps() {
+            try {
+                const countBadge = document.getElementById('start-apps-count');
+                const res = await fetch('http://127.0.0.1:7681/api/v1/apps', {
+                    headers: { 'Accept': 'application/json' },
+                    credentials: 'include'
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const apps = data.apps || [];
+                    if (countBadge) countBadge.textContent = String(apps.length);
+                }
+            } catch (_) {}
         }
 
         let diagnosticsBusy = false;
@@ -407,6 +423,11 @@ function bindSingleAction(id, action) {
 }
 
 document.getElementById("btn-go-chat").addEventListener("click", () => goToChat().catch(reportError));
+const btnStartAllApps = document.getElementById("btn-start-view-all-apps");
+if (btnStartAllApps) {
+    btnStartAllApps.addEventListener("click", () => goToChat('?open=apps').catch(reportError));
+}
+loadStartApps().catch(() => {});
 serverButton.addEventListener("click", () => changeServerState(!serverReady).catch(reportError));
 bindSingleAction("btn-sync-server", syncServerFiles);
 bindSingleAction("btn-setup-termux", setupTermux);

@@ -186,6 +186,13 @@
         countBadge.textContent = String(count);
         countBadge.setAttribute('aria-label', `${count} تطبيق`);
       }
+      if (doc) {
+        const headerBadge = doc.getElementById('header-apps-badge');
+        if (headerBadge) {
+          headerBadge.textContent = String(count);
+          headerBadge.setAttribute('aria-label', `${count} تطبيق`);
+        }
+      }
     }
 
     function renderList(appsToDisplay) {
@@ -450,6 +457,11 @@
         });
       }
 
+      const btnHeader = doc.getElementById('btn-header-apps');
+      if (btnHeader) {
+        btnHeader.addEventListener('click', openDialog);
+      }
+
       if (btnClose) {
         btnClose.addEventListener('click', closeDialog);
       }
@@ -471,6 +483,13 @@
       // Initial silent background load to populate drawer badge count
       loadApps().catch(() => {});
       isInitialized = true;
+
+      // Check URL query parameters for auto-opening
+      try {
+        if (win.location && win.location.search && win.location.search.includes('open=apps')) {
+          win.setTimeout(() => openDialog(), 150);
+        }
+      } catch (_) {}
     }
 
     return {
