@@ -1,5 +1,5 @@
 'use strict';
-const CACHE_NAME = 'antigravity-static-2cd8430e832c6a727367286c';
+const CACHE_NAME = 'antigravity-static-cb72fadacb1256f3d163ec6b';
 const STATIC_PATHS = new Set([
   '/',
   '/start',
@@ -8,6 +8,9 @@ const STATIC_PATHS = new Set([
   '/start-ui.css',
   '/start-ui.js',
   '/main-v1-adapter.js',
+  '/canvas-runner.js',
+  '/apps-manager.js',
+  '/media-viewer.js',
   '/api.js',
   '/native.js',
   '/history.js',

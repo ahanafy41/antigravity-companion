@@ -19,7 +19,10 @@ final class CompanionWebViewClient extends WebViewClient {
     }
     @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
         if (origins.allowsNavigation(request.getUrl().toString())) return false;
-        if (request.isForMainFrame() && "https".equals(request.getUrl().getScheme())) activity.openBrowser(request.getUrl());
+        if (!request.isForMainFrame()) return false;
+        if ("https".equalsIgnoreCase(request.getUrl().getScheme()) || "http".equalsIgnoreCase(request.getUrl().getScheme())) {
+            activity.openBrowser(request.getUrl());
+        }
         return true;
     }
     @Override public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
@@ -29,6 +32,10 @@ final class CompanionWebViewClient extends WebViewClient {
             if (asset != null) return asset;
         }
         if (origins.allowsBridge(url)) return null;
+        String scheme = request.getUrl() != null ? request.getUrl().getScheme() : null;
+        if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme) || "data".equalsIgnoreCase(scheme) || "blob".equalsIgnoreCase(scheme)) {
+            return null;
+        }
         return new WebResourceResponse("text/plain", "UTF-8", 403, "Forbidden", Collections.emptyMap(),
                 new ByteArrayInputStream(new byte[0]));
     }

@@ -1109,13 +1109,18 @@ class Sessions:
             tool_name = step.get("tool_name") or step.get("tool") or tool_info.get("name") or ""
             args = step.get("parameters") or step.get("args") or tool_info.get("parameters") or {}
             target = str(args.get("TargetFile") or args.get("target_file") or args.get("Path") or args.get("path") or "").strip().strip('"').strip("'")
-            if "brain" in str(target) and tool_name in ("write_to_file", "write"):
+            is_brain_artifact = ("brain" in str(target) and tool_name in ("write_file", "write_to_file", "write"))
+            is_apps_file = (("apps/" in str(target) or str(target).endswith(".html") or str(target).endswith(".htm")) and tool_name in ("write_file", "write_to_file", "write"))
+            if is_brain_artifact or is_apps_file:
                 art_name = Path(target).name.strip().strip('"').strip("'")
                 meta = args.get("ArtifactMetadata") or {}
+                summary_text = meta.get("Summary") or meta.get("summary") or args.get("Description", "")
+                if not summary_text and is_apps_file:
+                    summary_text = f"تطبيق ويب تفاعلي ({art_name})"
                 self.emit(run, "artifact", {
                     "name": art_name,
                     "path": str(target),
-                    "summary": meta.get("Summary") or meta.get("summary") or args.get("Description", ""),
+                    "summary": summary_text,
                     "requestFeedback": bool(meta.get("RequestFeedback") or meta.get("requestFeedback", False)),
                     "userFacing": bool(meta.get("UserFacing", True) if "UserFacing" in meta else meta.get("userFacing", True)),
                 })
