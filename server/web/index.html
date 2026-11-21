@@ -173,6 +173,7 @@
     <footer class="ai-input-section" role="region" aria-label="كتابة رسالة">
       <form id="ai-chat-form" class="ai-chat-form main-style-10">
         <textarea id="ai-prompt-input" class="ai-prompt-input" rows="1" placeholder="اكتب رسالتك هنا..." aria-label="اكتب رسالتك"></textarea>
+        <button type="button" id="btn-create-app-bottom" class="btn btn-create-app-bar" aria-label="إنشاء تطبيق ويب جديد في الكانفاس" title="إنشاء تطبيق ويب جديد">✨ تطبيق</button>
         <button type="button" id="btn-open-files-bottom" class="btn main-style-15" aria-label="الملفات">ملفات</button>
         <button type="submit" id="btn-ai-send" class="btn btn-send-ai" aria-label="إرسال">إرسال</button>
         <button type="button" id="btn-ai-report-now" class="btn btn-report-ai" aria-label="رد باللي وصلت له الآن" style="display:none; background:var(--accent-purple, #6366f1); color:#fff; font-weight:bold;">رد باللي وصلت له</button>
@@ -920,6 +921,36 @@
         <button type="button" id="btn-nexus-cancel" class="btn" aria-label="إلغاء وإرسال هروب (Escape)">إلغاء (Esc)</button>
         <button type="button" id="btn-nexus-confirm" class="btn btn-primary" aria-label="تأكيد الخيار المختار (Enter)">تأكيد (Enter)</button>
       </footer>
+    </div>
+  </dialog>
+
+  <!-- Accessible Create App Dialog -->
+  <dialog id="create-app-dialog" class="accessible-dialog" role="dialog" aria-modal="true" aria-labelledby="create-app-dialog-title" style="max-width: 520px; width: 95%;">
+    <div class="dialog-content">
+      <header class="dialog-header">
+        <div class="dialog-header-title-group" style="display:flex; align-items:center; gap:8px;">
+          <span aria-hidden="true" style="font-size:1.4rem;">✨📱</span>
+          <h2 id="create-app-dialog-title">إنشاء تطبيق ويب جديد</h2>
+        </div>
+        <button type="button" id="btn-close-create-app-top" class="btn-close-dialog" aria-label="إغلاق نافذة إنشاء تطبيق">✕</button>
+      </header>
+      <form id="form-create-app" class="dialog-body" style="display: flex; flex-direction: column; gap: 14px;">
+        <p style="color: var(--text-muted); font-size: 0.95rem; margin: 0; line-height: 1.5;">
+          اكتب فكرة التطبيق الذي تريده، وسيقوم الوكيل ببرمجته فوراً في مجلد <code>apps/</code> وتشغيله مباشرة في الكانفاس.
+        </p>
+        <div>
+          <label for="create-app-name-input" style="display:block; font-weight:700; margin-bottom:6px;">اسم أو فكرة التطبيق:</label>
+          <input type="text" id="create-app-name-input" class="form-input" placeholder="مثال: حاسبة زكاة، مؤقت رياضي، جدول مهام..." required aria-required="true" style="width:100%; padding:10px 14px; border-radius:8px; border:1px solid var(--border-main); background:var(--bg-card); color:var(--text-main); font-size:1rem;">
+        </div>
+        <div>
+          <label for="create-app-details-input" style="display:block; font-weight:700; margin-bottom:6px;">تفاصيل ومواصفات إضافية (اختياري):</label>
+          <textarea id="create-app-details-input" class="form-input" rows="2" placeholder="أزرار معينة، ألوان، تفاعل مع قارئ الشاشة، إلخ..." style="width:100%; padding:10px 14px; border-radius:8px; border:1px solid var(--border-main); background:var(--bg-card); color:var(--text-main); font-size:0.95rem;"></textarea>
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:8px;">
+          <button type="button" id="btn-cancel-create-app" class="btn" aria-label="إلغاء">إلغاء</button>
+          <button type="submit" id="btn-submit-create-app" class="btn btn-primary" style="background:var(--accent-purple, #6366f1); color:#fff; font-weight:bold;" aria-label="بدء إنشاء التطبيق">🚀 ابدأ الإنشاء</button>
+        </div>
+      </form>
     </div>
   </dialog>
 

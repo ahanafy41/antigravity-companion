@@ -1059,9 +1059,11 @@ await window.mainV1.ready;
       } else if (toolName === 'write_file' || toolName === 'edit_file' || toolName === 'write_to_file' || toolName === 'write') {
         const p = params.Path || params.path || params.TargetFile || params.target_file || '';
         const isEdit = toolName === 'edit_file';
+        const isHtmlApp = (p && (p.endsWith('.html') || p.endsWith('.htm') || p.includes('/apps/')));
         cardHtml += '<div class="tool-card-header file-header">' +
           '<span>' + (isEdit ? '✏️ تعديل ملف:' : '📝 إنشاء/كتابة ملف:') + ' <code>' + escapeHtml(p || 'ملف') + '</code></span>' +
           '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
+            (isHtmlApp ? '<button type="button" class="btn btn-sm btn-primary btn-view-file-direct" data-path="' + escapeHtml(p) + '" style="background:var(--accent-purple, #6366f1); color:#fff; font-weight:bold;" aria-label="تشغيل التطبيق في الكانفاس">⚡ تشغيل في الكانفاس</button>' : '') +
             (p ? '<button type="button" class="btn btn-sm btn-view-file-direct" data-path="' + escapeHtml(p) + '" aria-label="عرض وفتح الملف ' + escapeHtml(p) + '">📖 عرض الملف</button>' : '') +
             (p ? '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(p) + '" aria-label="نسخ مسار الملف">📋 نسخ المسار</button>' : '') +
             '<button type="button" class="btn btn-sm btn-copy-inline" data-copy="' + escapeHtml(strOutput) + '" aria-label="نسخ التفاصيل">📋 نسخ التفاصيل</button>' +
@@ -1406,6 +1408,24 @@ await window.mainV1.ready;
       if (firstWord === '/model' || firstWord === '/models') {
         if (aiInput) aiInput.value = '';
         if (typeof openModelPicker === 'function') openModelPicker();
+        return;
+      }
+      if (firstWord === '/apps' || firstWord === '/app') {
+        if (aiInput) aiInput.value = '';
+        const appsDlg = document.getElementById('apps-dialog');
+        if (window.liveAppsManager && typeof window.liveAppsManager.openDialog === 'function') {
+          window.liveAppsManager.openDialog();
+        } else if (appsDlg) {
+          appsDlg.showModal();
+          announce('تم فتح مستودع التطبيقات');
+        }
+        return;
+      }
+      if (firstWord === '/create-app' || firstWord === '/new-app') {
+        if (aiInput) aiInput.value = '';
+        if (typeof openCreateAppModal === 'function') {
+          openCreateAppModal();
+        }
         return;
       }
       if (firstWord === '/tasks' || firstWord === '/task' || firstWord === '/schedule' || firstWord === '/jobs') {
@@ -5120,6 +5140,61 @@ await window.mainV1.ready;
             announce(`جاهز لتعديل تطبيق ${appData.title} في المحادثة`);
           }
         }
+      });
+    }
+
+    // ==========================================
+    // CREATE APP MODAL & BUTTON CONTROLLER
+    // ==========================================
+    const btnCreateAppBottom = document.getElementById('btn-create-app-bottom');
+    const createAppDialog = document.getElementById('create-app-dialog');
+    const formCreateApp = document.getElementById('form-create-app');
+    const createAppNameInput = document.getElementById('create-app-name-input');
+    const createAppDetailsInput = document.getElementById('create-app-details-input');
+    const btnCloseCreateAppTop = document.getElementById('btn-close-create-app-top');
+    const btnCancelCreateApp = document.getElementById('btn-cancel-create-app');
+
+    function openCreateAppModal() {
+      if (!createAppDialog) return;
+      if (formCreateApp) formCreateApp.reset();
+      createAppDialog.showModal();
+      announce('تم فتح نافذة إنشاء تطبيق ويب جديد');
+      setTimeout(() => {
+        if (createAppNameInput) createAppNameInput.focus();
+      }, 50);
+    }
+
+    function closeCreateAppModal() {
+      if (!createAppDialog || !createAppDialog.open) return;
+      createAppDialog.close();
+      if (btnCreateAppBottom) btnCreateAppBottom.focus();
+    }
+
+    if (btnCreateAppBottom) {
+      btnCreateAppBottom.addEventListener('click', openCreateAppModal);
+    }
+    if (btnCloseCreateAppTop) {
+      btnCloseCreateAppTop.addEventListener('click', closeCreateAppModal);
+    }
+    if (btnCancelCreateApp) {
+      btnCancelCreateApp.addEventListener('click', closeCreateAppModal);
+    }
+
+    if (formCreateApp) {
+      formCreateApp.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const appName = (createAppNameInput ? createAppNameInput.value : '').trim();
+        const appDetails = (createAppDetailsInput ? createAppDetailsInput.value : '').trim();
+        if (!appName) return;
+
+        closeCreateAppModal();
+
+        const promptText = `[طلب إنشاء تطبيق تفاعلي]:\nقم ببرمجة تطبيق ويب تفاعلي متكامل باسم "${appName}"${appDetails ? ` بالمواصفات التالية: ${appDetails}` : ''}.\nالمسار الإلزامي لحفظ التطبيق هو داخل مجلد apps/ (مثال: apps/${encodeURIComponent(appName.replace(/\\s+/g, '_').toLowerCase())}.html).\nيجب أن يكون الكود ملفاً واحداً متكاملاً (HTML/CSS/JS) متوافقاً 100% مع قارئ الشاشة وإمكانية الوصول وأهداف اللمس القياسية، واستدعاء ميزة الكانفاس لتشغيله فوراً.`;
+
+        if (aiInput) {
+          aiInput.value = promptText;
+        }
+        sendAiPrompt(promptText);
       });
     }
 

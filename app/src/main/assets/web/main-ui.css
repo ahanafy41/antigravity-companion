@@ -2905,5 +2905,167 @@ dialog.accessible-dialog::backdrop {
 }
 
 /* ==========================================================================
-   Native Live Voice Mode (Gemini 3.8 Live) Styling & Accessible Audio States
+   Live Accessible Canvas Runner & Apps Hub Repository Styling
    ========================================================================== */
+.apps-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.app-card {
+  background: var(--bg-card, #1e293b);
+  border: 1px solid var(--border-main, #334155);
+  border-radius: 10px;
+  padding: 14px 16px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+}
+
+.app-card:focus,
+.app-card:focus-visible,
+.app-card:focus-within {
+  border-color: var(--accent-purple, #6366f1);
+  box-shadow: 0 0 0 2px var(--accent-purple, #6366f1);
+}
+
+.app-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.app-card-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-card-icon {
+  font-size: 1.25rem;
+}
+
+.app-card-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-main, #f8fafc);
+}
+
+.app-card-date {
+  font-size: 0.8rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+.app-card-desc {
+  margin: 4px 0 12px 0;
+  font-size: 0.9rem;
+  color: var(--text-muted, #94a3b8);
+  line-height: 1.4;
+}
+
+.app-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.app-card-actions .btn {
+  min-height: 48px;
+  min-width: 48px;
+  padding: 8px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}
+
+.apps-empty-state,
+.apps-loading-state,
+.apps-error-state {
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--text-muted, #94a3b8);
+}
+
+.canvas-runner-dialog {
+  border: 2px solid var(--accent-purple, #6366f1) !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  background: var(--bg-main, #0f172a);
+}
+
+.canvas-header {
+  padding-bottom: 12px;
+}
+
+.canvas-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.btn-canvas {
+  min-height: 48px;
+  padding: 8px 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  background: var(--bg-card, #1e293b);
+  color: var(--text-main, #f8fafc);
+  border: 1px solid var(--border-main, #334155);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.btn-canvas:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.btn-canvas:focus,
+.btn-canvas:focus-visible {
+  outline: 2px solid var(--accent-cyan, #56b6c2);
+  outline-offset: 2px;
+}
+
+.canvas-mount-point {
+  min-height: 320px;
+  width: 100%;
+  border-radius: 8px;
+  background: var(--bg-card, #1e293b);
+  border: 1px dashed var(--border-main, #334155);
+  padding: 16px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.btn-create-app-bar {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25));
+  border: 1px solid var(--accent-purple, #818cf8);
+  color: #fff;
+  min-height: 44px;
+  padding: 0 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  border-radius: 8px;
+  white-space: nowrap;
+  touch-action: manipulation;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.btn-create-app-bar:hover,
+.btn-create-app-bar:focus {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.4), rgba(168, 85, 247, 0.4));
+  border-color: #a855f7;
+  outline: 2px solid var(--accent-cyan, #56b6c2);
+  outline-offset: 2px;
+}
+
+
