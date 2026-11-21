@@ -5085,6 +5085,27 @@ await window.mainV1.ready;
       window.liveAppsManager.init();
     }
 
+    if (btnOpenApps && appsDialog) {
+      btnOpenApps.addEventListener('click', () => {
+        const drawer = document.getElementById('antigravity-drawer');
+        if (drawer && drawer.close) {
+          try { drawer.close(); } catch (_) {}
+        }
+        if (window.liveAppsManager && typeof window.liveAppsManager.openDialog === 'function') {
+          window.liveAppsManager.openDialog();
+        } else {
+          appsDialog.showModal();
+          announce('تم فتح مستودع التطبيقات');
+        }
+      });
+    }
+    if (btnCloseApps && appsDialog) {
+      btnCloseApps.addEventListener('click', () => appsDialog.close());
+    }
+    if (btnCloseAppsTop && appsDialog) {
+      btnCloseAppsTop.addEventListener('click', () => appsDialog.close());
+    }
+
     if (window.liveCanvasRunner) {
       window.liveCanvasRunner.bindToolbarEvents({
         onSaveApp: async (appData) => {

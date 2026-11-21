@@ -238,6 +238,8 @@ def register_routes(application):
         "main-ui.css",
         "main-v1-adapter.js",
         "media-viewer.js",
+        "canvas-runner.js",
+        "apps-manager.js",
         "start-ui.js",
         "start-ui.css",
         "api.js",
@@ -1446,17 +1448,38 @@ async def read_artifact(request):
     })
 
 
+def app_workspace_dirs(request):
+    ws_roots = []
+    try:
+        settings = request.app["store"].read("settings")
+        cwd = settings.get("cwd")
+        if cwd and Path(cwd).is_dir():
+            ws_roots.append(str(Path(cwd).resolve()))
+        for tw in settings.get("trustedWorkspaces", []):
+            if tw and Path(tw).is_dir() and str(Path(tw).resolve()) != str(Path.home().resolve()):
+                res_tw = str(Path(tw).resolve())
+                if res_tw not in ws_roots:
+                    ws_roots.append(res_tw)
+    except Exception:
+        pass
+    if not ws_roots:
+        ws_roots.append(str(Path.home()))
+    return ws_roots
+
+
 async def list_apps_endpoint(request):
     data_dir = request.app.get("data_dir") or request.app["store"].root
-    apps = apps_service.list_apps(data_dir)
+    ws_roots = app_workspace_dirs(request)
+    apps = apps_service.list_apps(data_dir, workspace_dirs=ws_roots)
     return web.json_response({"apps": apps})
 
 
 async def get_app_endpoint(request):
     data_dir = request.app.get("data_dir") or request.app["store"].root
     app_id = request.match_info.get("app_id", "")
+    ws_roots = app_workspace_dirs(request)
     try:
-        app = apps_service.get_app(data_dir, app_id)
+        app = apps_service.get_app(data_dir, app_id, workspace_dirs=ws_roots)
     except ValueError as e:
         return web.json_response({"error": str(e), "code": "invalid_id"}, status=400)
     if not app:

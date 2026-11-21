@@ -62,21 +62,126 @@ def _rebuild_index_from_disk(apps_dir: Path) -> list[dict]:
     _atomic_write_json(apps_dir / "index.json", {"apps": apps_meta})
     return apps_meta
 
-def list_apps(data_dir: str | Path) -> list[dict]:
+def discover_workspace_apps(workspace_dirs: list[str] | None) -> list[dict]:
+    if not workspace_dirs:
+        return []
+    discovered = []
+    seen_paths = set()
+    for d in workspace_dirs:
+        p_dir = Path(d).resolve()
+        if not p_dir.is_dir():
+            continue
+        patterns = [p_dir.glob("*.html"), p_dir.glob("*.htm")]
+        apps_sub = p_dir / "apps"
+        if apps_sub.is_dir():
+            patterns.extend([apps_sub.glob("*.html"), apps_sub.glob("*.htm")])
+
+        for gen in patterns:
+            for f in gen:
+                try:
+                    if not f.is_file() or f.name.startswith("."):
+                        continue
+                    real_p = str(f.resolve())
+                    if real_p in seen_paths:
+                        continue
+                    seen_paths.add(real_p)
+
+                    st = f.stat()
+                    if st.st_size > MAX_CODE_SIZE_BYTES or st.st_size == 0:
+                        continue
+
+                    head = f.read_text(encoding="utf-8", errors="replace")[:4096]
+                    m_title = re.search(r'<title[^>]*>(.*?)</title>', head, re.IGNORECASE | re.DOTALL)
+                    title = m_title.group(1).strip() if m_title else ""
+                    if not title:
+                        title = f.stem.replace("_", " ").replace("-", " ")
+                        if title.isascii():
+                            title = title.title()
+
+                    m_desc = re.search(r'<meta[^>]*name=["\']description["\'][^>]*content=["\'](.*?)["\']', head, re.IGNORECASE)
+                    desc = m_desc.group(1).strip() if m_desc else f"تطبيق من مساحة العمل ({f.name})"
+
+                    clean_stem = re.sub(r'[^a-zA-Z0-9_-]', '_', f.stem)[:40]
+                    app_id = f"ws_{clean_stem}"
+
+                    discovered.append({
+                        "id": app_id,
+                        "title": title,
+                        "description": desc,
+                        "path": real_p,
+                        "source": "workspace",
+                        "created_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(st.st_ctime)),
+                        "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(st.st_mtime))
+                    })
+                except Exception:
+                    continue
+    return discovered
+
+def list_apps(data_dir: str | Path, workspace_dirs: list[str] | None = None) -> list[dict]:
     apps_dir = get_apps_dir(data_dir)
     index_file = apps_dir / "index.json"
     if not index_file.exists():
-        return _rebuild_index_from_disk(apps_dir)
-    
-    try:
-        with open(index_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            return data.get("apps", [])
-    except Exception:
-        # Fallback to rebuilding the index if corrupted
-        return _rebuild_index_from_disk(apps_dir)
+        stored = _rebuild_index_from_disk(apps_dir)
+    else:
+        try:
+            with open(index_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                stored = data.get("apps", [])
+        except Exception:
+            stored = _rebuild_index_from_disk(apps_dir)
 
-def get_app(data_dir: str | Path, app_id: str) -> dict | None:
+    ws_apps = discover_workspace_apps(workspace_dirs)
+    if not ws_apps:
+        return stored
+
+    seen_paths = {a.get("path") for a in stored if a.get("path")}
+    combined = list(stored)
+    for w in ws_apps:
+        if w.get("path") not in seen_paths:
+            combined.append(w)
+            seen_paths.add(w.get("path"))
+    return combined
+
+def get_app(data_dir: str | Path, app_id: str, workspace_dirs: list[str] | None = None) -> dict | None:
+    if not app_id or not isinstance(app_id, str):
+        raise ValueError("معرف التطبيق غير صالح")
+
+    if app_id.startswith("ws_"):
+        if workspace_dirs:
+            for d in workspace_dirs:
+                p_dir = Path(d).resolve()
+                if not p_dir.is_dir():
+                    continue
+                patterns = [p_dir.glob("*.html"), p_dir.glob("*.htm")]
+                apps_sub = p_dir / "apps"
+                if apps_sub.is_dir():
+                    patterns.extend([apps_sub.glob("*.html"), apps_sub.glob("*.htm")])
+                for gen in patterns:
+                    for f in gen:
+                        clean_stem = re.sub(r'[^a-zA-Z0-9_-]', '_', f.stem)[:40]
+                        if f"ws_{clean_stem}" == app_id:
+                            try:
+                                content = f.read_text(encoding="utf-8", errors="replace")
+                                head = content[:4096]
+                                m_title = re.search(r'<title[^>]*>(.*?)</title>', head, re.IGNORECASE | re.DOTALL)
+                                title = m_title.group(1).strip() if m_title else f.stem
+                                m_desc = re.search(r'<meta[^>]*name=["\']description["\'][^>]*content=["\'](.*?)["\']', head, re.IGNORECASE)
+                                desc = m_desc.group(1).strip() if m_desc else f"تطبيق من مساحة العمل ({f.name})"
+                                st = f.stat()
+                                return {
+                                    "id": app_id,
+                                    "title": title,
+                                    "description": desc,
+                                    "code": content,
+                                    "path": str(f.resolve()),
+                                    "source": "workspace",
+                                    "created_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(st.st_ctime)),
+                                    "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(st.st_mtime))
+                                }
+                            except Exception:
+                                return None
+        return None
+
     target_path = validate_app_id(app_id, data_dir)
     if not target_path.exists():
         return None
@@ -144,6 +249,11 @@ def save_app(data_dir: str | Path, app_data: dict) -> dict:
     return full_payload
 
 def delete_app(data_dir: str | Path, app_id: str) -> bool:
+    if not app_id or not isinstance(app_id, str):
+        raise ValueError("معرف التطبيق غير صالح")
+    if app_id.startswith("ws_"):
+        raise ValueError("تطبيقات مساحة العمل مرتبطة بملفات المشروع، يرجى حذف الملف مباشرة من مدير الملفات إذا رغبت في إزالته")
+
     target_path = validate_app_id(app_id, data_dir)
     if not target_path.exists():
         return False

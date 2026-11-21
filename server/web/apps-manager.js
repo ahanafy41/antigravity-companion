@@ -186,12 +186,17 @@
         card.setAttribute('aria-label', `تطبيق ${app.title || app.id}`);
 
         const dateFormatted = formatDate(app.updated_at || app.created_at);
+        const isWs = app.source === 'workspace';
+        const sourceBadge = isWs
+          ? `<span class="badge badge-source-ws" style="background:var(--accent-purple, #6366f1); color:#fff; font-size:0.75rem; padding:2px 8px; border-radius:4px; font-weight:bold;">📁 مساحة العمل</span>`
+          : `<span class="badge badge-source-saved" style="background:rgba(255,255,255,0.08); color:var(--text-muted, #94a3b8); font-size:0.75rem; padding:2px 8px; border-radius:4px;">💾 محفوظة</span>`;
 
         card.innerHTML = `
           <div class="app-card-header">
-            <div class="app-card-title-group">
+            <div class="app-card-title-group" style="display:flex; align-items:center; gap:8px;">
               <span class="app-card-icon" aria-hidden="true">📱</span>
               <h3 class="app-card-title">${escapeHtml(app.title || 'تطبيق بدون اسم')}</h3>
+              ${sourceBadge}
             </div>
             ${dateFormatted ? `<span class="app-card-date" aria-label="تاريخ التحديث">${escapeHtml(dateFormatted)}</span>` : ''}
           </div>
@@ -203,9 +208,15 @@
             <button type="button" class="btn btn-sm btn-edit-app" data-id="${escapeHtml(app.id)}" aria-label="تعديل تطبيق ${escapeHtml(app.title || app.id)} في المحادثة">
               🛠️ تعديل في الشات
             </button>
-            <button type="button" class="btn btn-sm btn-danger btn-delete-app" data-id="${escapeHtml(app.id)}" aria-label="حذف تطبيق ${escapeHtml(app.title || app.id)}">
-              🗑️ حذف
-            </button>
+            ${isWs ? `
+              <button type="button" class="btn btn-sm btn-save-copy-app" data-id="${escapeHtml(app.id)}" aria-label="حفظ نسخة دائمة من تطبيق ${escapeHtml(app.title || app.id)}">
+                💾 حفظ نسخة
+              </button>
+            ` : `
+              <button type="button" class="btn btn-sm btn-danger btn-delete-app" data-id="${escapeHtml(app.id)}" aria-label="حذف تطبيق ${escapeHtml(app.title || app.id)}">
+                🗑️ حذف
+              </button>
+            `}
           </div>
         `;
 
@@ -218,6 +229,24 @@
         const btnEdit = card.querySelector('.btn-edit-app');
         if (btnEdit) {
           btnEdit.addEventListener('click', () => editInChat(app.id));
+        }
+
+        const btnSaveCopy = card.querySelector('.btn-save-copy-app');
+        if (btnSaveCopy) {
+          btnSaveCopy.addEventListener('click', async () => {
+            try {
+              announce(`جاري حفظ نسخة دائمة من تطبيق ${app.title}...`);
+              const full = await getApp(app.id);
+              await saveApp({
+                title: full.title,
+                description: full.description,
+                code: full.code
+              });
+              announce(`تم حفظ نسخة من تطبيق ${app.title} بنجاح`);
+            } catch (err) {
+              announce(`تعذر حفظ النسخة: ${err.message}`, true);
+            }
+          });
         }
 
         const btnDelete = card.querySelector('.btn-delete-app');
@@ -234,7 +263,7 @@
     async function getApp(appId) {
       if (!appId) throw new Error('معرف التطبيق مطلوب');
       const res = await apiRequest(`/apps/${encodeURIComponent(appId)}`);
-      return res.app;
+      return (res && res.app) ? res.app : res;
     }
 
     async function saveApp(appData) {

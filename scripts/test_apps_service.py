@@ -16,6 +16,7 @@ class TestAppsServiceAndApi(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temp_dir = tempfile.mkdtemp()
         self.app = create_app(data_dir=self.temp_dir, port=0)
+        self.app["store"].write("settings", {"cwd": self.temp_dir, "trustedWorkspaces": [self.temp_dir]})
         self.runner = web.AppRunner(self.app)
         await self.runner.setup()
         site = web.TCPSite(self.runner, "127.0.0.1", 0)
@@ -96,6 +97,28 @@ class TestAppsServiceAndApi(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(resp.status, 200)
             data = await resp.json()
             self.assertEqual(data.get("apps"), [])
+
+    async def test_workspace_html_auto_discovery(self):
+        headers = await self.authenticated()
+        # Create an interactive html app in workspace
+        calc_html = Path(self.temp_dir) / "calculator.html"
+        calc_html.write_text("<title>حاسبة تجريبية</title><div id='calc'>0</div><script>console.log('hi');</script>", encoding="utf-8")
+
+        async with self.client.get(self.url + "/api/apps", headers=headers) as resp:
+            self.assertEqual(resp.status, 200)
+            data = await resp.json()
+            apps = data.get("apps", [])
+            self.assertEqual(len(apps), 1)
+            ws_app = apps[0]
+            self.assertEqual(ws_app["id"], "ws_calculator")
+            self.assertEqual(ws_app["title"], "حاسبة تجريبية")
+            self.assertEqual(ws_app["source"], "workspace")
+
+        # Fetch full app content
+        async with self.client.get(f"{self.url}/api/apps/ws_calculator", headers=headers) as resp:
+            self.assertEqual(resp.status, 200)
+            full_app = await resp.json()
+            self.assertIn("<div id='calc'>0</div>", full_app["code"])
 
     async def test_csrf_protection_on_mutations(self):
         # 1. Unauthenticated mutation returns 401
