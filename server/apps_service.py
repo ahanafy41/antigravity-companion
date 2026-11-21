@@ -191,7 +191,10 @@ def get_app(data_dir: str | Path, app_id: str, workspace_dirs: list[str] | None 
                                 return None
         return None
 
-    target_path = validate_app_id(app_id, data_dir)
+    try:
+        target_path = validate_app_id(app_id, data_dir)
+    except ValueError:
+        return None
     if not target_path.exists():
         return None
     try:

@@ -61,7 +61,10 @@ async def failures(request, handler):
         return error(
             "forbidden_path", "Path is outside configured workspaces", 403
         )
-    except (ValueError, TypeError, UnicodeError, json.JSONDecodeError):
+    except (ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
+        import traceback
+        print(f'[EXCEPTION] {request.method} {request.path}: {exc}', flush=True)
+        traceback.print_exc()
         return error(
             "invalid_request", "The request or stored document is invalid", 400
         )
@@ -1944,9 +1947,12 @@ async def serve_standalone_app(request):
 
     for sdir in search_dirs:
         for cand in candidates:
-            target = (sdir / cand).resolve()
-            if target.is_file() and target.suffix.lower() in (".html", ".htm"):
-                return web.FileResponse(target)
+            try:
+                target = (sdir / cand).resolve()
+                if target.is_file() and target.suffix.lower() in (".html", ".htm"):
+                    return web.FileResponse(target)
+            except Exception:
+                pass
 
     # 3. Check saved apps in apps_service
     data_dir = request.app.get("data_dir") or request.app["store"].root
@@ -1961,15 +1967,31 @@ async def serve_standalone_app(request):
             app_id_candidates.append("app_" + app_file[:-5])
 
     for aid in app_id_candidates:
-        app_obj = apps_service.get_app(data_dir, aid)
-        if app_obj and app_obj.get("code"):
-            return web.Response(
-                text=app_obj["code"],
-                content_type="text/html",
-                charset="utf-8"
-            )
+        try:
+            app_obj = apps_service.get_app(data_dir, aid)
+            if app_obj and app_obj.get("code"):
+                return web.Response(
+                    text=app_obj["code"],
+                    content_type="text/html",
+                    charset="utf-8"
+                )
+        except Exception:
+            pass
+
+    # 4. Resilient fuzzy matching across workspace apps
+    clean_target = re.sub(r'[^a-zA-Z0-9_؀-ۿ]', '', app_file).lower()
+    for sdir in search_dirs:
+        if sdir.is_dir():
+            try:
+                for f in sdir.glob("*.html"):
+                    f_clean = re.sub(r'[^a-zA-Z0-9_؀-ۿ]', '', f.stem).lower()
+                    if (clean_target and (clean_target in f_clean or f_clean in clean_target)) or                        (f_clean.replace("app_", "") in clean_target) or                        (clean_target.replace("app_", "") in f_clean):
+                        return web.FileResponse(f.resolve())
+            except Exception:
+                pass
 
     return error("not_found", "تطبيق الويب غير موجود", 404)
+
 
 
 
