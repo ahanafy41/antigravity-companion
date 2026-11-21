@@ -1,5 +1,5 @@
 'use strict';
-const CACHE_NAME = 'antigravity-static-v1139-live-model-switch';
+const CACHE_NAME = 'antigravity-static-v1139-apps-hub-hotfix';
 const STATIC_PATHS = new Set([
   '/',
   '/start',
@@ -8,6 +8,9 @@ const STATIC_PATHS = new Set([
   '/start-ui.css',
   '/start-ui.js',
   '/main-v1-adapter.js',
+  '/canvas-runner.js',
+  '/apps-manager.js',
+  '/media-viewer.js',
   '/api.js',
   '/native.js',
   '/history.js',
