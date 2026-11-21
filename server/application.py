@@ -1551,6 +1551,13 @@ async def dispatch_app_action(request):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
+
+        async def _reap_proc(p):
+            try:
+                await p.communicate()
+            except Exception:
+                pass
+        asyncio.create_task(_reap_proc(proc))
         
         # Return job accepted immediately
         return web.json_response({
@@ -1940,15 +1947,27 @@ async def static_file(request):
 async def response_headers(request, response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self' https://appassets.androidplatform.net; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://appassets.androidplatform.net; "
-        "style-src 'self' 'unsafe-inline' https://appassets.androidplatform.net; "
-        "img-src 'self' data: blob: https://appassets.androidplatform.net; "
-        "media-src 'self' data: blob: https://appassets.androidplatform.net; "
-        "connect-src 'self' http://127.0.0.1:* http://localhost:* https://appassets.androidplatform.net; "
-        "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
-    )
+    if request.path.startswith("/apps/"):
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: http: data: blob:; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https: http: blob:; "
+            "style-src 'self' 'unsafe-inline' https: http:; "
+            "img-src 'self' data: blob: https: http:; "
+            "media-src 'self' data: blob: https: http:; "
+            "connect-src 'self' http://127.0.0.1:* http://localhost:* https: http:; "
+            "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https: http:; "
+            "object-src 'none'; base-uri 'self'"
+        )
+    else:
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self' https://appassets.androidplatform.net; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://appassets.androidplatform.net; "
+            "style-src 'self' 'unsafe-inline' https://appassets.androidplatform.net; "
+            "img-src 'self' data: blob: https://appassets.androidplatform.net; "
+            "media-src 'self' data: blob: https://appassets.androidplatform.net; "
+            "connect-src 'self' http://127.0.0.1:* http://localhost:* https://appassets.androidplatform.net; "
+            "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+        )
     origin = request.headers.get("Origin")
     if origin == "https://appassets.androidplatform.net" or origin == "null":
         response.headers["Access-Control-Allow-Origin"] = origin
