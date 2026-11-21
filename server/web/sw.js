@@ -1,5 +1,5 @@
 'use strict';
-const CACHE_NAME = 'antigravity-static-v1139-apps-hub-hotfix';
+const CACHE_NAME = 'antigravity-static-v11310-apps-ready';
 const STATIC_PATHS = new Set([
   '/',
   '/start',

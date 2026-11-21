@@ -1136,7 +1136,7 @@
     }).catch(report);
   }
   if (!bundled && 'serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js?v=1.3.8').then(reg => {
+    navigator.serviceWorker.register('/sw.js?v=1.13.10').then(reg => {
       reg.update().catch(report);
     }).catch(report);
   }

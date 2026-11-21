@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -101,8 +102,9 @@ def discover_workspace_apps(workspace_dirs: list[str] | None) -> list[dict]:
                     m_desc = re.search(r'<meta[^>]*name=["\']description["\'][^>]*content=["\'](.*?)["\']', head, re.IGNORECASE)
                     desc = m_desc.group(1).strip() if m_desc else f"تطبيق من مساحة العمل ({f.name})"
 
-                    clean_stem = re.sub(r'[^a-zA-Z0-9_-]', '_', f.stem)[:40]
-                    app_id = f"ws_{clean_stem}"
+                    clean_stem = re.sub(r'[^a-zA-Z0-9_-]', '_', f.stem).strip('_')[:24]
+                    p_hash = uuid.uuid5(uuid.NAMESPACE_URL, real_p).hex[:6]
+                    app_id = f"ws_{clean_stem}_{p_hash}" if clean_stem else f"ws_app_{p_hash}"
 
                     discovered.append({
                         "id": app_id,
@@ -158,8 +160,15 @@ def get_app(data_dir: str | Path, app_id: str, workspace_dirs: list[str] | None 
                     patterns.extend([apps_sub.glob("*.html"), apps_sub.glob("*.htm")])
                 for gen in patterns:
                     for f in gen:
-                        clean_stem = re.sub(r'[^a-zA-Z0-9_-]', '_', f.stem)[:40]
-                        if f"ws_{clean_stem}" == app_id:
+                        real_f_path = str(f.resolve())
+                        clean_stem = re.sub(r'[^a-zA-Z0-9_-]', '_', f.stem).strip('_')[:24]
+                        p_hash = uuid.uuid5(uuid.NAMESPACE_URL, real_f_path).hex[:6]
+                        uid = f"ws_{clean_stem}_{p_hash}" if clean_stem else f"ws_app_{p_hash}"
+                        legacy_uid = f"ws_{re.sub(r'[^a-zA-Z0-9_-]', '_', f.stem).strip('_')[:32]}"
+                        clean_stem_legacy = re.sub(r'[^a-zA-Z0-9_-]', '_', f.stem)[:40]
+                        legacy_raw_uid = f"ws_{clean_stem_legacy}"
+                        
+                        if app_id in (uid, legacy_uid, legacy_raw_uid, f"ws_{f.stem}", f.stem, f.name):
                             try:
                                 content = f.read_text(encoding="utf-8", errors="replace")
                                 head = content[:4096]
@@ -169,11 +178,11 @@ def get_app(data_dir: str | Path, app_id: str, workspace_dirs: list[str] | None 
                                 desc = m_desc.group(1).strip() if m_desc else f"تطبيق من مساحة العمل ({f.name})"
                                 st = f.stat()
                                 return {
-                                    "id": app_id,
+                                    "id": uid,
                                     "title": title,
                                     "description": desc,
                                     "code": content,
-                                    "path": str(f.resolve()),
+                                    "path": real_f_path,
                                     "source": "workspace",
                                     "created_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(st.st_ctime)),
                                     "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(st.st_mtime))

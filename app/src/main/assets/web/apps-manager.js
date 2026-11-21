@@ -96,29 +96,36 @@
 
       // 1. Primary: If mock or native Companion provides request
       if (win.Companion && typeof win.Companion.request === 'function') {
-        const reqOpts = { method: method };
-        if (bodyData) reqOpts.body = bodyData;
-        return await win.Companion.request(cleanEndpoint, reqOpts);
+        try {
+          const reqOpts = { method: method };
+          if (bodyData) reqOpts.body = bodyData;
+          return await win.Companion.request(cleanEndpoint, reqOpts);
+        } catch (_) {}
       }
 
       // 2. Window Companion API from api.js
       const comp = win.companion || win.Companion;
       if (comp && comp.api && typeof comp.api.request === 'function') {
-        const reqOpts = { method: method };
-        if (bodyData) reqOpts.body = bodyData;
-        return await comp.api.request(cleanEndpoint, reqOpts);
+        try {
+          const reqOpts = { method: method };
+          if (bodyData) reqOpts.body = bodyData;
+          return await comp.api.request(cleanEndpoint, reqOpts);
+        } catch (_) {}
       }
 
       // 3. window.mainV1Fetch for browser environment
       if (typeof win.mainV1Fetch === 'function') {
-        const fetchOpts = { method: method };
-        if (bodyData) fetchOpts.body = JSON.stringify(bodyData);
-        const res = await win.mainV1Fetch(`/api${cleanEndpoint}`, fetchOpts);
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.message || data.error || `HTTP error ${res.status}`);
-        }
-        return data;
+        try {
+          const fetchOpts = { method: method };
+          if (bodyData) fetchOpts.body = JSON.stringify(bodyData);
+          const res = await win.mainV1Fetch(`/api${cleanEndpoint}`, fetchOpts);
+          if (res && typeof res.json === 'function') {
+            const data = await res.json();
+            if (res.ok) return data;
+          } else if (res && !res.error) {
+            return res;
+          }
+        } catch (_) {}
       }
 
       // 4. Fallback direct fetch with /api/v1 prefix
