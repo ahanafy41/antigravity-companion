@@ -859,6 +859,13 @@
     return {status: 'ok'};
   }
   async function dispatch(path, query, body, options) {
+    if (path === 'apps' || path.startsWith('apps/')) {
+      const sub = path.slice(4); // e.g. "" or "/app_xxx"
+      const route = '/apps' + sub;
+      const reqOpts = { method: options.method || 'GET' };
+      if (body && Object.keys(body).length > 0) reqOpts.body = body;
+      return request(route, reqOpts);
+    }
     switch (path) {
       case 'ai/settings': {
         if (options.method === 'POST') return saveSettings(body, options.settingsBaseline);

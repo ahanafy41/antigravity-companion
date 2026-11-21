@@ -92,14 +92,28 @@
     }
 
     async function apiRequest(endpoint, method = 'GET', bodyData = null) {
+      const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+
+      // 1. Primary: Use window.mainV1Fetch for seamless session, CSRF and Cookie management
+      if (typeof win.mainV1Fetch === 'function') {
+        const fetchOpts = { method: method };
+        if (bodyData) fetchOpts.body = JSON.stringify(bodyData);
+        const res = await win.mainV1Fetch(`/api${cleanEndpoint}`, fetchOpts);
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || data.error || `HTTP error ${res.status}`);
+        }
+        return data;
+      }
+
       if (win.Companion && typeof win.Companion.request === 'function') {
         const reqOpts = { method: method };
         if (bodyData) reqOpts.body = bodyData;
-        return await win.Companion.request(endpoint, reqOpts);
+        return await win.Companion.request(cleanEndpoint, reqOpts);
       }
 
-      // Fallback to fetch with /api/v1 prefix
-      const url = endpoint.startsWith('/') ? `/api/v1${endpoint}` : `/api/v1/${endpoint}`;
+      // 2. Fallback direct fetch with /api prefix
+      const url = `/api${cleanEndpoint}`;
       const headers = { 'Accept': 'application/json' };
       if (bodyData) headers['Content-Type'] = 'application/json';
 
