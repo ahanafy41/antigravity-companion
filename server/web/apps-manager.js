@@ -94,7 +94,22 @@
     async function apiRequest(endpoint, method = 'GET', bodyData = null) {
       const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
-      // 1. Primary: Use window.mainV1Fetch for seamless session, CSRF and Cookie management
+      // 1. Primary: If mock or native Companion provides request
+      if (win.Companion && typeof win.Companion.request === 'function') {
+        const reqOpts = { method: method };
+        if (bodyData) reqOpts.body = bodyData;
+        return await win.Companion.request(cleanEndpoint, reqOpts);
+      }
+
+      // 2. Window Companion API from api.js
+      const comp = win.companion || win.Companion;
+      if (comp && comp.api && typeof comp.api.request === 'function') {
+        const reqOpts = { method: method };
+        if (bodyData) reqOpts.body = bodyData;
+        return await comp.api.request(cleanEndpoint, reqOpts);
+      }
+
+      // 3. window.mainV1Fetch for browser environment
       if (typeof win.mainV1Fetch === 'function') {
         const fetchOpts = { method: method };
         if (bodyData) fetchOpts.body = JSON.stringify(bodyData);
@@ -106,14 +121,8 @@
         return data;
       }
 
-      if (win.Companion && typeof win.Companion.request === 'function') {
-        const reqOpts = { method: method };
-        if (bodyData) reqOpts.body = bodyData;
-        return await win.Companion.request(cleanEndpoint, reqOpts);
-      }
-
-      // 2. Fallback direct fetch with /api prefix
-      const url = `/api${cleanEndpoint}`;
+      // 4. Fallback direct fetch with /api/v1 prefix
+      const url = `/api/v1${cleanEndpoint}`;
       const headers = { 'Accept': 'application/json' };
       if (bodyData) headers['Content-Type'] = 'application/json';
 
