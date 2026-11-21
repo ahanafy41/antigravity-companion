@@ -387,7 +387,7 @@
             cb.onEditInChat(appInfo);
           } else {
             // Default edit in chat handler
-            const input = doc.getElementById('message-input');
+            const input = doc.getElementById('ai-prompt-input') || doc.getElementById('message-input');
             if (input) {
               input.value = `@تعديل_تطبيق: ${appInfo.title} (ID: ${appInfo.id})\n`;
               input.focus();

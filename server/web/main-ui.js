@@ -777,6 +777,22 @@ await window.mainV1.ready;
     let currentProjectBrowserDir = '';
     let currentProjectParentDir = '';
 
+    // Live Canvas & Apps Hub elements
+    const btnOpenApps = document.getElementById('btn-open-apps');
+    const valAppsCountDrawer = document.getElementById('val-apps-count-drawer');
+    const appsDialog = document.getElementById('apps-dialog');
+    const btnCloseApps = document.getElementById('btn-close-apps');
+    const btnCloseAppsTop = document.getElementById('btn-close-apps-top');
+    const appsListContainer = document.getElementById('apps-list-container');
+    const appsSearchInput = document.getElementById('apps-search-input');
+    const canvasRunnerDialog = document.getElementById('canvas-runner-dialog');
+    const canvasMountPoint = document.getElementById('canvas-mount-point');
+    const canvasRunnerTitle = document.getElementById('canvas-runner-title');
+    const btnCanvasSave = document.getElementById('btn-canvas-save');
+    const btnCanvasEditChat = document.getElementById('btn-canvas-edit-chat');
+    const btnCanvasReset = document.getElementById('btn-canvas-reset');
+    const btnCanvasClose = document.getElementById('btn-canvas-close');
+
     // Conversation History & System Resources elements
     const btnOpenConversations = document.getElementById('btn-open-conversations');
     const conversationsDialog = document.getElementById('conversations-dialog');
@@ -1073,11 +1089,15 @@ await window.mainV1.ready;
       renderer.code = function(code, lang) {
         const rawCode = (typeof code === 'object' && code.text) ? code.text : String(code || '');
         const langName = ((typeof code === 'object' && code.lang) ? code.lang : lang) || 'code';
+        const isInteractive = /^(html|htm|svg)$/i.test(langName) || (rawCode.includes('<html') || rawCode.includes('<div') || rawCode.includes('<button') || rawCode.includes('<canvas') || rawCode.includes('<script'));
         const escaped = escapeHtml(rawCode);
         return '<div class="code-card" role="region" aria-label="كود برمجي ' + escapeHtml(langName) + '">' +
           '<div class="code-card-header">' +
             '<span>' + escapeHtml(langName) + '</span>' +
-            '<button type="button" class="btn-icon-sm btn-copy-code" data-code="' + encodeURIComponent(rawCode) + '" aria-label="نسخ الكود">📋 نسخ الكود</button>' +
+            '<div style="display:flex; gap:6px; align-items:center;">' +
+              (isInteractive ? '<button type="button" class="btn-icon-sm btn-run-in-canvas" data-code="' + encodeURIComponent(rawCode) + '" aria-label="تشغيل الكود في الكانفاس">⚡ تشغيل في الكانفاس</button>' : '') +
+              '<button type="button" class="btn-icon-sm btn-copy-code" data-code="' + encodeURIComponent(rawCode) + '" aria-label="نسخ الكود">📋 نسخ الكود</button>' +
+            '</div>' +
           '</div>' +
           '<pre tabindex="0"><code>' + escaped + '</code></pre>' +
         '</div>';
@@ -1189,11 +1209,15 @@ await window.mainV1.ready;
         const placeholder = '___CODE_BLOCK_' + codeBlocks.length + '___';
         const cleanCode = code.trim();
         const cleanLang = (lang || '').trim() || 'code';
+        const isInteractive = /^(html|htm|svg)$/i.test(cleanLang) || (cleanCode.includes('<html') || cleanCode.includes('<div') || cleanCode.includes('<button') || cleanCode.includes('<canvas') || cleanCode.includes('<script'));
         codeBlocks.push(
           '<div class="code-card" role="region" aria-label="كود برمجي ' + escapeHtml(cleanLang) + '">' +
             '<div class="code-card-header">' +
               '<span>' + escapeHtml(cleanLang) + '</span>' +
-              '<button type="button" class="btn-icon-sm btn-copy-code" data-code="' + encodeURIComponent(cleanCode) + '" aria-label="نسخ الكود">📋 نسخ الكود</button>' +
+              '<div style="display:flex; gap:6px; align-items:center;">' +
+                (isInteractive ? '<button type="button" class="btn-icon-sm btn-run-in-canvas" data-code="' + encodeURIComponent(cleanCode) + '" aria-label="تشغيل الكود في الكانفاس">⚡ تشغيل في الكانفاس</button>' : '') +
+                '<button type="button" class="btn-icon-sm btn-copy-code" data-code="' + encodeURIComponent(cleanCode) + '" aria-label="نسخ الكود">📋 نسخ الكود</button>' +
+              '</div>' +
             '</div>' +
             '<pre tabindex="0"><code>' + escapeHtml(cleanCode) + '</code></pre>' +
           '</div>'
@@ -1322,6 +1346,22 @@ await window.mainV1.ready;
         const fPath = (viewFileDirectBtn.getAttribute('data-path') || '').replace(/^["']|["']$/g, '');
         const fName = fPath.split('/').pop().replace(/^["']|["']$/g, '') || fPath;
         openArtifactViewer(fName, fPath, 'ملف تم إنشاؤه أو تعديله بواسطة الوكيل في هذا المشروع', false, currentActiveConversationId || '');
+        return;
+      }
+      const runInCanvasBtn = e.target.closest('.btn-run-in-canvas');
+      if (runInCanvasBtn) {
+        e.preventDefault();
+        const code = decodeURIComponent(runInCanvasBtn.getAttribute('data-code') || '');
+        const title = decodeURIComponent(runInCanvasBtn.getAttribute('data-title') || 'تطبيق كانفاس تفاعلي');
+        if (artifactViewerDialog && artifactViewerDialog.open) {
+          try { artifactViewerDialog.close(); } catch (_) {}
+        }
+        if (artifactsDialog && artifactsDialog.open) {
+          try { artifactsDialog.close(); } catch (_) {}
+        }
+        if (window.liveCanvasRunner) {
+          window.liveCanvasRunner.launch({ title: title, code: code });
+        }
         return;
       }
       const copyCodeBtn = e.target.closest('.btn-copy-code');
@@ -4496,6 +4536,7 @@ await window.mainV1.ready;
         }
 
         const isMarkdown = Boolean(data.is_markdown || fileInfo.isMd || (artName && artName.endsWith('.md')));
+        const isInteractive = (fileInfo.lang === 'html' || (artName || '').endsWith('.html') || (artName || '').endsWith('.htm') || (rawContent || '').includes('<script') || (rawContent || '').includes('<div'));
 
         if (artifactViewerContent) {
           if (isMarkdown) {
@@ -4506,7 +4547,10 @@ await window.mainV1.ready;
               <div class="code-view-container" style="background:var(--bg-card); border:1px solid var(--border-main); border-radius:8px; overflow:hidden;">
                 <div class="code-view-header" style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.35); padding:8px 14px; font-size:0.85rem; color:var(--text-muted); border-bottom:1px solid var(--border-main);">
                   <span>سطور الكود: ${lines} سطر (${sizeKb} KB)</span>
-                  <button type="button" class="btn btn-sm btn-copy-code" data-code="${encodeURIComponent(rawContent)}" style="padding:4px 10px; font-size:0.8rem; background:rgba(255,255,255,0.08);">📋 نسخ الكود</button>
+                  <div style="display:flex; gap:6px; align-items:center;">
+                    ${isInteractive ? `<button type="button" class="btn btn-sm btn-primary btn-run-in-canvas" data-code="${encodeURIComponent(rawContent)}" data-title="${encodeURIComponent(artName)}" style="padding:4px 10px; font-size:0.8rem; background:var(--accent-purple); color:#fff;">⚡ تشغيل في الكانفاس</button>` : ''}
+                    <button type="button" class="btn btn-sm btn-copy-code" data-code="${encodeURIComponent(rawContent)}" style="padding:4px 10px; font-size:0.8rem; background:rgba(255,255,255,0.08);">📋 نسخ الكود</button>
+                  </div>
                 </div>
                 <pre style="margin:0; padding:14px; overflow-x:auto; font-family:monospace; font-size:0.92rem; line-height:1.6; direction:ltr; text-align:left; white-space:pre;"><code class="language-${fileInfo.lang}">${escapeHtml(rawContent)}</code></pre>
               </div>
@@ -4558,6 +4602,11 @@ await window.mainV1.ready;
         </p>
         ${isMedia ? `<div class="card-media-player-container" style="margin:10px 0;"></div>` : ''}
         <div class="artifact-actions" style="display:flex; gap:8px; flex-wrap:wrap;">
+          ${(art.name.endsWith('.html') || art.name.endsWith('.htm') || (art.path && art.path.endsWith('.html'))) ? `
+            <button type="button" class="btn btn-sm btn-primary btn-run-canvas-art" aria-label="تشغيل التطبيق في الكانفاس ${escapeHtml(art.name)}" style="background:var(--accent-purple); color:#fff; font-weight:bold; border-radius:6px; padding:8px 14px; cursor:pointer;">
+              ⚡ تشغيل في الكانفاس
+            </button>
+          ` : ''}
           <button type="button" class="btn btn-sm btn-view-art" aria-label="${isMedia ? 'عرض في نافذة مستقلة' : 'فتح وقراءة المستند'} ${escapeHtml(art.name)}" style="background:var(--accent-purple); color:#fff; font-weight:bold; border-radius:6px; padding:8px 14px; cursor:pointer;">
             ${isMedia ? '🔎 عرض في نافذة مستقلة' : '📖 فتح وقراءة المستند'}
           </button>
@@ -4589,6 +4638,28 @@ await window.mainV1.ready;
             summary: art.summary
           });
         }
+      }
+
+      const btnRunCanvas = card.querySelector('.btn-run-canvas-art');
+      if (btnRunCanvas) {
+        btnRunCanvas.addEventListener('click', async () => {
+          try {
+            announce(`جاري تشغيل تطبيق ${art.name} في الكانفاس التفاعلي...`);
+            const cid = art.conversation_id || currentActiveConversationId || '';
+            const params = new URLSearchParams();
+            if (art.name) params.set('name', art.name);
+            if (cid) params.set('conversation_id', cid);
+            if (art.path) params.set('path', art.path);
+            const res = await (window.mainV1Fetch ? window.mainV1Fetch(`/api/ai/artifacts/content?` + params.toString()) : fetch(`/api/ai/artifacts/content?` + params.toString()));
+            if (!res.ok) throw new Error('فشل جلب محتوى التطبيق');
+            const data = await res.json();
+            if (window.liveCanvasRunner) {
+              window.liveCanvasRunner.launch({ title: art.name, code: data.content || '' });
+            }
+          } catch (err) {
+            announce(`تعذر تشغيل التطبيق في الكانفاس: ${err.message}`, true);
+          }
+        });
       }
 
       const btnView = card.querySelector('.btn-view-art');
@@ -4979,6 +5050,54 @@ await window.mainV1.ready;
           announce('تم بدء تنزيل الملف');
         } catch(e) {
           announce('تعذر تنزيل الملف: ' + e.message);
+        }
+      });
+    }
+
+    // ==========================================
+    // ACCESSIBLE LIVE CANVAS & APPS HUB CONTROLLER
+    // ==========================================
+    if (window.CanvasRunner && typeof window.CanvasRunner.create === 'function') {
+      window.liveCanvasRunner = window.CanvasRunner.create({
+        dialogElement: canvasRunnerDialog,
+        mountElement: canvasMountPoint,
+        titleElement: canvasRunnerTitle,
+        btnSave: btnCanvasSave,
+        btnEditInChat: btnCanvasEditChat,
+        btnReset: btnCanvasReset,
+        btnClose: btnCanvasClose,
+        announcer: announce
+      });
+    }
+
+    if (window.AppsManager && typeof window.AppsManager.create === 'function') {
+      window.liveAppsManager = window.AppsManager.create({
+        dialogElement: appsDialog,
+        listContainer: appsListContainer,
+        searchInput: appsSearchInput,
+        countBadge: valAppsCountDrawer,
+        btnOpen: btnOpenApps,
+        btnClose: btnCloseApps,
+        btnCloseTop: btnCloseAppsTop,
+        announcer: announce,
+        canvasRunner: window.liveCanvasRunner
+      });
+      window.liveAppsManager.init();
+    }
+
+    if (window.liveCanvasRunner) {
+      window.liveCanvasRunner.bindToolbarEvents({
+        onSaveApp: async (appData) => {
+          if (window.liveAppsManager) {
+            return await window.liveAppsManager.saveApp(appData);
+          }
+        },
+        onEditInChat: (appData) => {
+          if (aiInput) {
+            aiInput.value = `@تعديل_تطبيق: ${appData.title} (ID: ${appData.id})\n`;
+            aiInput.focus();
+            announce(`جاهز لتعديل تطبيق ${appData.title} في المحادثة`);
+          }
         }
       });
     }
