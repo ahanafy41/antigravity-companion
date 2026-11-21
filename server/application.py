@@ -1,3 +1,4 @@
+import urllib.parse
 """Versioned local HTTP API with independent CLI and Android state."""
 
 import asyncio
@@ -1919,23 +1920,25 @@ async def index(request):
 
 
 async def serve_standalone_app(request):
-    app_file = request.match_info.get("app_file", "").strip()
+    raw_app_file = request.match_info.get("app_file", "").strip()
+    app_file = urllib.parse.unquote(raw_app_file).strip()
     if not app_file or ".." in app_file or "/" in app_file or chr(92) in app_file:
         return error("invalid_app", "Invalid application file", 400)
 
     # 1. Generate candidate file names
-    candidates = [app_file]
-    if not app_file.endswith(".html") and not app_file.endswith(".htm"):
-        candidates.append(app_file + ".html")
-        candidates.append(app_file + ".htm")
-    if app_file.startswith("app_"):
-        stripped = app_file[4:]
-        candidates.append(stripped)
-        if not stripped.endswith(".html") and not stripped.endswith(".htm"):
-            candidates.append(stripped + ".html")
-            candidates.append(stripped + ".htm")
+    candidates = [app_file, raw_app_file]
+    for af in [app_file, raw_app_file]:
+        if not af.endswith(".html") and not af.endswith(".htm"):
+            candidates.append(af + ".html")
+            candidates.append(af + ".htm")
+        if af.startswith("app_"):
+            stripped = af[4:]
+            candidates.append(stripped)
+            if not stripped.endswith(".html") and not stripped.endswith(".htm"):
+                candidates.append(stripped + ".html")
+                candidates.append(stripped + ".htm")
 
-    # 2. Search folders
+    # 2. Search folders directly
     search_dirs = []
     ws_roots = app_workspace_dirs(request)
     for root in ws_roots:
@@ -1954,17 +1957,18 @@ async def serve_standalone_app(request):
             except Exception:
                 pass
 
-    # 3. Check saved apps in apps_service
+    # 3. Check saved apps in apps_service by ID
     data_dir = request.app.get("data_dir") or request.app["store"].root
-    app_id_candidates = [app_file]
-    if app_file.endswith(".html"):
-        app_id_candidates.append(app_file[:-5])
-    if app_file.endswith(".htm"):
-        app_id_candidates.append(app_file[:-4])
-    if not app_file.startswith("app_"):
-        app_id_candidates.append("app_" + app_file)
-        if app_file.endswith(".html"):
-            app_id_candidates.append("app_" + app_file[:-5])
+    app_id_candidates = [app_file, raw_app_file]
+    for af in [app_file, raw_app_file]:
+        if af.endswith(".html"):
+            app_id_candidates.append(af[:-5])
+        if af.endswith(".htm"):
+            app_id_candidates.append(af[:-4])
+        if not af.startswith("app_"):
+            app_id_candidates.append("app_" + af)
+            if af.endswith(".html"):
+                app_id_candidates.append("app_" + af[:-5])
 
     for aid in app_id_candidates:
         try:
@@ -1978,19 +1982,31 @@ async def serve_standalone_app(request):
         except Exception:
             pass
 
-    # 4. Resilient fuzzy matching across workspace apps
-    clean_target = re.sub(r'[^a-zA-Z0-9_؀-ۿ]', '', app_file).lower()
+    # 4. Resilient title & fuzzy matching across workspace apps
+    clean_target = re.sub(r'[\s_]+', '', re.sub(r'[^a-zA-Z0-9\u0600-\u06FF]', '', app_file.replace('.html', '').replace('.htm', ''))).lower()
     for sdir in search_dirs:
         if sdir.is_dir():
             try:
                 for f in sdir.glob("*.html"):
-                    f_clean = re.sub(r'[^a-zA-Z0-9_؀-ۿ]', '', f.stem).lower()
-                    if (clean_target and (clean_target in f_clean or f_clean in clean_target)) or                        (f_clean.replace("app_", "") in clean_target) or                        (clean_target.replace("app_", "") in f_clean):
+                    f_clean = re.sub(r'[\s_]+', '', re.sub(r'[^a-zA-Z0-9\u0600-\u06FF]', '', f.stem)).lower()
+                    if clean_target and (clean_target in f_clean or f_clean in clean_target):
                         return web.FileResponse(f.resolve())
+                    
+                    # Read title tag
+                    try:
+                        head = f.read_text(encoding="utf-8", errors="ignore")[:2048]
+                        m = re.search(r'<title[^>]*>(.*?)</title>', head, re.IGNORECASE)
+                        if m:
+                            t_clean = re.sub(r'[\s_]+', '', re.sub(r'[^a-zA-Z0-9\u0600-\u06FF]', '', m.group(1))).lower()
+                            if clean_target and (clean_target in t_clean or t_clean in clean_target):
+                                return web.FileResponse(f.resolve())
+                    except Exception:
+                        pass
             except Exception:
                 pass
 
     return error("not_found", "تطبيق الويب غير موجود", 404)
+
 
 
 

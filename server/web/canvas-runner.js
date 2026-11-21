@@ -196,7 +196,8 @@
         id: appData.id || `app_${Date.now()}`,
         title: appData.title || appData.name || 'تطبيق كانفاس تفاعلي',
         description: appData.description || '',
-        code: appData.code || appData.html || ''
+        code: appData.code || appData.html || '',
+        path: appData.path || appData.file || ''
       };
 
       if (typeof win.AbortController === 'function') {
@@ -397,7 +398,14 @@
         btnStandalone.addEventListener('click', () => {
           if (!currentApp) return;
           const cleanName = (currentApp.title || 'app').replace(/[^a-zA-Z0-9_\u0600-\u06FF]/g, '_').toLowerCase();
-          const targetUrl = currentApp.path ? `/apps/${currentApp.path.split('/').pop()}` : `/apps/${cleanName}.html`;
+          let targetUrl = '';
+          if (currentApp.path) {
+            targetUrl = `/apps/${currentApp.path.split('/').pop()}`;
+          } else if (currentApp.id) {
+            targetUrl = `/apps/${currentApp.id}`;
+          } else {
+            targetUrl = `/apps/${cleanName}.html`;
+          }
           win.open(targetUrl, '_blank');
           announce(`تم فتح تطبيق ${currentApp.title} في نافذة مستقلة`);
         });
