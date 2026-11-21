@@ -194,6 +194,8 @@ def register_routes(application):
         web.post("/api/v1/apps", save_app_endpoint),
         web.delete("/api/apps/{app_id}", delete_app_endpoint),
         web.delete("/api/v1/apps/{app_id}", delete_app_endpoint),
+        web.post("/api/apps/{app_name}/action", dispatch_app_action),
+
         web.get("/api/v1/artifacts", list_artifacts),
         web.get("/api/v1/artifacts/content", read_artifact),
         web.get("/api/v1/files/raw", serve_raw_file),
@@ -265,6 +267,8 @@ def register_routes(application):
     assets = Path(__file__).resolve().parent / "web" / "assets"
     if assets.exists():
         application.router.add_static("/assets", assets)
+    application.router.add_get("/apps/{app_file}", serve_standalone_app)
+
 
 
 async def health(request):
@@ -1502,6 +1506,62 @@ async def save_app_endpoint(request):
     return web.json_response(saved, status=201 if is_new else 200)
 
 
+async def dispatch_app_action(request):
+    app_name = request.match_info.get("app_name", "").strip()
+    if not app_name or ".." in app_name or "/" in app_name:
+        return error("invalid_app", "اسم التطبيق غير صالح", 400)
+    
+    try:
+        body = await object_body(request)
+    except Exception as e:
+        return error("bad_json", str(e), 400)
+        
+    action = str(body.get("action") or "").strip().lower()
+    params = body.get("params") or {}
+    
+    # Whitelist Action Dispatcher
+    if action == "ping":
+        return web.json_response({
+            "status": "ok",
+            "app": app_name,
+            "echo": params.get("msg", "pong")
+        })
+        
+    elif action == "yt_download_audio":
+        url = str(params.get("url") or "").strip()
+        if not url or not ("youtube.com" in url or "youtu.be" in url):
+            return error("invalid_url", "رابط يوتيوب غير صالح", 400)
+            
+        music_dir = Path("/storage/emulated/0/Music/YouTube")
+        music_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Async non-blocking execution via yt-dlp
+        cmd = [
+            "yt-dlp",
+            "-x",
+            "--audio-format", "mp3",
+            "--audio-quality", "0",
+            "-o", f"{music_dir}/%(title)s.%(ext)s",
+            "--no-playlist",
+            url
+        ]
+        
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        # Return job accepted immediately
+        return web.json_response({
+            "status": "started",
+            "message": "بدأ تحميل الصوت في الخلفية بنجاح",
+            "destination": str(music_dir)
+        })
+
+    return error("unsupported_action", f"الإجراء '{action}' غير مدعوم لهذا التطبيق", 400)
+
+
 async def delete_app_endpoint(request):
     data_dir = request.app.get("data_dir") or request.app["store"].root
     app_id = request.match_info.get("app_id", "")
@@ -1846,6 +1906,30 @@ async def index(request):
         path="/",
     )
     return response
+
+
+async def serve_standalone_app(request):
+    app_file = request.match_info.get("app_file", "").strip()
+    if not app_file or ".." in app_file or "/" in app_file:
+        return error("invalid_app", "Invalid application file", 400)
+    
+    # 1. Search in workspace roots
+    ws_roots = app_workspace_dirs(request)
+    for root in ws_roots:
+        target = Path(root) / "apps" / app_file
+        if target.is_file():
+            return web.FileResponse(target)
+        # Direct root check
+        target_direct = Path(root) / app_file
+        if target_direct.is_file() and target_direct.suffix.lower() in (".html", ".htm"):
+            return web.FileResponse(target_direct)
+            
+    # Fallback to current project root
+    fallback = Path("/storage/emulated/0/احمد/apps") / app_file
+    if fallback.is_file():
+        return web.FileResponse(fallback)
+        
+    return error("not_found", "تطبيق الويب غير موجود", 404)
 
 
 async def static_file(request):

@@ -72,6 +72,7 @@
     let dialogEl = opts.dialogElement || null;
     let titleEl = opts.titleElement || null;
     let btnSave = opts.btnSave || null;
+    let btnStandalone = opts.btnStandalone || null;
     let btnEditInChat = opts.btnEditInChat || null;
     let btnReset = opts.btnReset || null;
     let btnClose = opts.btnClose || null;
@@ -389,6 +390,16 @@
       if (btnReset) {
         btnReset.addEventListener('click', () => {
           reset();
+        });
+      }
+      if (!btnStandalone && doc) btnStandalone = doc.getElementById('btn-canvas-standalone');
+      if (btnStandalone) {
+        btnStandalone.addEventListener('click', () => {
+          if (!currentApp) return;
+          const cleanName = (currentApp.title || 'app').replace(/[^a-zA-Z0-9_\u0600-\u06FF]/g, '_').toLowerCase();
+          const targetUrl = currentApp.path ? `/apps/${currentApp.path.split('/').pop()}` : `/apps/${cleanName}.html`;
+          win.open(targetUrl, '_blank');
+          announce(`تم فتح تطبيق ${currentApp.title} في نافذة مستقلة`);
         });
       }
       if (btnSave) {
