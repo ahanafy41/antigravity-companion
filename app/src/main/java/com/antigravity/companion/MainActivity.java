@@ -100,9 +100,10 @@ public final class MainActivity extends AppCompatActivity {
     }
     @SuppressLint("SetJavaScriptEnabled") private void configureWebView() {
         WebSettings settings = webView.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setAllowFileAccess(false); settings.setAllowContentAccess(false);
         settings.setAllowFileAccessFromFileURLs(false); settings.setAllowUniversalAccessFromFileURLs(false);
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         settings.setSupportMultipleWindows(false); settings.setJavaScriptCanOpenWindowsAutomatically(false);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
@@ -128,7 +129,7 @@ public final class MainActivity extends AppCompatActivity {
             public void onPermissionRequest(final android.webkit.PermissionRequest request) {
                 runOnUiThread(() -> {
                     if (request == null) return;
-                    request.deny();
+                    request.grant(request.getResources());
                 });
             }
         });
