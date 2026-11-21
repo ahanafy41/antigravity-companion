@@ -299,6 +299,39 @@
         }
       }
 
+      // Create a scoped window proxy to ensure automatic listener and timer teardown
+      let windowProxy = win;
+      if (typeof Proxy === 'function') {
+        windowProxy = new Proxy(win, {
+          get(target, prop) {
+            if (prop === 'addEventListener') {
+              return function(type, listener, options) {
+                if (!signal) return target.addEventListener(type, listener, options);
+                let opts;
+                if (typeof options === 'boolean') {
+                  opts = { capture: options, signal: signal };
+                } else if (typeof options === 'object' && options !== null) {
+                  opts = Object.assign({}, options, { signal: signal });
+                } else {
+                  opts = { signal: signal };
+                }
+                return target.addEventListener(type, listener, opts);
+              };
+            }
+            if (prop === 'setTimeout') return companionSdk.setTimeout;
+            if (prop === 'clearTimeout') return companionSdk.clearTimeout;
+            if (prop === 'setInterval') return companionSdk.setInterval;
+            if (prop === 'clearInterval') return companionSdk.clearInterval;
+            if (prop === 'CompanionApp') return companionSdk;
+            const val = target[prop];
+            if (typeof val === 'function') {
+              return val.bind(target);
+            }
+            return val;
+          }
+        });
+      }
+
       // Execute extracted scripts safely
       for (const scriptCode of extractedScripts) {
         if (!scriptCode.trim()) continue;
@@ -311,7 +344,7 @@
               CompanionApp.announce('حدث خطأ داخل التطبيق: ' + (err.message || ''));
             }
           `);
-          wrapped(companionSdk, win, doc);
+          wrapped(companionSdk, windowProxy, doc);
         } catch (evalErr) {
           if (win.console) win.console.error('[Canvas Evaluation Error]:', evalErr);
           announce('تعذر تنفيذ كود التطبيق البرمجي', true);
