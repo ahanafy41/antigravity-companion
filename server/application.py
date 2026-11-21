@@ -1963,9 +1963,10 @@ async def response_headers(request, response):
             "default-src 'self' https://appassets.androidplatform.net; "
             "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://appassets.androidplatform.net; "
             "style-src 'self' 'unsafe-inline' https://appassets.androidplatform.net; "
-            "img-src 'self' data: blob: https://appassets.androidplatform.net; "
-            "media-src 'self' data: blob: https://appassets.androidplatform.net; "
-            "connect-src 'self' http://127.0.0.1:* http://localhost:* https://appassets.androidplatform.net; "
+            "img-src 'self' data: blob: https://appassets.androidplatform.net https: http:; "
+            "media-src 'self' data: blob: https://appassets.androidplatform.net https: http:; "
+            "connect-src 'self' http://127.0.0.1:* http://localhost:* https://appassets.androidplatform.net https: http: ws: wss:; "
+            "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https: http: data: blob:; "
             "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
         )
     origin = request.headers.get("Origin")
