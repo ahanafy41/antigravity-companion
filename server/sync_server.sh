@@ -41,7 +41,6 @@ if [ -n "$UPDATE_ZIP" ]; then
     echo "[SYNC] Offline package installed successfully."
 elif [ -d "$REPO_DIR/.git" ]; then
     echo "[SYNC] Syncing from local git repository..."
-    (cd "$REPO_DIR" && git fetch origin main 2>/dev/null && git reset --hard origin/main 2>/dev/null || git pull --rebase 2>/dev/null || true)
     if [ -d "$REPO_DIR/server" ]; then
         cp -rf "$REPO_DIR/server/"* "$SERVER_DIR/"
         chmod +x "$SERVER_DIR/"*.sh 2>/dev/null || true
