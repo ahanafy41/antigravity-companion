@@ -1917,26 +1917,60 @@ async def index(request):
 
 async def serve_standalone_app(request):
     app_file = request.match_info.get("app_file", "").strip()
-    if not app_file or ".." in app_file or "/" in app_file:
+    if not app_file or ".." in app_file or "/" in app_file or chr(92) in app_file:
         return error("invalid_app", "Invalid application file", 400)
-    
-    # 1. Search in workspace roots
+
+    # 1. Generate candidate file names
+    candidates = [app_file]
+    if not app_file.endswith(".html") and not app_file.endswith(".htm"):
+        candidates.append(app_file + ".html")
+        candidates.append(app_file + ".htm")
+    if app_file.startswith("app_"):
+        stripped = app_file[4:]
+        candidates.append(stripped)
+        if not stripped.endswith(".html") and not stripped.endswith(".htm"):
+            candidates.append(stripped + ".html")
+            candidates.append(stripped + ".htm")
+
+    # 2. Search folders
+    search_dirs = []
     ws_roots = app_workspace_dirs(request)
     for root in ws_roots:
-        target = Path(root) / "apps" / app_file
-        if target.is_file():
-            return web.FileResponse(target)
-        # Direct root check
-        target_direct = Path(root) / app_file
-        if target_direct.is_file() and target_direct.suffix.lower() in (".html", ".htm"):
-            return web.FileResponse(target_direct)
-            
-    # Fallback to current project root
-    fallback = Path("/storage/emulated/0/احمد/apps") / app_file
-    if fallback.is_file():
-        return web.FileResponse(fallback)
-        
+        search_dirs.append(Path(root) / "apps")
+        search_dirs.append(Path(root))
+    search_dirs.append(Path("/storage/emulated/0/احمد/apps"))
+    search_dirs.append(Path("/storage/emulated/0/احمد"))
+    search_dirs.append(Path.home() / "apps")
+
+    for sdir in search_dirs:
+        for cand in candidates:
+            target = (sdir / cand).resolve()
+            if target.is_file() and target.suffix.lower() in (".html", ".htm"):
+                return web.FileResponse(target)
+
+    # 3. Check saved apps in apps_service
+    data_dir = request.app.get("data_dir") or request.app["store"].root
+    app_id_candidates = [app_file]
+    if app_file.endswith(".html"):
+        app_id_candidates.append(app_file[:-5])
+    if app_file.endswith(".htm"):
+        app_id_candidates.append(app_file[:-4])
+    if not app_file.startswith("app_"):
+        app_id_candidates.append("app_" + app_file)
+        if app_file.endswith(".html"):
+            app_id_candidates.append("app_" + app_file[:-5])
+
+    for aid in app_id_candidates:
+        app_obj = apps_service.get_app(data_dir, aid)
+        if app_obj and app_obj.get("code"):
+            return web.Response(
+                text=app_obj["code"],
+                content_type="text/html",
+                charset="utf-8"
+            )
+
     return error("not_found", "تطبيق الويب غير موجود", 404)
+
 
 
 async def static_file(request):
